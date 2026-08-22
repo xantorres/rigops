@@ -10,10 +10,18 @@ permissions:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.13"]
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: set up python ${{ matrix.python-version }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
 
       - name: guard secret
         if: github.event_name == 'push'

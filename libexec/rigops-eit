@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import statistics
+import sys
+from collections import Counter, defaultdict
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+
+from rigops import config as rigops_config  # noqa: E402
+from rigops import transcripts  # noqa: E402
+
+
+def build_report(turns, by, top_n) -> dict:
+    n = len(turns)
+    eits = [transcripts.eit(t) for t in turns]
+    ctxs = [transcripts.ctx(t) for t in turns]
+    total_eit = sum(eits)
+    total_output = sum(t["output"] for t in turns)
+    total_input = sum(t["input"] for t in turns)
+    total_cache_creation = sum(t["cache_creation"] for t in turns)
+    total_cache_read = sum(t["cache_read"] for t in turns)
+    total_ctx = total_input + total_cache_creation + total_cache_read
+    cache_hit_pct = (total_cache_read / total_ctx * 100) if total_ctx else 0.0
+
+    ctx_sorted = sorted(ctxs)
+    mean_ctx = statistics.mean(ctxs) if ctxs else 0.0
+    p50 = transcripts.percentile(ctx_sorted, 0.50)
+    p90 = transcripts.percentile(ctx_sorted, 0.90)
+    max_ctx = max(ctxs) if ctxs else 0.0
+
+    over_300k_eit = sum(e for e, c in zip(eits, ctxs) if c > 300_000)
+    share_over_300k = (over_300k_eit / total_eit * 100) if total_eit else 0.0
+
+    histogram = {}
+    for label, lo, hi in transcripts.CTX_BUCKETS:
+        bucket = [e for e, c in zip(eits, ctxs) if lo <= c < hi]
+        b_eit = sum(bucket)
+        histogram[label] = {
+            "turns": len(bucket),
+            "eit_share_pct": (b_eit / total_eit * 100) if total_eit else 0.0,
+        }
+
+    tool_counter = Counter()
+    for t in turns:
+        tool_counter.update(t["tools"])
+    top_tools = tool_counter.most_common(10)
+
+    group_key_fn = {
+        "project": lambda t: t["project"],
+        "model": lambda t: t["model"],
+        "session": lambda t: t["session"],
+    }[by]
+    group_eit = defaultdict(float)
+    group_turns = defaultdict(int)
+    for t, e in zip(turns, eits):
+        k = group_key_fn(t)
+        group_eit[k] += e
+        group_turns[k] += 1
+    top_groups = sorted(group_eit.items(), key=lambda kv: kv[1], reverse=True)[:top_n]
+    top_groups = [{"key": k, "eit": v, "turns": group_turns[k]} for k, v in top_groups]
+
+    return {
+        "turns": n,
+        "eit_total": total_eit,
+        "eit_per_turn": (total_eit / n) if n else 0.0,
+        "output_tokens_total": total_output,
+        "cache_hit_pct": cache_hit_pct,
+        "ctx_mean": mean_ctx,
+        "ctx_p50": p50,
+        "ctx_p90": p90,
+        "ctx_max": max_ctx,
+        "eit_share_over_300k_pct": share_over_300k,
+        "top_tools": top_tools,
+        "by": by,
+        "top_groups": top_groups,
+        "histogram": histogram,
+    }
+
+
+def print_human(r) -> None:
+    out = []
+    out.append(f"Window: {r['window']['since']} -> {r['window']['until'] or 'now'}")
+    out.append(f"Turns: {r['turns']:,}")
+    out.append(f"EIT total: {r['eit_total']:,.0f}")
+    out.append(f"EIT/turn: {r['eit_per_turn']:,.0f}")
+    out.append(f"Output tokens total: {r['output_tokens_total']:,.0f}")
+    out.append(f"Cache hit %: {r['cache_hit_pct']:.1f}")
+    out.append(
+        "Context mean/p50/p90/max: "
+        f"{r['ctx_mean']:,.0f} / {r['ctx_p50']:,.0f} / {r['ctx_p90']:,.0f} / {r['ctx_max']:,.0f}"
+    )
+    out.append(f"EIT share from turns >300k ctx: {r['eit_share_over_300k_pct']:.1f}%")
+    out.append("")
+    out.append("Top tool calls:")
+    for name, count in r["top_tools"]:
+        out.append(f"  {name}: {count:,}")
+    out.append("")
+    out.append(f"Top {len(r['top_groups'])} by {r['by']} (EIT):")
+    for g in r["top_groups"]:
+        out.append(f"  {g['key']}: EIT={g['eit']:,.0f} turns={g['turns']:,}")
+    print("\n".join(out))
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="EIT usage report for session transcripts.")
+    parser.add_argument("--since", default="-7d", help="ISO date/time, 'today', or '-Nd'")
+    parser.add_argument("--until", default=None, help="ISO date/time")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--by", choices=["project", "model", "session"], default="project")
+    parser.add_argument("--top", type=int, default=10)
+    parser.add_argument(
+        "--dir", dest="transcripts_dir", default=None,
+        help="transcripts root directory (default: config transcripts_dir)",
+    )
+    args = parser.parse_args()
+
+    transcripts_dir = None
+    if args.transcripts_dir is not None:
+        transcripts_dir = rigops_config.expand(args.transcripts_dir)
+        if not transcripts_dir.is_dir():
+            print(f"error: --dir not found: {transcripts_dir}", file=sys.stderr)
+            return 2
+
+    now = dt.datetime.now(dt.timezone.utc)
+    since = transcripts.parse_bound(args.since, now)
+    until = transcripts.parse_bound(args.until, now) if args.until else None
+
+    turns = transcripts.collect_turns(since, until, transcripts_dir=transcripts_dir)
+    report = build_report(turns, args.by, args.top)
+    report["window"] = {
+        "since": since.isoformat() if since else None,
+        "until": until.isoformat() if until else None,
+    }
+
+    if args.json:
+        print(json.dumps(report, indent=2, default=str))
+    else:
+        print_human(report)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

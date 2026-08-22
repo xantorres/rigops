@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+
+from rigops import config as rigops_config  # noqa: E402
+from rigops import levers  # noqa: E402
+from rigops import state  # noqa: E402
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _rewrite_jsonl(path: Path, rows: list) -> None:
+    text = "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in rows)
+    _atomic_write(path, text)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Append one ledger row.")
+    ap.add_argument("--at", help="row date YYYY-MM-DD (default today)")
+    ap.add_argument("--label", default="", help="free-text tag for the row")
+    ap.add_argument("--dry-run", action="store_true", help="compute and print, write nothing")
+    ap.add_argument("--force", action="store_true", help="replace an existing row for that date")
+    ap.add_argument("--show", action="store_true", help="print the ledger and exit, no write")
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args()
+
+    cfg = rigops_config.load()
+    watch_projects = rigops_config.get(cfg, "ledger.watch_projects", {}) or {}
+    jsonl_path = state.state_dir() / "ledger.jsonl"
+    md_path = state.state_dir() / "ledger.md"
+
+    if args.show:
+        if args.json:
+            print(json.dumps(state.read_jsonl(jsonl_path), indent=2, default=str))
+        else:
+            sys.stdout.write(md_path.read_text() if md_path.exists() else "no ledger yet\n")
+        return 0
+
+    if args.at:
+        try:
+            at = dt.date.fromisoformat(args.at)
+        except ValueError:
+            print("error: --at must be YYYY-MM-DD", file=sys.stderr)
+            return 2
+    else:
+        at = dt.date.today()
+    rows = state.read_jsonl(jsonl_path)
+    existing = [r for r in rows if r.get("date") == at.isoformat()]
+
+    if existing and not args.force and not args.dry_run:
+        print(f"ledger {at}: row exists, nothing appended (use --force to replace)")
+        return 0
+
+    row = levers.build_row(at, args.label, cfg=cfg)
+    prev = rows[-1] if rows else None
+    base = rows[0] if rows else None
+
+    if not args.dry_run:
+        if existing and args.force:
+            idx = next(i for i, r in enumerate(rows) if r.get("date") == at.isoformat())
+            rows[idx] = row
+            rows.sort(key=lambda r: r.get("date", ""))
+            _rewrite_jsonl(jsonl_path, rows)
+        else:
+            rows.append(row)
+            state.append_jsonl(jsonl_path, row)
+        # ledger.md is fully regenerated from ledger.jsonl so column additions never
+        # desync the table header from appended rows; jsonl stays the source of truth.
+        _atomic_write(md_path, levers.render_markdown(rows, watch_projects))
+
+    if args.json:
+        print(json.dumps(row, indent=2, default=str))
+    else:
+        suffix = "  (dry-run)" if args.dry_run else ""
+        print(levers.summary_line(row, prev, base, watch_projects) + suffix)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
