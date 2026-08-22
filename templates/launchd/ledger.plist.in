@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  rigops ledger: appends the weekly ledger row from transcript history.
+  Cadence: weekly, Monday 09:05 local time.
+  rendered by install.sh
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>@LABEL@</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>@PYTHON@</string>
+		<string>@PREFIX@/libexec/rigops-ledger</string>
+		<string>write</string>
+	</array>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Weekday</key>
+		<integer>1</integer>
+		<key>Hour</key>
+		<integer>9</integer>
+		<key>Minute</key>
+		<integer>5</integer>
+	</dict>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>Nice</key>
+	<integer>10</integer>
+	<key>LowPriorityIO</key>
+	<true/>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HOME</key>
+		<string>@HOME@</string>
+		<key>PATH</key>
+		<string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+@EXTRA_ENV@
+	</dict>
+	<key>StandardOutPath</key>
+	<string>@LOG_DIR@/@LABEL@.log</string>
+	<key>StandardErrorPath</key>
+	<string>@LOG_DIR@/@LABEL@.err</string>
+</dict>
+</plist>

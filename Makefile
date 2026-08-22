@@ -1,4 +1,4 @@
-.PHONY: check gate gate-history shellcheck ruff test validate-manifests plugin-validate hooks
+.PHONY: check gate gate-history shellcheck ruff test validate-manifests plugin-validate hooks smoke smoke-launchd
 
 check: gate gate-history shellcheck ruff test validate-manifests plugin-validate
 
@@ -38,3 +38,9 @@ plugin-validate:
 hooks:
 	git config core.hooksPath .githooks
 	@echo "git hooks enabled (.githooks)"
+
+smoke:
+	bash tests/smoke.sh
+
+smoke-launchd:
+	bash tests/smoke-launchd.sh

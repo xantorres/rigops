@@ -40,3 +40,27 @@ jobs:
         env:
           RIGOPS_REDACTION_PATTERNS_B64: ${{ secrets.RIGOPS_REDACTION_PATTERNS_B64 }}
         run: make check
+
+  smoke:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.9"
+          - os: macos-latest
+            # py3.9 floor covered by ubuntu leg; darwin-arm64 lacks 3.9 builds
+            python-version: "3.11"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - run: make smoke
+
+      - name: smoke-launchd
+        if: runner.os == 'macOS'
+        run: make smoke-launchd

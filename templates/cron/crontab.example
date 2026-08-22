@@ -1,0 +1,20 @@
+# rigops cron fallback (Linux, or any host without launchd).
+#
+# install.sh only wires launchd jobs; on Linux install with:
+#   install.sh --apply --no-jobs
+# then add lines like these yourself with `crontab -e`. rigops-doctor runs
+# with --supervisor none on cron, since there's no launchd to inspect for
+# hung/failing PIDs -- staleness is judged from evidence-file ages only.
+#
+# PATH is minimal under cron; call the installed symlink by full path and
+# redirect output to a log file rigops doesn't manage, since there's no
+# launchd StandardOutPath/StandardErrorPath equivalent here.
+#
+# mkdir -p $HOME/.local/state/rigops first -- cron does not create it for
+# you, and $HOME/Library/Logs is a macOS-only path that doesn't exist here.
+#
+# doctor: every 30 minutes
+*/30 * * * * $HOME/.local/bin/rigops doctor --heal --supervisor none >> $HOME/.local/state/rigops/doctor.cron.log 2>&1
+
+# ledger: weekly, Monday 09:05
+5 9 * * 1 $HOME/.local/bin/rigops ledger write >> $HOME/.local/state/rigops/ledger.cron.log 2>&1
