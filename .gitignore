@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+.DS_Store
+*.bak
+*.log
+.ruff_cache/
+.venv/
+dist/
+redaction-patterns*.txt
+!redaction-patterns.public.txt
+
+# local agent config never ships
+CLAUDE.md
+AGENTS.md
+.claude/
+
+# Plugin manifests are shipped content; re-include them for clones whose
+# global excludes hide .claude* paths.
+!.claude-plugin/
+!.claude-plugin/**
+!plugin/.claude-plugin/
+!plugin/.claude-plugin/**

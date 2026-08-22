@@ -1,0 +1,26 @@
+# rigops public redaction denylist.
+#
+# Purpose: catch employer traces and AI-authorship attribution before they
+# land in the working tree, git history, or a commit message.
+#
+# Format: one rule per line, "i <ERE>" (case-insensitive) or "s <ERE>"
+# (case-sensitive). A single space separates the flag from the pattern;
+# the pattern is everything after that space, verbatim. Blank lines and
+# lines starting with # are ignored.
+#
+# This file is excluded from its own scan by tools/redaction-gate.sh --
+# several rules below contain the literal substrings they match, so
+# scanning this file against itself would always produce a false hit.
+#
+# Add project-specific or personal patterns to a private, uncommitted
+# file instead of editing this one (see tools/redaction-gate.sh).
+s /Users/[^/ ]+/
+# Matches prose like "HTTP-404" too -- write "HTTP 404" in docs.
+s [A-Z]{4,}-[0-9]{3,}
+i co-authored-by:.*(claude|anthropic|gpt|copilot|gemini|cursor)
+# Catches attribution footers incl. bracketed link form and robot-emoji
+# marker; product-page URL rule may false-positive on an intentional
+# link -- remove locally if that ever becomes legitimate.
+i generated with .{0,10}(claude|chatgpt|copilot|cursor)
+s 🤖
+i claude\.com/claude-code

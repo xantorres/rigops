@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: guard secret
+        if: github.event_name == 'push'
+        env:
+          RIGOPS_REDACTION_PATTERNS_B64: ${{ secrets.RIGOPS_REDACTION_PATTERNS_B64 }}
+        run: |
+          if [ -z "$RIGOPS_REDACTION_PATTERNS_B64" ]; then
+            echo "RIGOPS_REDACTION_PATTERNS_B64 repo secret not set; private redaction layer required on push" >&2
+            exit 1
+          fi
+
+      - name: install ruff
+        run: pipx install ruff==0.16.4
+
+      - name: check
+        env:
+          RIGOPS_REDACTION_PATTERNS_B64: ${{ secrets.RIGOPS_REDACTION_PATTERNS_B64 }}
+        run: make check
