@@ -42,6 +42,66 @@
         }
       },
       "additionalProperties": true
+    },
+    "doctor": {
+      "type": "object",
+      "description": "Settings for `rigops doctor` (job fleet health watchdog).",
+      "properties": {
+        "registry": {
+          "type": "string",
+          "description": "Path to the rigops.v1 registry markdown file."
+        },
+        "label_prefix": {
+          "type": "array",
+          "description": "Launchd label prefixes tried, in order, when a registry item has no explicit plist.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "kill_grace_s": {
+          "type": "number",
+          "description": "Seconds to wait after SIGTERM before SIGKILL on a hung job."
+        },
+        "heal_cooldown_h": {
+          "type": "number",
+          "description": "Hours to suppress a repeat kickstart of the same job after healing it."
+        },
+        "checks": {
+          "type": "object",
+          "description": "Generic fleet-wide checks, independent of the registry.",
+          "properties": {
+            "custom": {
+              "type": "array",
+              "description": "Shell commands checked by exit code.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "command": { "type": "string" },
+                  "warn_exit": { "type": "integer" },
+                  "fail_exit": { "type": "integer" },
+                  "timeout_s": { "type": "number" }
+                }
+              }
+            },
+            "disk_free": {
+              "type": ["object", "null"],
+              "description": "Disk-free threshold check, or null to skip it.",
+              "properties": {
+                "path": { "type": "string" },
+                "warn_gb": { "type": "number" },
+                "fail_gb": { "type": "number" }
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "notify_command": {
+          "type": "string",
+          "description": "Shell command run with the report path appended; empty to skip notifications."
+        }
+      },
+      "additionalProperties": true
     }
   },
   "additionalProperties": true

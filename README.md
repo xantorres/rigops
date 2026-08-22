@@ -36,7 +36,7 @@ rigops is not:
 
 ### 3. Doctor
 
-`rigops doctor` *(planned)* reads a plain registry file and reports launchd job fleet health: staleness against each job's expected cadence, hung-job detection with a kill bounded by a max-runtime, and cooldowns on repeated healing attempts so a flapping job doesn't get restarted into the ground.
+`rigops doctor` reads a plain registry file and reports launchd job fleet health: staleness against each job's expected cadence, hung-job detection with a kill bounded by a max-runtime, and cooldowns on repeated healing attempts so a flapping job doesn't get restarted into the ground.
 
 ### 4. Reap, janitor, backlog lint
 
@@ -101,7 +101,7 @@ All of it will be read-only until you pass `--apply`, and every destructive path
 - [x] M0 — scaffold, redaction gate, CI (done)
 - [ ] M1 — ledger, tax, eit core
 - [x] M2 — ledger diff + intervention annotations
-- [ ] M3 — doctor
+- [x] M3 — doctor
 - [ ] M4 — installer
 - [ ] M5 — plugin half
 - [ ] M6 — reaper, janitor, backlog lint

@@ -106,6 +106,32 @@ def print_human(r) -> None:
     print("\n".join(out))
 
 
+_DASH_VALUE_OPTS = ("--since", "--until")
+_KNOWN_FLAGS = {"--since", "--until", "--json", "--by", "--top", "--dir", "-h", "--help"}
+
+
+def _attach_dash_values(argv: list) -> list:
+    """Rewrite '--since -7d' to '--since=-7d' (ditto --until).
+
+    argparse's heuristic for whether a bare '-7d'-shaped token is a value
+    or an unrecognized option changed between Python 3.9 and later 3.x, so
+    the space-separated form parses on newer Python but not on 3.9. The
+    '=' form is unambiguous on every version.
+    """
+    out = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        nxt = argv[i + 1] if i + 1 < len(argv) else None
+        if arg in _DASH_VALUE_OPTS and nxt and nxt.startswith("-") and nxt not in _KNOWN_FLAGS:
+            out.append(f"{arg}={nxt}")
+            i += 2
+            continue
+        out.append(arg)
+        i += 1
+    return out
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="EIT usage report for session transcripts.")
     parser.add_argument("--since", default="-7d", help="ISO date/time, 'today', or '-Nd'")
@@ -117,7 +143,7 @@ def main() -> int:
         "--dir", dest="transcripts_dir", default=None,
         help="transcripts root directory (default: config transcripts_dir)",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(_attach_dash_values(sys.argv[1:]))
 
     transcripts_dir = None
     if args.transcripts_dir is not None:

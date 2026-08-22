@@ -8,5 +8,18 @@
   "fixed_tax": {
     "paths": ["~/.claude/CLAUDE.md"],
     "globs": []
+  },
+  "doctor": {
+    "registry": "~/.config/rigops/registry.md",
+    "label_prefix": ["local."],
+    "kill_grace_s": 5,
+    "heal_cooldown_h": 12,
+    "checks": {
+      "custom": [
+        {"name": "backup-fresh", "command": "test -f ~/backups/latest", "fail_exit": 1, "timeout_s": 10}
+      ],
+      "disk_free": null
+    },
+    "notify_command": ""
   }
 }

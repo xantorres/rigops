@@ -9,6 +9,14 @@ DEFAULTS = {
     "transcripts_dir": "~/.claude/projects",
     "ledger": {"watch_projects": {}},
     "fixed_tax": {"paths": [], "globs": []},
+    "doctor": {
+        "registry": "~/.config/rigops/registry.md",
+        "label_prefix": ["local."],
+        "kill_grace_s": 5,
+        "heal_cooldown_h": 12,
+        "checks": {"custom": [], "disk_free": None},
+        "notify_command": "",
+    },
 }
 
 

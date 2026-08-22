@@ -1,0 +1,385 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+
+from rigops import config as rigops_config  # noqa: E402
+from rigops import fmt, launchd, state  # noqa: E402
+from rigops import judge as rigops_judge  # noqa: E402
+from rigops import registry as rigops_registry  # noqa: E402
+
+CADENCE_EVENT_RE = re.compile(r"\bevent\b", re.IGNORECASE)
+CADENCE_DAILY_HHMM_RE = re.compile(r"daily\s+(\d{1,2}):(\d{2})")
+CADENCE_EVERY_MIN_RE = re.compile(r"every\s+(\d+)\s*min", re.IGNORECASE)
+CADENCE_KEEPALIVE_RE = re.compile(r"always-on|keepalive", re.IGNORECASE)
+CADENCE_WEEKLY_RE = re.compile(r"weekly", re.IGNORECASE)
+CADENCE_ONDEMAND_RE = re.compile(r"on-demand|manual|deadline", re.IGNORECASE)
+HEALTH_TRAILING_NOTE_RE = re.compile(r"\s*\([^)]*\)\s*$")
+
+
+def cadence_interval_hours(cadence: str):
+    """Expected interval in hours, or None if the cadence isn't staleness-checkable."""
+    if not cadence:
+        return None
+    if CADENCE_ONDEMAND_RE.search(cadence):
+        return None
+    if CADENCE_EVENT_RE.search(cadence):
+        return None
+    if CADENCE_KEEPALIVE_RE.search(cadence):
+        return None
+    if CADENCE_WEEKLY_RE.search(cadence):
+        return 7 * 24
+    times = CADENCE_DAILY_HHMM_RE.findall(cadence)
+    if times:
+        occurrences = len(times) if len(times) > 1 else 1
+        return 24 / occurrences
+    m = CADENCE_EVERY_MIN_RE.search(cadence)
+    if m:
+        minutes = int(m.group(1))
+        return minutes / 60 if minutes > 0 else None
+    return None
+
+
+def newest_evidence_mtime(health_field: str):
+    """health_field may be a single path, a brace-expansion like foo.{log,err.log},
+    a path with a trailing '(note)' annotation, or '-' (no evidence). Returns
+    (path_used, mtime) of the freshest match."""
+    if not health_field or health_field.strip() == "-":
+        return None, None
+    cleaned = HEALTH_TRAILING_NOTE_RE.sub("", health_field.strip())
+    candidates = []
+    m = re.match(r"^(.*)\{([^}]+)\}(.*)$", cleaned)
+    if m:
+        prefix, alts, suffix = m.groups()
+        for alt in alts.split(","):
+            candidates.append(rigops_config.expand(prefix + alt + suffix))
+    else:
+        candidates.append(rigops_config.expand(cleaned))
+
+    best_path, best_mtime = None, None
+    for c in candidates:
+        try:
+            mt = c.stat().st_mtime
+        except OSError:
+            continue
+        if best_mtime is None or mt > best_mtime:
+            best_path, best_mtime = c, mt
+    return best_path, best_mtime
+
+
+def _evidence_age_h(ev_mtime):
+    """Hours since ev_mtime, or None if there's no evidence file at all.
+
+    mtime 0 (the epoch) is a valid timestamp, not "no evidence" -- only
+    None means that. A negative age (clock skew, future mtime) clamps to 0.
+    """
+    if ev_mtime is None:
+        return None
+    return max((time.time() - ev_mtime) / 3600, 0.0)
+
+
+def _load_json(path: Path, default):
+    if not path.exists():
+        return default
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return default
+
+
+def _save_json(path: Path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True))
+    os.replace(tmp, path)
+
+
+def _cooldown_active(heal_stamps: dict, job_id: str, cooldown_h: float, now: float) -> bool:
+    last = heal_stamps.get(job_id)
+    return last is not None and (now - last) < cooldown_h * 3600
+
+
+def _resolve_label(candidate: str, prefixes: list):
+    """candidate only counts as this item's label when it's both actually
+    loaded and matches a configured prefix -- prefixes are config-owned,
+    the registry is data, so an operator-supplied `plist:` path can't by
+    itself point doctor at an unrelated already-loaded daemon."""
+    if launchd.is_loaded(candidate) and any(candidate.startswith(p) for p in prefixes):
+        return candidate
+    return None
+
+
+def _label_for_item(item: dict, prefixes: list):
+    plist = item.get("plist")
+    if plist:
+        return _resolve_label(Path(plist).expanduser().stem, prefixes)
+    job_id = item.get("id", "")
+    for prefix in prefixes:
+        label = _resolve_label(f"{prefix}{job_id}", prefixes)
+        if label:
+            return label
+    return None
+
+
+def _judge_launchd_item(item: dict, prefixes: list, heal_cooldown_active: bool) -> dict:
+    job_id = item.get("id", "unknown")
+    label = _label_for_item(item, prefixes)
+    if label is None:
+        return {
+            "id": job_id, "status": "unknown", "action": "none",
+            "runtime_h": None, "evidence_age_h": None, "label": None, "pid": None,
+        }
+
+    _, pid, last_exit = launchd.job_snapshot(label)
+    if pid == os.getpid():
+        return {
+            "id": job_id, "status": "ok", "action": "none",
+            "runtime_h": None, "evidence_age_h": None, "label": label, "pid": pid,
+        }
+    runtime_h = launchd.runtime_hours(pid) if pid else None
+    interval_h = cadence_interval_hours(item.get("cadence", ""))
+    _, ev_mtime = newest_evidence_mtime(item.get("health", ""))
+    evidence_age_h = _evidence_age_h(ev_mtime)
+
+    status, action = rigops_judge.judge_job(
+        runtime_h=runtime_h, max_runtime_h=item["max_runtime_h"], last_exit_status=last_exit,
+        evidence_age_h=evidence_age_h, expected_interval_h=interval_h,
+        heal_cooldown_active=heal_cooldown_active,
+    )
+    return {
+        "id": job_id, "status": status, "action": action, "runtime_h": runtime_h,
+        "evidence_age_h": evidence_age_h, "label": label, "pid": pid,
+    }
+
+
+def _judge_evidence_only_item(item: dict, heal_cooldown_active: bool) -> dict:
+    job_id = item.get("id", "unknown")
+    interval_h = cadence_interval_hours(item.get("cadence", ""))
+    _, ev_mtime = newest_evidence_mtime(item.get("health", ""))
+    evidence_age_h = _evidence_age_h(ev_mtime)
+
+    status, action = rigops_judge.judge_job(
+        runtime_h=None, max_runtime_h=item["max_runtime_h"], last_exit_status=None,
+        evidence_age_h=evidence_age_h, expected_interval_h=interval_h,
+        heal_cooldown_active=heal_cooldown_active,
+    )
+    return {
+        "id": job_id, "status": status, "action": action, "runtime_h": None,
+        "evidence_age_h": evidence_age_h, "label": None, "pid": None,
+    }
+
+
+def run_custom_check(check_cfg: dict) -> dict:
+    name = check_cfg.get("name", "custom")
+    command = check_cfg.get("command", "")
+    timeout_s = check_cfg.get("timeout_s", 10)
+    warn_exit = check_cfg.get("warn_exit")
+    fail_exit = check_cfg.get("fail_exit")
+    try:
+        out = subprocess.run(
+            command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=timeout_s,
+        )
+        code = out.returncode
+    except subprocess.TimeoutExpired:
+        return {"name": name, "status": "fail", "detail": f"timed out after {timeout_s}s"}
+    except OSError as exc:
+        return {"name": name, "status": "fail", "detail": str(exc)}
+    if fail_exit is not None and code == fail_exit:
+        return {"name": name, "status": "fail", "detail": f"exit {code}"}
+    if warn_exit is not None and code == warn_exit:
+        return {"name": name, "status": "warn", "detail": f"exit {code}"}
+    if code == 0:
+        return {"name": name, "status": "ok", "detail": "exit 0"}
+    return {"name": name, "status": "warn", "detail": f"unexpected exit {code}"}
+
+
+def run_disk_free_check(check_cfg: dict) -> dict:
+    path = check_cfg.get("path", "/")
+    warn_gb = check_cfg.get("warn_gb", 25)
+    fail_gb = check_cfg.get("fail_gb", 10)
+    try:
+        free_gb = shutil.disk_usage(path).free / (1024 ** 3)
+    except OSError as exc:
+        return {"name": "disk-free", "status": "fail", "detail": str(exc)}
+    if free_gb < fail_gb:
+        status = "fail"
+    elif free_gb < warn_gb:
+        status = "warn"
+    else:
+        status = "ok"
+    return {"name": "disk-free", "status": status, "detail": f"{free_gb:.1f}GB free on {path}"}
+
+
+def _notify(command: str, report_path: Path) -> str:
+    """Runs the configured notify command; returns an event message on
+    timeout/failure, or "" once it ran (or there's no command configured)."""
+    if not command:
+        return ""
+    cmd = f"{command} {shlex.quote(str(report_path))}"
+    try:
+        subprocess.run(cmd, shell=True, capture_output=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        return "notify command timed out after 60s"
+    except OSError as exc:
+        return f"notify command failed: {exc}"
+    return ""
+
+
+def render_report(ts: str, jobs: list, checks: list, heal_log: list, supervisor: str) -> str:
+    lines = [f"rigops doctor report {ts}", f"supervisor: {supervisor}", "", "== jobs =="]
+    job_rows = [
+        [
+            j["id"], j["status"],
+            f"{j['runtime_h']:.1f}h" if j["runtime_h"] is not None else "-",
+            f"{j['evidence_age_h']:.1f}h" if j["evidence_age_h"] is not None else "-",
+            j["action"],
+        ]
+        for j in jobs
+    ]
+    lines.append(
+        fmt.table(job_rows, ["id", "status", "runtime", "evidence age", "action"])
+        if job_rows else "no registry items"
+    )
+    lines.append("")
+    lines.append("== checks ==")
+    check_rows = [[c["name"], c["status"], c["detail"]] for c in checks]
+    lines.append(
+        fmt.table(check_rows, ["name", "status", "detail"]) if check_rows else "none configured"
+    )
+    if heal_log:
+        lines.append("")
+        lines.append("== heal actions ==")
+        lines.extend(heal_log)
+    return "\n".join(lines) + "\n"
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description="Health watchdog for the rigops job fleet.")
+    ap.add_argument("--report", action="store_true", help="print the full report to stdout")
+    ap.add_argument("--json", action="store_true", help="emit JSON instead of text")
+    ap.add_argument("--list", action="store_true", help="list registry items and exit")
+    ap.add_argument(
+        "--heal", action="store_true",
+        help=(
+            "allow kill/kickstart side effects; default is report-only: no "
+            "kill/kickstart (custom checks and notify still execute their "
+            "configured commands)"
+        ),
+    )
+    ap.add_argument(
+        "--supervisor", choices=["launchd", "none"], default="launchd",
+        help="'none' skips launchctl entirely and judges from evidence file ages only",
+    )
+    ap.add_argument("--registry", help="registry file path (default: config doctor.registry)")
+    args = ap.parse_args(argv)
+
+    cfg = rigops_config.load()
+    registry_path = (
+        rigops_config.expand(args.registry) if args.registry
+        else rigops_config.expand(rigops_config.get(cfg, "doctor.registry"))
+    )
+    items = rigops_registry.load_registry(registry_path)
+
+    if args.list:
+        if args.json:
+            print(json.dumps(items, indent=2, default=str))
+        else:
+            rows = [
+                [it.get("id", ""), it.get("domain", ""), it.get("trigger", ""),
+                 it.get("cadence", "")]
+                for it in items
+            ]
+            print(fmt.table(rows, ["id", "domain", "trigger", "cadence"]))
+        return 0
+
+    doctor_state_dir = state.state_dir() / "doctor"
+    heal_stamps_path = doctor_state_dir / "heal-stamps.json"
+    events_path = doctor_state_dir / "events.jsonl"
+    heal_stamps = _load_json(heal_stamps_path, {})
+    cooldown_h = rigops_config.get(cfg, "doctor.heal_cooldown_h", 12)
+    kill_grace_s = rigops_config.get(cfg, "doctor.kill_grace_s", 5)
+    prefixes = rigops_config.get(cfg, "doctor.label_prefix", ["local."])
+
+    now = time.time()
+    jobs = []
+    for item in items:
+        job_id = item.get("id", "unknown")
+        cooldown_active = _cooldown_active(heal_stamps, job_id, cooldown_h, now)
+        if args.supervisor == "none":
+            job = _judge_evidence_only_item(item, cooldown_active)
+        else:
+            job = _judge_launchd_item(item, prefixes, cooldown_active)
+        jobs.append(job)
+
+    heal_log = []
+    if args.heal and args.supervisor == "launchd":
+        for job in jobs:
+            if job["action"] == "kill" and job["pid"]:
+                current_pid = launchd.job_pid(job["label"])
+                if current_pid != job["pid"]:
+                    heal_log.append(f"pid changed for {job['id']}, skip kill")
+                elif launchd.terminate_process_group(job["pid"], kill_grace_s):
+                    heal_stamps[job["id"]] = now
+                    heal_log.append(f"terminated hung job {job['id']} (pid {job['pid']})")
+                    _save_json(heal_stamps_path, heal_stamps)
+            elif job["action"] == "kickstart" and job["label"]:
+                if launchd.kickstart(job["label"]):
+                    heal_stamps[job["id"]] = now
+                    heal_log.append(f"kickstarted {job['id']} ({job['label']})")
+                    _save_json(heal_stamps_path, heal_stamps)
+
+    checks = []
+    for check_cfg in rigops_config.get(cfg, "doctor.checks.custom", []) or []:
+        checks.append(run_custom_check(check_cfg))
+    disk_free_cfg = rigops_config.get(cfg, "doctor.checks.disk_free")
+    if disk_free_cfg:
+        checks.append(run_disk_free_check(disk_free_cfg))
+
+    fail_count = sum(1 for j in jobs if j["status"] in ("failing", "hung"))
+    checks_failed = any(c["status"] == "fail" for c in checks)
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    report_text = render_report(ts, jobs, checks, heal_log, args.supervisor)
+
+    state.append_jsonl(events_path, {
+        "ts": ts, "jobs_checked": len(jobs), "fail_count": fail_count, "healed": heal_log,
+    })
+
+    notify_command = rigops_config.get(cfg, "doctor.notify_command", "")
+    if notify_command and (fail_count > 0 or checks_failed or heal_log):
+        doctor_state_dir.mkdir(parents=True, exist_ok=True)
+        report_path = doctor_state_dir / "report-latest.txt"
+        report_path.write_text(report_text)
+        notify_error = _notify(notify_command, report_path)
+        if notify_error:
+            state.append_jsonl(events_path, {"ts": ts, "event": notify_error})
+
+    if args.json:
+        payload = {
+            "ts": ts, "supervisor": args.supervisor, "jobs": jobs, "checks": checks,
+            "healed": heal_log, "fail_count": fail_count,
+        }
+        print(json.dumps(payload, indent=2, default=str))
+    elif args.report:
+        print(report_text, end="")
+    else:
+        summary = f"{fail_count} failing/hung" if fail_count else "OK"
+        print(f"rigops doctor: {summary} ({len(jobs)} jobs checked)")
+
+    return 1 if fail_count > 0 or checks_failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
