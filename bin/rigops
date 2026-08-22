@@ -1,0 +1,57 @@
+#!/bin/sh
+set -eu
+
+resolve_dir() {
+    target="$1"
+    while [ -L "$target" ]; do
+        link="$(readlink "$target")"
+        case "$link" in
+            /*) target="$link" ;;
+            *) target="$(dirname "$target")/$link" ;;
+        esac
+    done
+    cd -P "$(dirname "$target")" && pwd
+}
+
+BIN_DIR="$(resolve_dir "$0")"
+ROOT_DIR="$(cd -P "$BIN_DIR/.." && pwd)"
+LIBEXEC="$ROOT_DIR/libexec"
+
+list_commands() {
+    for f in "$LIBEXEC"/rigops-*; do
+        [ -e "$f" ] || continue
+        basename "$f" | sed 's/^rigops-//'
+    done
+}
+
+usage() {
+    echo "usage: rigops <command> [args...]"
+    echo ""
+    echo "commands:"
+    list_commands | sed 's/^/  /'
+}
+
+if [ "$#" -eq 0 ]; then
+    usage
+    exit 0
+fi
+
+cmd="$1"
+shift
+
+case "$cmd" in
+    help|--help)
+        usage
+        exit 0
+        ;;
+esac
+
+target="$LIBEXEC/rigops-$cmd"
+if [ ! -x "$target" ]; then
+    echo "error: unknown command '$cmd'" >&2
+    echo "" >&2
+    usage >&2
+    exit 2
+fi
+
+exec "$target" "$@"

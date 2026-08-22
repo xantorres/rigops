@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "rigops config",
+  "description": "Configuration for rigops. All paths accept ~ and $VAR expansion.",
+  "type": "object",
+  "properties": {
+    "transcripts_dir": {
+      "type": "string",
+      "description": "Root directory of Claude Code project transcripts."
+    },
+    "ledger": {
+      "type": "object",
+      "description": "Settings for the rigops ledger (weekly effectiveness rows).",
+      "properties": {
+        "watch_projects": {
+          "type": "object",
+          "description": "Map of project name to its transcripts sub-path, watched by the ledger.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "fixed_tax": {
+      "type": "object",
+      "description": "Always-loaded config counted toward the fixed context tax.",
+      "properties": {
+        "paths": {
+          "type": "array",
+          "description": "Explicit file paths counted toward the fixed tax.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "globs": {
+          "type": "array",
+          "description": "Glob patterns counted toward the fixed tax.",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

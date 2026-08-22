@@ -1,6 +1,6 @@
-.PHONY: check gate gate-history shellcheck ruff validate-manifests plugin-validate hooks
+.PHONY: check gate gate-history shellcheck ruff test validate-manifests plugin-validate hooks
 
-check: gate gate-history shellcheck ruff validate-manifests plugin-validate
+check: gate gate-history shellcheck ruff test validate-manifests plugin-validate
 
 gate:
 	bash tools/redaction-gate.sh
@@ -21,6 +21,9 @@ ruff:
 	else \
 		echo "skip: ruff not installed"; \
 	fi
+
+test:
+	python3 -m unittest discover -s tests
 
 validate-manifests:
 	python3 tools/validate-manifests.py

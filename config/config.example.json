@@ -1,0 +1,12 @@
+{
+  "transcripts_dir": "~/.claude/projects",
+  "ledger": {
+    "watch_projects": {
+      "myapp": "projects/myapp"
+    }
+  },
+  "fixed_tax": {
+    "paths": ["~/.claude/CLAUDE.md"],
+    "globs": []
+  }
+}
