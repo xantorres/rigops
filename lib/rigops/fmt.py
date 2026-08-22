@@ -28,13 +28,15 @@ def sparkline(values) -> str:
 
 
 def human_bytes(n) -> str:
+    sign = "-" if n < 0 else ""
+    n = abs(n)
     if n < 1024:
-        return f"{n} B"
+        return f"{sign}{n} B"
     kb = n / 1024
     if kb < 1024:
-        return f"{kb:.1f} KB"
+        return f"{sign}{kb:.1f} KB"
     mb = kb / 1024
-    return f"{mb:.1f} MB"
+    return f"{sign}{mb:.1f} MB"
 
 
 def table(rows, headers) -> str:

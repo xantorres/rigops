@@ -204,6 +204,48 @@ def pct_delta(new, old) -> str:
     return f"{d:+.0f}%"
 
 
+DIFF_SKIP_COLUMNS = {"date", "label", "notes"}
+
+
+def diff_columns(old: dict, new: dict) -> list[str]:
+    """Numeric columns present in either row; non-numeric metadata excluded."""
+    cols = []
+    for key in sorted(set(old) | set(new)):
+        if key in DIFF_SKIP_COLUMNS:
+            continue
+        if any(
+            isinstance(row.get(key), (int, float)) and not isinstance(row.get(key), bool)
+            for row in (old, new)
+        ):
+            cols.append(key)
+    return cols
+
+
+def compute_deltas(old: dict, new: dict) -> dict:
+    deltas = {}
+    for key in diff_columns(old, new):
+        ov, nv = old.get(key), new.get(key)
+        if ov is not None and nv is not None:
+            delta = nv - ov
+            if isinstance(ov, float) or isinstance(nv, float):
+                delta = round(delta, 1)
+        else:
+            delta = None
+        pct = round((nv - ov) / ov * 100, 1) if nv is not None and ov not in (None, 0) else None
+        deltas[key] = {"old": ov, "new": nv, "delta": delta, "pct": pct}
+    return deltas
+
+
+def format_delta(key: str, delta) -> str:
+    if delta is None:
+        return "-"
+    return format_cell(key, delta)
+
+
+def format_pct(value) -> str:
+    return f"{value:+.1f}%" if value is not None else "-"
+
+
 def render_markdown(rows: list[dict], watch_projects: dict) -> str:
     columns = md_columns(watch_projects)
     lines = [MD_HEADER,

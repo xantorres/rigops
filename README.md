@@ -28,7 +28,7 @@ rigops is not:
 
 ### 1. Ledger
 
-`rigops ledger` *(planned)* writes one append-only row per week, tracking whatever effectiveness levers matter for the rig: cost, latency, intervention count. `rigops ledger note` *(planned)* records an intervention — a prompt change, a new hook, a pruned rule — next to the week it happened. `rigops ledger diff` *(planned)* then shows week-over-week deltas annotated with what you actually changed, so "did that help" gets an answer instead of a guess.
+`rigops ledger` *(planned)* writes one append-only row per week, tracking whatever effectiveness levers matter for the rig: cost, latency, intervention count. `rigops ledger note` records an intervention — a prompt change, a new hook, a pruned rule — next to the week it happened. `rigops ledger diff` then shows week-over-week deltas annotated with what you actually changed, so "did that help" gets an answer instead of a guess.
 
 ### 2. Tax
 
@@ -100,7 +100,7 @@ All of it will be read-only until you pass `--apply`, and every destructive path
 
 - [x] M0 — scaffold, redaction gate, CI (done)
 - [ ] M1 — ledger, tax, eit core
-- [ ] M2 — ledger diff + intervention annotations
+- [x] M2 — ledger diff + intervention annotations
 - [ ] M3 — doctor
 - [ ] M4 — installer
 - [ ] M5 — plugin half

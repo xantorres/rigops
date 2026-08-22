@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import config as rigops_config  # noqa: E402
+from rigops import fmt  # noqa: E402
 from rigops import levers  # noqa: E402
 from rigops import state  # noqa: E402
 
@@ -27,16 +28,15 @@ def _rewrite_jsonl(path: Path, rows: list) -> None:
     _atomic_write(path, text)
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Append one ledger row.")
-    ap.add_argument("--at", help="row date YYYY-MM-DD (default today)")
-    ap.add_argument("--label", default="", help="free-text tag for the row")
-    ap.add_argument("--dry-run", action="store_true", help="compute and print, write nothing")
-    ap.add_argument("--force", action="store_true", help="replace an existing row for that date")
-    ap.add_argument("--show", action="store_true", help="print the ledger and exit, no write")
-    ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
+def _load_ledger_rows(path: Path) -> list:
+    rows = state.read_jsonl(path)
+    for row in rows:
+        if "date" not in row:
+            raise SystemExit(f"error: ledger row missing 'date' in {path}")
+    return rows
 
+
+def cmd_write(args) -> int:
     cfg = rigops_config.load()
     watch_projects = rigops_config.get(cfg, "ledger.watch_projects", {}) or {}
     jsonl_path = state.state_dir() / "ledger.jsonl"
@@ -57,7 +57,7 @@ def main() -> int:
             return 2
     else:
         at = dt.date.today()
-    rows = state.read_jsonl(jsonl_path)
+    rows = _load_ledger_rows(jsonl_path)
     existing = [r for r in rows if r.get("date") == at.isoformat()]
 
     if existing and not args.force and not args.dry_run:
@@ -87,6 +87,138 @@ def main() -> int:
         suffix = "  (dry-run)" if args.dry_run else ""
         print(levers.summary_line(row, prev, base, watch_projects) + suffix)
     return 0
+
+
+def cmd_note(args) -> int:
+    text = args.text.strip()
+    if not text:
+        print("error: note text must not be blank", file=sys.stderr)
+        return 2
+
+    if args.at:
+        try:
+            at = dt.date.fromisoformat(args.at)
+        except ValueError:
+            print("error: --at must be YYYY-MM-DD", file=sys.stderr)
+            return 2
+    else:
+        at = dt.date.today()
+
+    ts = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
+    entry = {"ts": ts, "date": at.isoformat(), "text": text}
+    state.append_jsonl(state.state_dir() / "interventions.jsonl", entry)
+    print(f"noted {at.isoformat()}: {text}")
+    return 0
+
+
+def _interventions_between(baseline_date: str, latest_date: str) -> list:
+    entries = state.read_jsonl(state.state_dir() / "interventions.jsonl")
+    window = [e for e in entries if baseline_date < e.get("date", "") <= latest_date]
+    window.sort(key=lambda e: (e.get("date", ""), e.get("ts", "")))
+    return window
+
+
+def cmd_diff(args) -> int:
+    jsonl_path = state.state_dir() / "ledger.jsonl"
+    rows = sorted(_load_ledger_rows(jsonl_path), key=lambda r: r.get("date", ""))
+    if len(rows) < 2:
+        print("not enough ledger rows to diff yet (need at least 2)")
+        return 0
+
+    latest = rows[-1]
+    if args.since:
+        try:
+            since = dt.date.fromisoformat(args.since)
+        except ValueError:
+            print("error: --since must be YYYY-MM-DD", file=sys.stderr)
+            return 2
+        candidates = [r for r in rows if r.get("date", "") <= since.isoformat()]
+        if not candidates:
+            print(f"error: no ledger row on or before {since.isoformat()}", file=sys.stderr)
+            return 2
+        baseline = candidates[-1]
+        if baseline.get("date") == latest.get("date"):
+            print(
+                "error: --since must select a baseline older than the latest row",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        baseline = rows[-2]
+
+    deltas = levers.compute_deltas(baseline, latest)
+    interventions = _interventions_between(baseline.get("date", ""), latest.get("date", ""))
+
+    if args.json:
+        payload = {
+            "baseline": baseline["date"],
+            "latest": latest["date"],
+            "deltas": deltas,
+            "interventions": interventions,
+        }
+        print(json.dumps(payload, indent=2, default=str))
+        return 0
+
+    print(f"ledger diff: {baseline['date']} -> {latest['date']}")
+    table_rows = [
+        [
+            col,
+            levers.format_cell(col, d["old"]),
+            levers.format_cell(col, d["new"]),
+            levers.format_delta(col, d["delta"]),
+            levers.format_pct(d["pct"]),
+        ]
+        for col, d in deltas.items()
+    ]
+    print(fmt.table(table_rows, ["column", "old", "new", "delta", "pct"]))
+    print()
+    print("Interventions in this window:")
+    if interventions:
+        for entry in interventions:
+            print(f"{entry.get('date')}  {entry.get('text')}")
+    else:
+        print("none recorded")
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description="Write a ledger row (default), note an intervention, or diff two rows."
+    )
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    write_p = sub.add_parser("write", help="append one ledger row (default)")
+    write_p.add_argument("--at", help="row date YYYY-MM-DD (default today)")
+    write_p.add_argument("--label", default="", help="free-text tag for the row")
+    write_p.add_argument(
+        "--dry-run", action="store_true", help="compute and print, write nothing"
+    )
+    write_p.add_argument(
+        "--force", action="store_true", help="replace an existing row for that date"
+    )
+    write_p.add_argument("--show", action="store_true", help="print the ledger and exit, no write")
+    write_p.add_argument("--json", action="store_true")
+
+    note_p = sub.add_parser("note", help="append a free-text intervention note")
+    note_p.add_argument("text", help="note text")
+    note_p.add_argument("--at", help="note date YYYY-MM-DD (default today)")
+
+    diff_p = sub.add_parser("diff", help="week-over-week deltas with interventions between rows")
+    diff_p.add_argument("--since", help="baseline = latest row on/before this date YYYY-MM-DD")
+    diff_p.add_argument("--json", action="store_true")
+
+    argv = sys.argv[1:]
+    if not argv:
+        argv = ["write"]
+    elif argv[0] not in {"note", "diff", "write", "-h", "--help"}:
+        argv = ["write", *argv]
+    args = ap.parse_args(argv)
+
+    if args.cmd == "note":
+        return cmd_note(args)
+    if args.cmd == "diff":
+        return cmd_diff(args)
+    return cmd_write(args)
 
 
 if __name__ == "__main__":
