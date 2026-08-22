@@ -9,6 +9,10 @@
     "paths": ["~/.claude/CLAUDE.md"],
     "globs": []
   },
+  "context": {
+    "nudge_tiers": [250000, 350000, 500000],
+    "rearm_tokens": 50000
+  },
   "doctor": {
     "registry": "~/.config/rigops/registry.md",
     "label_prefix": ["local."],

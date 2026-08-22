@@ -1,6 +1,6 @@
-.PHONY: check gate gate-history shellcheck ruff test validate-manifests plugin-validate hooks smoke smoke-launchd
+.PHONY: check gate gate-history shellcheck ruff test test-hooks validate-manifests plugin-validate hooks smoke smoke-launchd
 
-check: gate gate-history shellcheck ruff test validate-manifests plugin-validate
+check: gate gate-history shellcheck ruff test test-hooks validate-manifests plugin-validate
 
 gate:
 	bash tools/redaction-gate.sh
@@ -25,12 +25,15 @@ ruff:
 test:
 	python3 -m unittest discover -s tests
 
+test-hooks:
+	bash tests/hooks/run.sh
+
 validate-manifests:
 	python3 tools/validate-manifests.py
 
 plugin-validate:
 	@if command -v claude >/dev/null 2>&1; then \
-		claude plugin validate . && claude plugin validate plugin/; \
+		claude plugin validate --strict . && claude plugin validate --strict plugin/; \
 	else \
 		echo "skip: claude not installed"; \
 	fi

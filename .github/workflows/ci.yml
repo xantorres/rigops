@@ -41,6 +41,16 @@ jobs:
           RIGOPS_REDACTION_PATTERNS_B64: ${{ secrets.RIGOPS_REDACTION_PATTERNS_B64 }}
         run: make check
 
+      - name: install claude code
+        if: matrix.python-version == '3.13'
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: strict plugin validate
+        if: matrix.python-version == '3.13'
+        run: |
+          claude plugin validate --strict .
+          claude plugin validate --strict plugin/
+
   smoke:
     runs-on: ${{ matrix.os }}
     strategy:

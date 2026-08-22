@@ -1,0 +1,16 @@
+{
+  "gates": [
+    {
+      "name": "pr-review",
+      "skill": "acme:code-review",
+      "scope": {
+        "cwd_substrings": ["acme"],
+        "prompt_regex": "github\\.com/acme|\\bacme-web\\b"
+      },
+      "verb_regex": "\\b(re-?)?review(s|ed|ing)?\\b|\\bcheck(s|ed|ing)?\\b|\\bfeedback\\b|\\bopinions?\\b|\\bopini(o|ó)n\\b|\\bthoughts?\\b|\\blook(s|ed|ing)? (at|over|into)\\b|\\b(take|have|had) a look\\b|\\bwhat do you think\\b|\\brev[ií]s(a|as|ar|en|ad)(lo|la|los|las|me|melo)?\\b|\\bvistazo\\b|\\bmira(r|lo|la)?\\b|\\bcoment(a|ame|arios?)\\b|\\bqu[eé] opinas\\b",
+      "noun_regex": "\\b(prs?|pull[- ]?requests?|mrs?|merge[- ]?requests?)\\b",
+      "pull_url_regex": "(github\\.com|gitlab\\.[a-z0-9.-]+)/[a-z0-9._-]+/[a-z0-9._-]+/(pull|merge_requests)/[0-9]+",
+      "windows": {"verb_first": 40, "noun_first": 15}
+    }
+  ]
+}

@@ -214,21 +214,14 @@ after_tree="$(snapshot_tree "$SMOKE_HOME")"
 [ "$before_tree" = "$after_tree" ] || fail "uninstall plan mode modified \$SMOKE_HOME"
 
 echo "smoke: statusline wiring"
-SRC_COPY="$(mktemp -d)"
 STATUSLINE_HOME="$(mktemp -d)"
-
-cp -R "$REPO_ROOT/." "$SRC_COPY/"
-mkdir -p "$SRC_COPY/plugin/statusline"
-cat >"$SRC_COPY/plugin/statusline/rigops-statusline.sh" <<'EOF'
-#!/bin/sh
-echo "rigops"
-EOF
-chmod +x "$SRC_COPY/plugin/statusline/rigops-statusline.sh"
 
 mkdir -p "$STATUSLINE_HOME/.claude"
 printf '{"existing": true}' >"$STATUSLINE_HOME/.claude/settings.json"
 
-run env HOME="$STATUSLINE_HOME" bash "$SRC_COPY/install.sh" --apply --no-jobs --statusline --yes
+# The main checkout ships plugin/statusline/rigops-statusline.sh (M5); apply
+# directly against it instead of a copied dummy stub.
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
 [ "$RC" -eq 0 ] || fail "statusline apply exit $RC: $OUT"
 printf '%s\n' "$OUT" | grep -E '^[[:space:]]*\+.*statusLine' >/dev/null \
     || fail "statusline output missing diff line matching '+.*statusLine': $OUT"
@@ -250,9 +243,12 @@ PYEOF
 backups="$(find "$STATUSLINE_HOME/.claude" -name 'settings.json.rigops-backup.*' 2>/dev/null || true)"
 [ -n "$backups" ] || fail "no settings.json backup found"
 
-# The real checkout ships no plugin/statusline/ yet (M5); confirm --statusline
-# fails loudly there instead of silently no-op'ing.
-run bash "$INSTALL_SH" --statusline
+echo "smoke: statusline error path (checkout without the script)"
+SRC_COPY="$(mktemp -d)"
+cp -R "$REPO_ROOT/." "$SRC_COPY/"
+rm -rf "$SRC_COPY/plugin/statusline"
+
+run bash "$SRC_COPY/install.sh" --statusline
 [ "$RC" -eq 1 ] || fail "expected exit 1 for --statusline without the script, got $RC"
 case "$OUT" in
     *"statusline script ships with the plugin half; not present in this checkout"*) : ;;

@@ -43,6 +43,25 @@
       },
       "additionalProperties": true
     },
+    "context": {
+      "type": "object",
+      "description": "Settings for the plugin's context-nudge hook and statusline.",
+      "properties": {
+        "nudge_tiers": {
+          "type": "array",
+          "description": "Ascending context-token thresholds (low/heavy/critical) that trigger the ctx-nudge hook and color the statusline.",
+          "minItems": 3,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "rearm_tokens": {
+          "type": "integer",
+          "description": "Token climb, past the lowest tier, required to re-fire the ctx-nudge hook."
+        }
+      },
+      "additionalProperties": true
+    },
     "doctor": {
       "type": "object",
       "description": "Settings for `rigops doctor` (job fleet health watchdog).",

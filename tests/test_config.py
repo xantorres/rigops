@@ -83,6 +83,13 @@ class LoadTests(unittest.TestCase):
             self.assertEqual(loaded["ledger"]["watch_projects"], {"a": "b"})
             self.assertEqual(loaded["transcripts_dir"], config.DEFAULTS["transcripts_dir"])
 
+    def test_context_defaults_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "nope.json"
+            loaded = config.load(missing)
+            self.assertEqual(loaded["context"]["nudge_tiers"], [250000, 350000, 500000])
+            self.assertEqual(loaded["context"]["rearm_tokens"], 50000)
+
     def test_invalid_json_raises_system_exit_with_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg_path = Path(tmp) / "config.json"
