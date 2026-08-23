@@ -66,13 +66,13 @@ i=0
 while [ "$i" -lt "$N" ]; do
   gate="$(printf '%s' "$GATES_JSON" | jq -c ".gates[$i]" 2>/dev/null || true)"
   i=$((i + 1))
-  [ -n "$gate" ] && [ "$gate" != "null" ] || continue
+  if [ -z "$gate" ] || [ "$gate" = "null" ]; then continue; fi
 
   name="$(printf '%s' "$gate" | jq -r '.name // empty')"
   skill="$(printf '%s' "$gate" | jq -r '.skill // empty')"
   verb="$(printf '%s' "$gate" | jq -r '.verb_regex // empty')"
   noun="$(printf '%s' "$gate" | jq -r '.noun_regex // empty')"
-  [ -n "$name" ] && [ -n "$skill" ] && [ -n "$verb" ] && [ -n "$noun" ] || continue
+  if [ -z "$name" ] || [ -z "$skill" ] || [ -z "$verb" ] || [ -z "$noun" ]; then continue; fi
 
   pull_url="$(printf '%s' "$gate" | jq -r '.pull_url_regex // empty')"
   provenance="$(printf '%s' "$gate" | jq -r '.provenance_regex // empty')"
