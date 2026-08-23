@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+
+from rigops import config as rigops_config  # noqa: E402
+from rigops import reap  # noqa: E402
+
+
+def main() -> int:
+    # Per-fetch timeouts alone let a run crawl: three slow remotes stretched one
+    # run to 2h41m. Scanning stops at the deadline and the run reports what it
+    # got; whatever is left is reaped next run.
+    try:
+        deadline_s = int(os.environ.get("RIGOPS_RUN_DEADLINE_S", "3600"))
+    except ValueError:
+        deadline_s = 3600
+
+    cfg = rigops_config.load()
+    default_grace_days = rigops_config.get(cfg, "reaper.grace_days", 14)
+
+    parser = argparse.ArgumentParser(
+        description="Reap merged, unused git worktrees.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--selftest", action="store_true",
+                        help="exercise the kill module against disposable processes and exit")
+    parser.add_argument("--apply", action="store_true",
+                        help="remove; without this the run is read-only")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="with --apply, print the commands without running them")
+    parser.add_argument("--json", action="store_true", help="machine-readable report")
+    parser.add_argument("--repo", type=Path, help="scan one repository instead of the whole tree")
+    parser.add_argument("--root", type=Path,
+                        help="scan this tree only, overriding the configured reaper.roots list")
+    parser.add_argument("--no-fetch", action="store_true",
+                        help="skip git fetch; merged-check uses local refs only")
+    parser.add_argument("--grace-days", type=int, default=default_grace_days,
+                        help="an unmerged branch becomes eligible once its last commit is older "
+                             "than this and it has no unpushed commits "
+                             f"(default {default_grace_days})")
+    args = parser.parse_args()
+
+    if args.selftest:
+        return reap.run_selftest()
+
+    if args.root:
+        roots = [args.root]
+    else:
+        roots = [rigops_config.expand(r) for r in rigops_config.get(cfg, "reaper.roots", [])]
+
+    args.roots = roots
+    args.sessions_dir = rigops_config.expand(rigops_config.get(cfg, "reaper.sessions_dir"))
+    args.deadline_s = deadline_s
+    args.max_kills_per_tree = rigops_config.get(cfg, "reaper.max_kills_per_tree", 20)
+    args.orphan_min_age_s = rigops_config.get(cfg, "reaper.orphan_min_age_s", 172800)
+    args.kill_grace_s = rigops_config.get(cfg, "reaper.kill_grace_s", 5)
+    args.ignored_untracked_dirs = set(rigops_config.get(cfg, "reaper.ignored_untracked_dirs", []))
+    args.ignored_untracked_prefixes = tuple(
+        rigops_config.get(cfg, "reaper.ignored_untracked_prefixes", [])
+    )
+
+    return reap.run(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

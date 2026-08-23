@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from datetime import datetime
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+
+from rigops import backlog as rigops_backlog  # noqa: E402
+from rigops import config as rigops_config  # noqa: E402
+
+
+def _backlog_path(cfg, arg_file) -> Path:
+    if arg_file:
+        return rigops_config.expand(arg_file)
+    return rigops_config.expand(rigops_config.get(cfg, "backlog.path"))
+
+
+def cmd_lint(args, cfg) -> int:
+    path = _backlog_path(cfg, args.file)
+    if not path.exists():
+        print(f"no backlog file at {path}")
+        return 0
+    areas = rigops_config.get(cfg, "backlog.areas", [])
+    text = path.read_text(encoding="utf-8")
+    result = rigops_backlog.lint(text, areas)
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0 if result["ok"] else 1
+
+    print(f"open={result['open']} done={result['done']}")
+    for m in result["malformed"]:
+        truncated = m["line"][:80]
+        print(f"line {m['line_no']}: {m['reason']}: {truncated}")
+    for u in result["unknown_area"]:
+        print(f"line {u['line_no']}: unknown area '{u['area']}'")
+    return 0 if result["ok"] else 1
+
+
+def cmd_add(args, cfg) -> int:
+    path = _backlog_path(cfg, args.file)
+    areas = rigops_config.get(cfg, "backlog.areas", [])
+    date = args.date or datetime.now().strftime("%Y-%m-%d")
+
+    area = args.area
+    text = args.text
+    if not area:
+        prefix, sep, rest = args.text.partition(": ")
+        if sep and prefix in areas:
+            area, text = prefix, rest
+        else:
+            print(
+                f"error: no --area given and no known area prefix found; areas: {areas}",
+                file=sys.stderr,
+            )
+            return 2
+
+    try:
+        line = rigops_backlog.add_line(path, area, text, date, areas)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    print(line)
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Governed one-line backlog.")
+    sub = ap.add_subparsers(dest="command", required=True)
+
+    lint_parser = sub.add_parser("lint", help="check backlog grammar and areas")
+    lint_parser.add_argument("--json", action="store_true")
+    lint_parser.add_argument("--file", help="backlog file path (default: config backlog.path)")
+    lint_parser.set_defaults(func=cmd_lint)
+
+    add_parser = sub.add_parser("add", help="append a new open backlog item")
+    add_parser.add_argument("text", help="symptom text, optionally prefixed 'area: '")
+    add_parser.add_argument("--area", help="backlog area (default: parsed from text prefix)")
+    add_parser.add_argument("--date", help="YYYY-MM-DD (default: today)")
+    add_parser.add_argument("--file", help="backlog file path (default: config backlog.path)")
+    add_parser.set_defaults(func=cmd_add)
+
+    args = ap.parse_args()
+    cfg = rigops_config.load()
+    return args.func(args, cfg)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

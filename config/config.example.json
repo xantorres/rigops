@@ -25,5 +25,31 @@
       "disk_free": null
     },
     "notify_command": ""
+  },
+  "reaper": {
+    "roots": ["~/projects"],
+    "sessions_dir": "~/.claude/sessions",
+    "grace_days": 14,
+    "max_kills_per_tree": 20,
+    "orphan_min_age_s": 172800,
+    "kill_grace_s": 5,
+    "ignored_untracked_dirs": ["node_modules", "dist", ".turbo", "@mf-types"],
+    "ignored_untracked_prefixes": ["coverage"]
+  },
+  "janitor": {
+    "rules": [
+      {"name": "stale-spool", "path": "~/.local/state/myapp/spool", "glob": "*.json", "older_than_days": 7, "action": "delete"},
+      {"name": "cap-log", "path": "~/.local/state/myapp/run.log", "action": "truncate", "keep_lines": 500},
+      {"name": "rolling-backups", "path": "~/backups", "glob": "settings.json.backup.*", "action": "keep_newest_n", "keep": 3},
+      {"name": "bak-detector", "path": "~/.config/myapp", "glob": "*.bak*", "action": "report"}
+    ],
+    "watermarks": [
+      {"name": "auto-memory", "path": "~/.claude/projects/*/memory", "max_files": 60, "max_kb": 400, "area": "memory"}
+    ],
+    "max_delete": 200
+  },
+  "backlog": {
+    "path": "~/.config/rigops/backlog.md",
+    "areas": ["hooks", "skills", "memory", "permissions", "metrics", "repos", "docs", "jobs"]
   }
 }

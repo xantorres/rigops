@@ -90,6 +90,15 @@ class LoadTests(unittest.TestCase):
             self.assertEqual(loaded["context"]["nudge_tiers"], [250000, 350000, 500000])
             self.assertEqual(loaded["context"]["rearm_tokens"], 50000)
 
+    def test_m6_defaults_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            loaded = config.load(Path(tmp) / "nope.json")
+            self.assertEqual(loaded["reaper"]["roots"], ["~/projects"])
+            self.assertEqual(loaded["reaper"]["max_kills_per_tree"], 20)
+            self.assertEqual(loaded["janitor"]["rules"], [])
+            self.assertEqual(loaded["janitor"]["max_delete"], 200)
+            self.assertIn("memory", loaded["backlog"]["areas"])
+
     def test_invalid_json_raises_system_exit_with_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg_path = Path(tmp) / "config.json"

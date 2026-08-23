@@ -174,6 +174,95 @@ run "$RIGOPS_LINK" config get doctor.kill_grace_s
 [ "$RC" -eq 0 ] || fail "rigops config get exit $RC: $OUT"
 [ "$OUT" = "5" ] || fail "expected doctor.kill_grace_s=5, got: $OUT"
 
+echo "smoke: backlog lint/add on a scratch file"
+BACKLOG_MD="$SMOKE_HOME/backlog-scratch.md"
+run "$RIGOPS_LINK" backlog add --file "$BACKLOG_MD" "hooks: smoke entry lands. Fix: nothing."
+[ "$RC" -eq 0 ] || fail "backlog add exit $RC: $OUT"
+[ -f "$BACKLOG_MD" ] || fail "backlog add did not scaffold $BACKLOG_MD"
+run "$RIGOPS_LINK" backlog lint --file "$BACKLOG_MD" --json
+[ "$RC" -eq 0 ] || fail "backlog lint exit $RC: $OUT"
+assert_json "$OUT" "rigops backlog lint --json"
+run "$RIGOPS_LINK" backlog lint --file "$REPO_ROOT/config/backlog.example.md"
+[ "$RC" -eq 0 ] || fail "backlog.example.md does not lint clean: $OUT"
+run "$RIGOPS_LINK" backlog add --file "$BACKLOG_MD" "notanarea: rejected entry"
+[ "$RC" -eq 2 ] || fail "backlog add unknown area expected exit 2, got $RC: $OUT"
+
+echo "smoke: janitor dry-run leaves files, apply deletes"
+JANITOR_TREE="$SMOKE_HOME/janitor-fixture"
+mkdir -p "$JANITOR_TREE/spool"
+printf 'old\n' > "$JANITOR_TREE/spool/old.json"
+python3 - "$JANITOR_TREE/spool/old.json" <<'PYEOF'
+import os
+import sys
+import time
+
+old = time.time() - 30 * 86400
+os.utime(sys.argv[1], (old, old))
+PYEOF
+JANITOR_CFG="$SMOKE_HOME/janitor-config.json"
+python3 - "$JANITOR_CFG" "$JANITOR_TREE" "$BACKLOG_MD" <<'PYEOF'
+import json
+import sys
+
+cfg_path, tree, backlog_md = sys.argv[1], sys.argv[2], sys.argv[3]
+data = {
+    "janitor": {
+        "rules": [
+            {"name": "smoke-spool", "path": tree + "/spool", "glob": "*.json",
+             "older_than_days": 7, "action": "delete"}
+        ],
+        "watermarks": [],
+        "max_delete": 10,
+    },
+    "backlog": {"path": backlog_md},
+}
+with open(cfg_path, "w", encoding="utf-8") as fh:
+    json.dump(data, fh)
+PYEOF
+run env RIGOPS_CONFIG="$JANITOR_CFG" "$RIGOPS_LINK" janitor
+[ "$RC" -eq 0 ] || fail "janitor dry-run exit $RC: $OUT"
+[ -f "$JANITOR_TREE/spool/old.json" ] || fail "janitor dry-run deleted a file"
+run env RIGOPS_CONFIG="$JANITOR_CFG" "$RIGOPS_LINK" janitor --json
+[ "$RC" -eq 0 ] || fail "janitor --json exit $RC: $OUT"
+assert_json "$OUT" "rigops janitor --json"
+run env RIGOPS_CONFIG="$JANITOR_CFG" "$RIGOPS_LINK" janitor --apply
+[ "$RC" -eq 0 ] || fail "janitor --apply exit $RC: $OUT"
+[ ! -f "$JANITOR_TREE/spool/old.json" ] || fail "janitor --apply did not delete aged file"
+
+echo "smoke: reap read-only report on a fixture repo"
+REAP_ROOT="$SMOKE_HOME/reap-root"
+REAP_REPO="$REAP_ROOT/group/demo"
+mkdir -p "$REAP_REPO"
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+git -C "$REAP_REPO" -c init.defaultBranch=main init -q
+git -C "$REAP_REPO" config user.email smoke@example.com
+git -C "$REAP_REPO" config user.name smoke
+printf 'demo\n' > "$REAP_REPO/README.md"
+git -C "$REAP_REPO" add README.md
+git -C "$REAP_REPO" commit -qm 'initial'
+git -C "$REAP_REPO" worktree add -q -b merged-branch "$REAP_REPO/.claude/worktrees/merged-wt"
+run env RIGOPS_RUN_DEADLINE_S=60 "$RIGOPS_LINK" reap --root "$REAP_ROOT" --no-fetch --json
+[ "$RC" -eq 0 ] || fail "reap --json exit $RC: $OUT"
+assert_json "$OUT" "rigops reap --json"
+case "$OUT" in
+    *'"reap"'*) : ;;
+    *) fail "reap report missing a 'reap' verdict: $OUT" ;;
+esac
+[ -d "$REAP_REPO/.claude/worktrees/merged-wt" ] || fail "read-only reap removed a worktree"
+unset GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM
+
+if command -v lsof >/dev/null 2>&1; then
+    echo "smoke: reap --selftest (bystander isolation)"
+    run "$RIGOPS_LINK" reap --selftest
+    [ "$RC" -eq 0 ] || fail "reap --selftest exit $RC: $OUT"
+    case "$OUT" in
+        *"PASS selftest"*) : ;;
+        *) fail "reap --selftest missing PASS line: $OUT" ;;
+    esac
+else
+    echo "smoke: reap --selftest skipped (lsof not installed)"
+fi
+
 echo "smoke: idempotent re-apply"
 before_hashes="$(python3 - "$MANIFEST" <<'PYEOF'
 import json

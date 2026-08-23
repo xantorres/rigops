@@ -40,7 +40,7 @@ rigops is not:
 
 ### 4. Reap, janitor, backlog lint
 
-`rigops reap` *(planned)* reaps git worktrees whose branch has already landed or died. `rigops janitor` *(planned)* applies declarative retention rules instead of ad hoc `rm` one-liners. `rigops backlog lint` *(planned)* enforces one-line-grammar on the backlog file so it stays a queue instead of a dumping ground.
+`rigops reap` reaps git worktrees whose branch has already landed or died. `rigops janitor` applies declarative retention rules instead of ad hoc `rm` one-liners. `rigops backlog lint` enforces one-line-grammar on the backlog file so it stays a queue instead of a dumping ground.
 
 ## Map
 

@@ -121,6 +121,150 @@
         }
       },
       "additionalProperties": true
+    },
+    "reaper": {
+      "type": "object",
+      "description": "Settings for `rigops reap` (merged-worktree reaper).",
+      "properties": {
+        "roots": {
+          "type": "array",
+          "description": "Projects trees scanned for repositories (primary checkouts two levels under each root).",
+          "items": { "type": "string" }
+        },
+        "sessions_dir": {
+          "type": "string",
+          "description": "Directory of live-session JSON files ({\"pid\": N, \"cwd\": \"...\"}); a worktree claimed by a live session is never touched. Missing directory disables this extra guard."
+        },
+        "grace_days": {
+          "type": "integer",
+          "description": "An unmerged branch with no unpushed commits becomes eligible once its tip commit is older than this many days."
+        },
+        "max_kills_per_tree": {
+          "type": "integer",
+          "description": "More matched processes than this under one worktree means the match is not trusted: no signals, no removal."
+        },
+        "orphan_min_age_s": {
+          "type": "integer",
+          "description": "Minimum elapsed runtime before a launchd-reparented build daemon counts as orphaned."
+        },
+        "kill_grace_s": {
+          "type": "number",
+          "description": "Seconds between SIGTERM and SIGKILL when clearing processes out of a reapable worktree."
+        },
+        "ignored_untracked_dirs": {
+          "type": "array",
+          "description": "Untracked path segments treated as regenerated build output, never work in progress.",
+          "items": { "type": "string" }
+        },
+        "ignored_untracked_prefixes": {
+          "type": "array",
+          "description": "Untracked path-segment prefixes treated as regenerated build output.",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "janitor": {
+      "type": "object",
+      "description": "Settings for `rigops janitor` (declarative store hygiene).",
+      "properties": {
+        "rules": {
+          "type": "array",
+          "description": "Hygiene rules, applied in order. Read-only unless the run passes --apply.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "path": {
+                "type": "string",
+                "description": "Base file or directory the rule operates on."
+              },
+              "glob": {
+                "type": "string",
+                "description": "Filename pattern matched against entries under path; matched against entry names only, patterns containing '/' match nothing."
+              },
+              "older_than_days": {
+                "type": "integer",
+                "description": "Only entries whose mtime is older than this many days match."
+              },
+              "max_depth": {
+                "type": "integer",
+                "description": "How many directory levels below path are searched; omit for unlimited."
+              },
+              "action": {
+                "type": "string",
+                "enum": ["delete", "truncate", "keep_newest_n", "report", "command"],
+                "description": "delete removes matches; truncate keeps the last keep_lines of a file; keep_newest_n deletes all but the newest keep matches; report only lists matches; command runs a shell command under --apply."
+              },
+              "dirs": {
+                "type": "boolean",
+                "description": "Match directories instead of files."
+              },
+              "only_empty": {
+                "type": "boolean",
+                "description": "With dirs, match only empty directories."
+              },
+              "keep_lines": {
+                "type": "integer",
+                "description": "Line count kept by the truncate action (default 500)."
+              },
+              "keep": {
+                "type": "integer",
+                "description": "Newest entries kept by keep_newest_n."
+              },
+              "command": {
+                "type": "string",
+                "description": "Shell command for the command action."
+              },
+              "timeout_s": {
+                "type": "number",
+                "description": "Timeout for the command action (default 120)."
+              }
+            }
+          }
+        },
+        "watermarks": {
+          "type": "array",
+          "description": "Size watermarks; a tripped watermark appends a deduplicated line to the backlog.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "path": {
+                "type": "string",
+                "description": "Directory or glob over directories to measure."
+              },
+              "max_files": { "type": "integer" },
+              "max_kb": { "type": "integer" },
+              "area": {
+                "type": "string",
+                "description": "Backlog area used for the appended line (default memory)."
+              }
+            }
+          }
+        },
+        "max_delete": {
+          "type": "integer",
+          "description": "A rule matching more deletions than this is skipped whole; the match is not trusted. Counts files; a directory candidate counts as one plus every file under it."
+        }
+      },
+      "additionalProperties": true
+    },
+    "backlog": {
+      "type": "object",
+      "description": "Settings for `rigops backlog` (governed one-line backlog).",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Backlog markdown file."
+        },
+        "areas": {
+          "type": "array",
+          "description": "Allowed area tags in backlog lines.",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
     }
   },
   "additionalProperties": true

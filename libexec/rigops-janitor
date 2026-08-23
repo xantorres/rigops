@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+
+from rigops import config as rigops_config  # noqa: E402
+from rigops import janitor as rigops_janitor  # noqa: E402
+
+MAX_LISTED_PATHS = 20
+
+
+def _print_rule(rule_result: dict, apply: bool, max_delete: int) -> None:
+    line = (
+        f"rule {rule_result['name']} [{rule_result['action']}] "
+        f"matched={len(rule_result['matched'])} acted={rule_result['acted']}"
+    )
+    if rule_result["overflow"]:
+        line += f" OVERFLOW (cap {max_delete})"
+    if rule_result["skipped"]:
+        line += f" skipped: {rule_result['skipped']}"
+    print(line)
+    for err in rule_result["errors"]:
+        print(f"  error: {err}")
+    if not apply:
+        for p in rule_result["matched"][:MAX_LISTED_PATHS]:
+            print(f"  {p}")
+        overflow_count = len(rule_result["matched"]) - MAX_LISTED_PATHS
+        if overflow_count > 0:
+            print(f"  ... {overflow_count} more")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Declarative hygiene engine for rigops-managed state.")
+    ap.add_argument("--apply", action="store_true", help="perform mutations; default is dry-run")
+    ap.add_argument("--max-delete", type=int, help="override config janitor.max_delete")
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args()
+
+    cfg = rigops_config.load()
+    rules = rigops_config.get(cfg, "janitor.rules", []) or []
+    watermarks = rigops_config.get(cfg, "janitor.watermarks", []) or []
+    if not rules and not watermarks:
+        print("janitor not configured (janitor.rules and janitor.watermarks empty)")
+        return 0
+
+    if args.max_delete is not None:
+        max_delete = args.max_delete
+    else:
+        cfg_max_delete = rigops_config.get(cfg, "janitor.max_delete", 200)
+        max_delete = cfg_max_delete if isinstance(cfg_max_delete, int) else 200
+    backlog_path = rigops_config.expand(rigops_config.get(cfg, "backlog.path"))
+    areas = rigops_config.get(cfg, "backlog.areas", [])
+
+    report = rigops_janitor.run_rules(rules, args.apply, max_delete)
+    wm_results = rigops_janitor.check_watermarks(watermarks, backlog_path, areas, args.apply)
+    # A scheduled run must fail loudly on partial errors, not report success.
+    had_errors = any(r["errors"] for r in report["rules"]) or any(
+        w["status"].startswith("error:") for w in wm_results
+    )
+
+    if args.json:
+        payload = dict(report)
+        payload["watermarks"] = wm_results
+        payload["apply"] = args.apply
+        print(json.dumps(payload, indent=2))
+        return 1 if had_errors else 0
+
+    print(f"janitor {'apply' if args.apply else 'dry-run'}")
+    for rule_result in report["rules"]:
+        _print_rule(rule_result, args.apply, max_delete)
+    for wm in wm_results:
+        print(
+            f"watermark {wm['name']} {wm['dir']}: "
+            f"files={wm['files']} kb={wm['kb']} {wm['status']}"
+        )
+    print(f"total deleted: {report['total_deleted']} (files, directory contents included)")
+    return 1 if had_errors else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

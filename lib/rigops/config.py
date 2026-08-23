@@ -18,6 +18,25 @@ DEFAULTS = {
         "checks": {"custom": [], "disk_free": None},
         "notify_command": "",
     },
+    "reaper": {
+        "roots": ["~/projects"],
+        "sessions_dir": "~/.claude/sessions",
+        "grace_days": 14,
+        "max_kills_per_tree": 20,
+        "orphan_min_age_s": 172800,
+        "kill_grace_s": 5,
+        "ignored_untracked_dirs": ["node_modules", "dist", ".turbo", "@mf-types"],
+        "ignored_untracked_prefixes": ["coverage"],
+    },
+    "janitor": {
+        "rules": [],
+        "watermarks": [],
+        "max_delete": 200,
+    },
+    "backlog": {
+        "path": "~/.config/rigops/backlog.md",
+        "areas": ["hooks", "skills", "memory", "permissions", "metrics", "repos", "docs", "jobs"],
+    },
 }
 
 
