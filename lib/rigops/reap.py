@@ -623,8 +623,8 @@ def resolve_target(repo: Path) -> str | None:
 
 def is_ignored_untracked(path: str, ignored_dirs: set[str],
                          ignored_prefixes: tuple[str, ...]) -> bool:
-    """True when every path segment is generated noise (build output, type
-    codegen), never something a person edited."""
+    """True when any path segment is generated noise (build output, type
+    codegen): a file under an ignored directory is noise wherever it sits."""
     for part in path.split("/"):
         if part in ignored_dirs or part.startswith(ignored_prefixes):
             return True

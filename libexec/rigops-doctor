@@ -207,20 +207,24 @@ def run_custom_check(check_cfg: dict) -> dict:
 
 
 def run_disk_free_check(check_cfg: dict) -> dict:
-    path = check_cfg.get("path", "/")
+    # detail keeps the configured string: reports get pasted around, and the
+    # expanded path would put the home directory into every one of them.
+    raw_path = check_cfg.get("path", "/")
     warn_gb = check_cfg.get("warn_gb", 25)
     fail_gb = check_cfg.get("fail_gb", 10)
     try:
-        free_gb = shutil.disk_usage(path).free / (1024 ** 3)
+        free_gb = shutil.disk_usage(str(rigops_config.expand(raw_path))).free / (1024 ** 3)
     except OSError as exc:
-        return {"name": "disk-free", "status": "fail", "detail": str(exc)}
+        reason = exc.strerror or type(exc).__name__
+        detail = f"cannot stat {raw_path}: {reason}"
+        return {"name": "disk-free", "status": "fail", "detail": detail}
     if free_gb < fail_gb:
         status = "fail"
     elif free_gb < warn_gb:
         status = "warn"
     else:
         status = "ok"
-    return {"name": "disk-free", "status": status, "detail": f"{free_gb:.1f}GB free on {path}"}
+    return {"name": "disk-free", "status": status, "detail": f"{free_gb:.1f}GB free on {raw_path}"}
 
 
 def _notify(command: str, report_path: Path) -> str:

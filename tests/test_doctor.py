@@ -239,6 +239,23 @@ class DiskFreeCheckTests(unittest.TestCase):
         result = doctor.run_disk_free_check({"path": "/", "warn_gb": -1, "fail_gb": -1})
         self.assertEqual(result["status"], "ok")
 
+    def test_tilde_path_expands_but_detail_keeps_configured_string(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(os.environ, {"HOME": tmp}):
+                result = doctor.run_disk_free_check({"path": "~", "warn_gb": -1, "fail_gb": -1})
+        self.assertEqual(result["status"], "ok")
+        self.assertTrue(result["detail"].endswith("free on ~"))
+
+    def test_missing_path_detail_keeps_configured_string(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(os.environ, {"HOME": tmp}):
+                result = doctor.run_disk_free_check(
+                    {"path": "~/rigops-test-missing-dir", "warn_gb": -1, "fail_gb": -1}
+                )
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("~/rigops-test-missing-dir", result["detail"])
+        self.assertNotIn(tmp + "/", result["detail"])
+
 
 class EventsJsonlTests(EnvIsolatedTestCase):
     def test_event_appended_per_run(self):
