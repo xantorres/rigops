@@ -174,6 +174,31 @@ run "$RIGOPS_LINK" config get doctor.kill_grace_s
 [ "$RC" -eq 0 ] || fail "rigops config get exit $RC: $OUT"
 [ "$OUT" = "5" ] || fail "expected doctor.kill_grace_s=5, got: $OUT"
 
+echo "smoke: authprobe ships disabled"
+run "$RIGOPS_LINK" authprobe
+[ "$RC" -eq 0 ] || fail "rigops authprobe exit $RC: $OUT"
+case "$OUT" in
+    *"disabled"*) : ;;
+    *) fail "rigops authprobe missing 'disabled': $OUT" ;;
+esac
+
+run "$RIGOPS_LINK" authprobe --json
+[ "$RC" -eq 0 ] || fail "rigops authprobe --json exit $RC: $OUT"
+assert_json "$OUT" "rigops authprobe --json"
+case "$OUT" in
+    *'"enabled"'*) : ;;
+    *) fail "rigops authprobe --json missing 'enabled': $OUT" ;;
+esac
+
+echo "smoke: ledger dry-run row carries sources"
+run "$RIGOPS_LINK" ledger --dry-run --json
+[ "$RC" -eq 0 ] || fail "rigops ledger --dry-run --json exit $RC: $OUT"
+assert_json "$OUT" "rigops ledger --dry-run --json"
+case "$OUT" in
+    *'"sources"'*) : ;;
+    *) fail "rigops ledger --dry-run --json missing sources key: $OUT" ;;
+esac
+
 echo "smoke: backlog lint/add on a scratch file"
 BACKLOG_MD="$SMOKE_HOME/backlog-scratch.md"
 run "$RIGOPS_LINK" backlog add --file "$BACKLOG_MD" "hooks: smoke entry lands. Fix: nothing."

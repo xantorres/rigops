@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+
+from rigops import authprobe  # noqa: E402
+from rigops import config as rigops_config  # noqa: E402
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description="Probe whether the headless `claude -p` credential still works."
+    )
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument(
+        "--force", action="store_true", help="run even when authprobe.enabled is false"
+    )
+    args = ap.parse_args()
+
+    cfg = rigops_config.load()
+    defaults = rigops_config.DEFAULTS["authprobe"]
+    enabled = rigops_config.get(cfg, "authprobe.enabled", defaults["enabled"])
+
+    if not enabled and not args.force:
+        if args.json:
+            print(json.dumps({
+                "ok": None,
+                "detail": "disabled (set authprobe.enabled true or pass --force)",
+                "enabled": False,
+            }))
+        else:
+            print("authprobe disabled (set authprobe.enabled true or pass --force)")
+        return 0
+
+    ok, detail = authprobe.probe(cfg)
+
+    if args.json:
+        print(json.dumps({"ok": ok, "detail": detail, "enabled": enabled}))
+    elif ok:
+        print("authprobe: ok")
+    else:
+        print(f"authprobe: FAIL: {detail}", file=sys.stderr)
+
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

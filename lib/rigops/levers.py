@@ -11,6 +11,7 @@ from pathlib import Path
 
 from rigops import config as rigops_config
 from rigops import fmt, transcripts
+from rigops.sources import ccusage, command, rtk
 
 WINDOW_DAYS = 7
 SMOOTH_DAYS = 30
@@ -107,6 +108,41 @@ def fixed_tax_bytes(cfg=None) -> int | None:
     return sum(size for _, size in entries) if entries else None
 
 
+def source_annotations(cfg, since: dt.datetime, until: dt.datetime) -> dict:
+    """External-tool annotations for one ledger row. probe() gates each
+    built-in adapter so an absent tool never spawns a subprocess."""
+    rtk_cfg = rigops_config.get(cfg, "sources.rtk", {}) or {}
+    rtk_cfg = rtk_cfg if isinstance(rtk_cfg, dict) else {}
+    ccusage_cfg = rigops_config.get(cfg, "sources.ccusage", {}) or {}
+    ccusage_cfg = ccusage_cfg if isinstance(ccusage_cfg, dict) else {}
+    out = {
+        "rtk": (
+            rtk.window(
+                since, until, argv=rtk_cfg.get("argv"), timeout_s=rtk_cfg.get("timeout_s", 20)
+            )
+            if rtk.probe() else None
+        ),
+        "ccusage": (
+            ccusage.window(
+                since, until, argv=ccusage_cfg.get("argv"),
+                timeout_s=ccusage_cfg.get("timeout_s", 60),
+            )
+            if ccusage.probe() else None
+        ),
+    }
+    custom_specs = rigops_config.get(cfg, "sources.custom", []) or []
+    # rtk/ccusage are reserved for the built-in adapters above; a custom
+    # entry reusing one of those names would overwrite the built-in shape
+    # and crash downstream consumers (e.g. summary_line's saved_pct/cost_usd
+    # reads).
+    custom_specs = [
+        spec for spec in custom_specs
+        if not (isinstance(spec, dict) and spec.get("name") in ("rtk", "ccusage"))
+    ]
+    out.update(command.custom_annotations(custom_specs))
+    return out
+
+
 def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
     cfg = cfg if cfg is not None else rigops_config.load()
     watch_projects = rigops_config.get(cfg, "ledger.watch_projects", {}) or {}
@@ -182,6 +218,7 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
         row[f"turn1_{col}_p50"] = round(median(vals)) if vals else None
         row[f"sessions_{col}"] = len(vals)
     row["fixed_tax_b"] = fixed_tax_bytes(cfg)
+    row["sources"] = source_annotations(cfg, since, until)
     return row
 
 
@@ -284,5 +321,12 @@ def summary_line(row: dict, prev: dict | None, base: dict | None, watch_projects
     cheap_pct = format_cell("cheap_model_eit_pct", row.get("cheap_model_eit_pct"))
     parts.append(f"| cheap-model EIT {cheap_pct}%")
     parts.append(f"| fixed tax {format_cell('fixed_tax_b', row.get('fixed_tax_b'))}")
+    sources = row.get("sources") or {}
+    rtk_src = sources.get("rtk")
+    if isinstance(rtk_src, dict):
+        parts.append(f"| rtk saved {rtk_src.get('saved_pct')}%")
+    ccusage_src = sources.get("ccusage")
+    if isinstance(ccusage_src, dict) and ccusage_src.get("cost_usd") is not None:
+        parts.append(f"| spend ${ccusage_src.get('cost_usd')} (ccusage)")
     parts.append(f"| turns {row.get('turns')} sessions {row.get('sessions')}")
     return " ".join(parts)

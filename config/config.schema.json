@@ -265,6 +265,83 @@
         }
       },
       "additionalProperties": true
+    },
+    "sources": {
+      "type": "object",
+      "description": "External CLIs mined for ledger row annotations (`row.sources`).",
+      "properties": {
+        "rtk": {
+          "type": "object",
+          "description": "external CLI mined for ledger annotation; absent tool = null annotation, never an error",
+          "properties": {
+            "argv": {
+              "type": "array",
+              "description": "Argument vector for the rtk CLI call.",
+              "items": { "type": "string" }
+            },
+            "timeout_s": { "type": "number" }
+          },
+          "additionalProperties": true
+        },
+        "ccusage": {
+          "type": "object",
+          "description": "external CLI mined for ledger annotation; absent tool = null annotation, never an error",
+          "properties": {
+            "argv": {
+              "type": "array",
+              "description": "Argument vector for the ccusage CLI call.",
+              "items": { "type": "string" }
+            },
+            "timeout_s": { "type": "number" }
+          },
+          "additionalProperties": true
+        },
+        "custom": {
+          "type": "array",
+          "description": "Arbitrary JSON-emitting CLIs, each annotated onto the ledger row under its name. reserved names rtk and ccusage are ignored; custom sources run on every ledger write including --dry-run, so give them read-only commands.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "argv": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "timeout_s": { "type": "number" }
+            }
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "authprobe": {
+      "type": "object",
+      "description": "Settings for `rigops authprobe` (headless credential probe spawns the real CLI; ships disabled). Wire it from doctor via checks.custom: rigops authprobe.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "ships disabled; headless credential probe spawns the real CLI"
+        },
+        "command": {
+          "type": "array",
+          "description": "Argument vector run under a scrubbed environment.",
+          "items": { "type": "string" }
+        },
+        "expect": {
+          "type": "string",
+          "description": "Exact stdout expected on success."
+        },
+        "timeout_s": { "type": "number" },
+        "path": {
+          "type": "string",
+          "description": "PATH for the scrubbed probe env"
+        },
+        "keychain_service": {
+          "type": "string",
+          "description": "macOS keychain service name holding a long-lived token; empty = skip keychain"
+        }
+      },
+      "additionalProperties": true
     }
   },
   "additionalProperties": true

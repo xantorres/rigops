@@ -37,6 +37,19 @@ DEFAULTS = {
         "path": "~/.config/rigops/backlog.md",
         "areas": ["hooks", "skills", "memory", "permissions", "metrics", "repos", "docs", "jobs"],
     },
+    "sources": {
+        "rtk": {"argv": ["rtk", "gain", "--format", "json"], "timeout_s": 20},
+        "ccusage": {"argv": ["ccusage", "daily", "--json"], "timeout_s": 60},
+        "custom": [],
+    },
+    "authprobe": {
+        "enabled": False,
+        "command": ["claude", "-p", "reply with exactly: ok", "--max-turns", "1"],
+        "expect": "ok",
+        "timeout_s": 60,
+        "path": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+        "keychain_service": "",
+    },
 }
 
 
