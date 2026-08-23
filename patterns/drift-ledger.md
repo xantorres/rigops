@@ -13,7 +13,7 @@ there's no record of what changed and when, so the improvement (or regression)
 gets attributed to whichever change you happen to remember most vividly.
 
 Spend dashboards make this worse, not better. A tool that reports cost answers
-"how much did I spend this week" — a single number, no history of what you
+"how much did I spend this week" - a single number, no history of what you
 touched, no link between the number and the change that produced it. If three
 interventions land in the same week, the dashboard can't tell you which one
 moved the needle, or whether any of them did.
@@ -25,7 +25,7 @@ there's no ledger of "tried X, here's what happened to the numbers around it."
 ## Pattern
 
 Keep one append-only row per period (a week works well) recording whatever
-effectiveness levers matter for the rig — cost proxies, latency proxies,
+effectiveness levers matter for the rig - cost proxies, latency proxies,
 structural levers like delegation rate. Alongside it, keep a separate,
 timestamped intervention journal: free-text notes of what actually changed,
 written at the moment you change it, not reconstructed later from memory.
@@ -33,20 +33,20 @@ written at the moment you change it, not reconstructed later from memory.
 The join is the point. A diff between two ledger rows produces one delta per
 lever; a query against the intervention journal for the window between those
 two rows produces the candidate causes. Put them side by side. Causation is
-never proven — several things can move a lever in one week — but attribution
+never proven - several things can move a lever in one week - but attribution
 becomes a reviewable question instead of a guess, and the record survives past
 the point where you'd otherwise have forgotten what you changed.
 
 This is tool-agnostic: a spreadsheet with two tabs and a manual lookup does
-the same job. The value is in the discipline — write a row every period, write
-a note at every change — more than in the tooling.
+the same job. The value is in the discipline - write a row every period, write
+a note at every change - more than in the tooling.
 
 ## How rigops implements it
 
 `rigops ledger` (dispatched from
 [../libexec/rigops-ledger](../libexec/rigops-ledger)) has three subcommands.
 `write` (`cmd_write`, the default when none is given) appends one row via
-`levers.build_row` in [../lib/rigops/levers.py](../lib/rigops/levers.py) —
+`levers.build_row` in [../lib/rigops/levers.py](../lib/rigops/levers.py) -
 EIT/turn over a 7-day window, a smoothed 30-day EIT/turn, context p50, turn-1
 percentiles, cache-hit %, delegation rate (`agent_per_100`), cheap-model EIT
 share, and the fixed context tax byte count. `note TEXT` (`cmd_note`) appends
@@ -91,7 +91,7 @@ Interventions in this window:
 ```
 
 Three interventions land inside this window, and the ledger doesn't try to
-isolate a single cause — it hands the reviewer three candidate explanations
+isolate a single cause - it hands the reviewer three candidate explanations
 for an eit_per_turn drop of -28.8% and lets them reason about it, rather than
 forcing a single attribution neither the tool nor the reviewer can actually
 back up.
@@ -100,18 +100,18 @@ rigops draws a deliberate boundary at the ledger's edge:
 `levers.source_annotations` calls out to `rtk` and `ccusage` when they're
 installed, gated behind each adapter's own `probe()` so an absent tool never
 breaks a write. Their output is attached under `row["sources"]` as annotation
-only — a `saved_pct` or `cost_usd` alongside the row — and never folded back
+only - a `saved_pct` or `cost_usd` alongside the row - and never folded back
 into the lever math itself. The ledger computes its own levers independently
 from transcript history; external spend tools corroborate, they don't feed.
 
 ## Adopting it without rigops
 
 - Pick a fixed period (weekly is a reasonable default) and limit yourself to the handful of levers you actually act on. More than six or seven columns and nobody reads the table.
-- Write one row per period, unconditionally, even when nothing changed — a flat line is data too.
+- Write one row per period, unconditionally, even when nothing changed - a flat line is data too.
 - Log every intervention the moment you make it, in one line, with a date. Retroactive reconstruction loses the ones that felt too small to remember.
 - Make the diff step strict about the join window: an intervention on the boundary date belongs to exactly one side, never both.
 - Never let the ledger claim causation. Its job is to narrow the list of suspects, not to name one.
-- Keep any external spend/usage tool as an annotation source, not as the thing computing your levers — if the tool disappears or changes shape, your history shouldn't break with it.
+- Keep any external spend/usage tool as an annotation source, not as the thing computing your levers - if the tool disappears or changes shape, your history shouldn't break with it.
 
 [context-tax.md](./context-tax.md) is one of the levers this ledger tracks
 over time; [job-registry.md](./job-registry.md) covers the automation side of

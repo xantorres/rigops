@@ -8,7 +8,7 @@ description: Interpret `rigops doctor --report` output - status taxonomy, stale 
 `rigops doctor` judges each registry job from point-in-time signals (runtime,
 last exit code, evidence-file age, expected cadence) with no side effects by
 default. This skill is about reading that judgment correctly, not about the
-CLI invocation itself — see the `doctor` command doc for flags.
+CLI invocation itself - see the `doctor` command doc for flags.
 
 ## Status taxonomy
 
@@ -27,7 +27,7 @@ evidence age.
 Stale vs hung: hung is a live process past its ceiling (kill it). Stale is a
 dead-or-never-run job whose *output* is too old for its cadence (restart it).
 A job with an on-demand, event-driven, or keepalive cadence is never
-staleness-checked — those cadences have no "should have run by now" clock, so
+staleness-checked - those cadences have no "should have run by now" clock, so
 the registry's `cadence` field determines whether stale can even apply.
 
 `failing` vs `stale` can look the same from `--report` output (both say
@@ -40,7 +40,7 @@ them apart when it matters.
 
 Both `failing` and `stale` want a kickstart, but if that job was already
 healed within `doctor.heal_cooldown_h` hours, the action becomes `notify`
-instead — this is what stops `--heal` from kickstart-looping a job that keeps
+instead - this is what stops `--heal` from kickstart-looping a job that keeps
 dying immediately after restart. `notify` still surfaces the problem (via
 `doctor.notify_command` if configured); it just doesn't retry blindly.
 
@@ -49,7 +49,7 @@ dying immediately after restart. `notify` still surfaces the problem (via
 Default `rigops doctor --report` is read-only: it never kills or kickstarts
 anything, only judges and reports (custom checks and the notify command still
 run their configured commands either way). Add `--heal` only once you've read
-the report and agree with its verdict — it applies every `kill`/`kickstart`
+the report and agree with its verdict - it applies every `kill`/`kickstart`
 action from that same run. Don't reach for `--heal` reflexively on every
 triage; a `stale` job whose cadence just hasn't come around yet is not
 something to force.
@@ -62,14 +62,14 @@ a lone child process of a job that's actually behaving as designed.
 
 Each job's health comes from `newest_evidence_mtime` of its registry `health`
 field, and cadence classification from `cadence` (`daily HH:MM`, `every N
-min`, `weekly`, `always-on`/`keepalive`, or `on-demand`/`manual`/`deadline` —
+min`, `weekly`, `always-on`/`keepalive`, or `on-demand`/`manual`/`deadline` -
 the last three are never staleness-checked). A job judged `unknown` for a long
 time usually means the registry's `health` path is wrong or the job has never
-produced evidence yet, not that the job is broken — check the path before
+produced evidence yet, not that the job is broken - check the path before
 assuming failure.
 
 ## Scope
 
 This skill reads and interprets. It does not edit the registry or run
-`--heal` on its own initiative — always surface the judgment and let the user
+`--heal` on its own initiative - always surface the judgment and let the user
 decide, especially before anything that kills a live process.

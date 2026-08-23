@@ -40,7 +40,7 @@ check fire "$ACME" \
   'check PR 123 please' \
   '"check" still counts as a review verb'
 check fire "$ACME" \
-  're-review PR 456 — did they fix my comments?' \
+  're-review PR 456 - did they fix my comments?' \
   're-review'
 check fire "$ACME" \
   'PR 2294, thoughts?' \

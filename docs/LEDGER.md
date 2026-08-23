@@ -6,7 +6,7 @@ Tracks whether a change to a Claude Code rig actually moved the numbers, one app
 
 - One row per `rigops ledger` run, one per calendar date; by convention run weekly.
 - **Window** = the 7 full days before the row's date (local midnight to local midnight, converted to UTC internally).
-- `ledger.jsonl` (in the [state directory](CONFIG.md#resolution)) is the source of truth. `ledger.md` is fully regenerated from `ledger.jsonl` on every write — never hand-edit it, column additions would desync a hand-edited table from the jsonl anyway.
+- `ledger.jsonl` (in the [state directory](CONFIG.md#resolution)) is the source of truth. `ledger.md` is fully regenerated from `ledger.jsonl` on every write - never hand-edit it, column additions would desync a hand-edited table from the jsonl anyway.
 - `interventions.jsonl` is a side file: free-text notes, each with a date and a UTC timestamp, written by `rigops ledger note`.
 
 ## EIT
@@ -17,7 +17,7 @@ EIT ("effective input tokens") is the cost-weighted token count everything else 
 EIT = input + 1.25 * cache_creation + 0.1 * cache_read
 ```
 
-(`lib/rigops/transcripts.py`, `eit()`). A cache-creation token costs more than a plain input token (writing the cache), a cache-read token costs much less (reading it back) — EIT weights each turn by what it actually cost rather than by raw token count.
+(`lib/rigops/transcripts.py`, `eit()`). A cache-creation token costs more than a plain input token (writing the cache), a cache-read token costs much less (reading it back) - EIT weights each turn by what it actually cost rather than by raw token count.
 
 ## Columns
 
@@ -28,19 +28,19 @@ EIT = input + 1.25 * cache_creation + 0.1 * cache_read
 | `turns` | Assistant turns in the 7-day window. |
 | `sessions` | Sessions whose *first* turn fell in the window. |
 | `EIT/turn 7d` | Total window EIT divided by window turns. |
-| `EIT/turn 30d` | Same ratio over a trailing 30-day window — a smoother trend line than the noisier 7-day figure. |
+| `EIT/turn 30d` | Same ratio over a trailing 30-day window - a smoother trend line than the noisier 7-day figure. |
 | `out/turn` | Output tokens divided by turns. |
 | `ctx p50` | Median context size (`input + cache_creation + cache_read`) across window turns. |
 | `>300k EIT %` | Share of window EIT that came from turns whose context exceeded 300k tokens. |
-| `cache %` | `cache_read` divided by total context, window-wide — prompt-cache reuse rate. |
+| `cache %` | `cache_read` divided by total context, window-wide - prompt-cache reuse rate. |
 | `turn-1 p10` | 10th-percentile context size of each session's *first* turn, this window. The floor a bare harness plus a small first prompt costs. |
-| `turn-1 p50` | Median of the same — a typical session start. |
+| `turn-1 p50` | Median of the same - a typical session start. |
 | `Agent/100` | `Agent` tool calls per 100 main-thread turns (subagent transcripts excluded from both sides of the ratio). Delegation rate. |
 | `cheap-model EIT %` | Share of window EIT attributed to `sonnet`/`haiku`-family models. |
-| `fixed tax` | `fixed_tax.paths`/`fixed_tax.globs` byte total at write time — see [CONFIG.md](CONFIG.md#fixed_tax). |
+| `fixed tax` | `fixed_tax.paths`/`fixed_tax.globs` byte total at write time - see [CONFIG.md](CONFIG.md#fixed_tax). |
 | `<name> turn-1 p10` | One column per `ledger.watch_projects` entry: turn-1 p10 restricted to sessions whose transcript path (relative to `transcripts_dir`) contains that entry's configured substring. |
 
-Any column can be `-` (no data yet — e.g. `sessions` and everything downstream of `watch_projects` on early rows, before per-session/per-project tracking had data to compute from).
+Any column can be `-` (no data yet - e.g. `sessions` and everything downstream of `watch_projects` on early rows, before per-session/per-project tracking had data to compute from).
 
 ## Commands
 
@@ -48,48 +48,48 @@ Any column can be `-` (no data yet — e.g. `sessions` and everything downstream
 
 Appends today's row (or `--at`'s date). Flags:
 
-- `--at YYYY-MM-DD` — row date, default today.
-- `--label TEXT` — free-text tag stored on the row.
-- `--dry-run` — compute and print, write nothing.
-- `--force` — replace an existing row for that date.
-- `--show` — print the current ledger and exit; no write, no computation.
-- `--json` — machine-readable row instead of the summary line.
+- `--at YYYY-MM-DD` - row date, default today.
+- `--label TEXT` - free-text tag stored on the row.
+- `--dry-run` - compute and print, write nothing.
+- `--force` - replace an existing row for that date.
+- `--show` - print the current ledger and exit; no write, no computation.
+- `--json` - machine-readable row instead of the summary line.
 
 A row already existing for that date is a no-op ("row exists, nothing appended") unless `--force`.
 
 ### `rigops ledger note "<text>"`
 
-- `--at YYYY-MM-DD` — note date, default today.
+- `--at YYYY-MM-DD` - note date, default today.
 
 Appends `{ts, date, text}` to `interventions.jsonl` (`ts` is a UTC, second-precision timestamp independent of `--at`'s date).
 
 ### `rigops ledger diff`
 
-- `--since YYYY-MM-DD` — pick an explicit baseline.
+- `--since YYYY-MM-DD` - pick an explicit baseline.
 - `--json`.
 
-Needs at least 2 ledger rows total; with fewer it prints "not enough ledger rows to diff yet (need at least 2)" and exits `0`. Baseline selection: without `--since`, the baseline is the second-to-last row (the previous run). With `--since`, the baseline is the latest row on or before that date — an error if no row qualifies, and an error if the selected baseline turns out to be the same row as the latest one (a baseline can't be its own comparison point). The diff prints every numeric column's old/new/delta/percent, plus every intervention noted strictly after the baseline date and on or before the latest date.
+Needs at least 2 ledger rows total; with fewer it prints "not enough ledger rows to diff yet (need at least 2)" and exits `0`. Baseline selection: without `--since`, the baseline is the second-to-last row (the previous run). With `--since`, the baseline is the latest row on or before that date - an error if no row qualifies, and an error if the selected baseline turns out to be the same row as the latest one (a baseline can't be its own comparison point). The diff prints every numeric column's old/new/delta/percent, plus every intervention noted strictly after the baseline date and on or before the latest date.
 
 ### `rigops eit`
 
 Ad hoc usage report, independent of the ledger (no row is written).
 
-- `--since` — ISO date/time, `today`, or `-Nd` (default `-7d`).
-- `--until` — ISO date/time.
+- `--since` - ISO date/time, `today`, or `-Nd` (default `-7d`).
+- `--until` - ISO date/time.
 - `--json`.
-- `--by {project,model,session}` — grouping for the top-N breakdown (default `project`).
-- `--top N` — how many groups to show (default `10`).
-- `--dir PATH` — override `transcripts_dir` for this run.
+- `--by {project,model,session}` - grouping for the top-N breakdown (default `project`).
+- `--top N` - how many groups to show (default `10`).
+- `--dir PATH` - override `transcripts_dir` for this run.
 
 ### `rigops tax` / `rigops tax --history`
 
-- `rigops tax` — current `fixed_tax` file-by-file breakdown and total (or a "not configured" / "no matching files" message if empty).
-- `--history` — sparkline plus first/last/delta across every ledger row's `fixed_tax_b`, the regrowth gauge for always-loaded config.
+- `rigops tax` - current `fixed_tax` file-by-file breakdown and total (or a "not configured" / "no matching files" message if empty).
+- `--history` - sparkline plus first/last/delta across every ledger row's `fixed_tax_b`, the regrowth gauge for always-loaded config.
 - `--json` on either.
 
 ## `sources` annotations
 
-A row's `sources` object (`rtk`, `ccusage`, and any `sources.custom` entries) is written to `ledger.jsonl` only — it never becomes a column in `ledger.md`. See [CONFIG.md](CONFIG.md#sources) for how each adapter is gated and what it contains. `ccusage`'s contribution is a context annotation; spend accounting stays `ccusage`'s own job.
+A row's `sources` object (`rtk`, `ccusage`, and any `sources.custom` entries) is written to `ledger.jsonl` only - it never becomes a column in `ledger.md`. See [CONFIG.md](CONFIG.md#sources) for how each adapter is gated and what it contains. `ccusage`'s contribution is a context annotation; spend accounting stays `ccusage`'s own job.
 
 ## Examples
 
@@ -158,7 +158,7 @@ delta: -10215 B (-10.3%)
 noted 2026-08-14: mechanical multi-file edits now go to a cheap-model subagent by default
 ```
 
-`rigops eit` — run against this repo's own tiny test fixtures (`tests/fixtures/transcripts`), not a real rig:
+`rigops eit` - run against this repo's own tiny test fixtures (`tests/fixtures/transcripts`), not a real rig:
 
 ```text
 Window: 2016-08-25T10:53:13.488827+00:00 -> now
@@ -183,11 +183,11 @@ Top 2 by project (EIT):
 
 ## The ops loop
 
-Reading a diff every week, one deliberate change at a time, is the point — a single row or a single diff proves nothing on its own. The plugin's `ops-loop` skill and the `/rigops:week` command (`plugin/commands/week.md`) walk the full measure → intervene → note → diff cycle; see [INSTALL.md](INSTALL.md) for what the plugin installs.
+Reading a diff every week, one deliberate change at a time, is the point - a single row or a single diff proves nothing on its own. The plugin's `ops-loop` skill and the `/rigops:week` command (`plugin/commands/week.md`) walk the full measure → intervene → note → diff cycle; see [INSTALL.md](INSTALL.md) for what the plugin installs.
 
 ## See also
 
-- [CONFIG.md](CONFIG.md) — `ledger.watch_projects`, `fixed_tax`, `sources`.
-- [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md) — the Python floor these scripts run under.
+- [CONFIG.md](CONFIG.md) - `ledger.watch_projects`, `fixed_tax`, `sources`.
+- [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md) - the Python floor these scripts run under.
 - [../patterns/drift-ledger.md](../patterns/drift-ledger.md)
 - [../patterns/context-tax.md](../patterns/context-tax.md)

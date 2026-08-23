@@ -60,9 +60,9 @@ if [ -z "$PREV" ] || [ "$CTX" -ge $((PREV + REARM)) ]; then
   echo "$CTX" > "$STATE" 2>/dev/null || true
   K=$((CTX / 1000))
   if [ "$CTX" -ge "$TIER3" ]; then
-    echo "[ctx-nudge] Context ${K}k — past the point where this session is worth continuing. Take no new work. Finish or hand off the step in flight, write down what is left, and tell the user to start a fresh chat now."
+    echo "[ctx-nudge] Context ${K}k: past the point where this session is worth continuing. Take no new work. Finish or hand off the step in flight, write down what is left, and tell the user to start a fresh chat now."
   elif [ "$CTX" -ge "$TIER2" ]; then
-    echo "[ctx-nudge] Context ${K}k — heavy. Finish and verify the current step ONLY; at the next natural stopping point, tell the user: fresh chat now. All reads/edits via subagents."
+    echo "[ctx-nudge] Context ${K}k: heavy. Finish and verify the current step ONLY; at the next natural stopping point, tell the user: fresh chat now. All reads/edits via subagents."
   else
     echo "[ctx-nudge] Context ${K}k (>$((TIER1 / 1000))k). Wrap the current task; delegate mechanical edits and broad reads to subagents; then suggest a fresh chat."
   fi

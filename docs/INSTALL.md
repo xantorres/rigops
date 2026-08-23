@@ -6,8 +6,8 @@ How to get rigops running: as a Claude Code plugin, as installed scripts and lau
 
 rigops ships in two independent pieces that read the same JSON config:
 
-- **Plugin half** — a Claude Code marketplace plugin: five slash commands, two skills, and three hook entries. Zero daemons; nothing runs on a schedule, everything fires from inside a Claude Code session.
-- **Script half** — `install.sh` copies the `rigops` CLI and its libraries onto disk, symlinks it onto your PATH, and (optionally) installs two launchd jobs on macOS. This is what gives you `rigops ledger`, `rigops doctor`, `rigops reap`, and the rest outside of a Claude Code session, plus scheduled runs.
+- **Plugin half** - a Claude Code marketplace plugin: five slash commands, two skills, and three hook entries. Zero daemons; nothing runs on a schedule, everything fires from inside a Claude Code session.
+- **Script half** - `install.sh` copies the `rigops` CLI and its libraries onto disk, symlinks it onto your PATH, and (optionally) installs two launchd jobs on macOS. This is what gives you `rigops ledger`, `rigops doctor`, `rigops reap`, and the rest outside of a Claude Code session, plus scheduled runs.
 
 Install either half alone, or both. The plugin degrades gracefully when the CLI isn't present (below); the CLI works with the plugin absent.
 
@@ -25,12 +25,12 @@ Then install the `rigops` plugin from that marketplace.
 
 What lands:
 
-- **5 commands** — `/rigops:backlog`, `/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:week`.
-- **2 skills** — `ops-loop` (the measure/intervene/note/diff weekly loop, see [LEDGER.md](LEDGER.md)) and `fleet-triage` (reading a `doctor` report, see [REGISTRY.md](REGISTRY.md)).
-- **3 hook entries**, from `plugin/hooks/hooks.json`: two `UserPromptSubmit` hooks (`skill-gate.sh`, `ctx-nudge.sh`) and one `PreToolUse` hook on `Bash` (`rg-flag-guard.sh`, which blocks `rg -r`/`-rn`/`-rl` — in ripgrep `-r` means `--replace`, not recursive, and the mistake fails silently otherwise).
-- The statusline script (`plugin/statusline/rigops-statusline.sh`) — shipped but not wired into `~/.claude/settings.json` automatically; see `--statusline` below.
+- **5 commands** - `/rigops:backlog`, `/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:week`.
+- **2 skills** - `ops-loop` (the measure/intervene/note/diff weekly loop, see [LEDGER.md](LEDGER.md)) and `fleet-triage` (reading a `doctor` report, see [REGISTRY.md](REGISTRY.md)).
+- **3 hook entries**, from `plugin/hooks/hooks.json`: two `UserPromptSubmit` hooks (`skill-gate.sh`, `ctx-nudge.sh`) and one `PreToolUse` hook on `Bash` (`rg-flag-guard.sh`, which blocks `rg -r`/`-rn`/`-rl` - in ripgrep `-r` means `--replace`, not recursive, and the mistake fails silently otherwise).
+- The statusline script (`plugin/statusline/rigops-statusline.sh`) - shipped but not wired into `~/.claude/settings.json` automatically; see `--statusline` below.
 
-The plugin works standalone. `skill-gate.sh` needs `jq`; `rg-flag-guard.sh` needs `python3` instead. `ctx-nudge.sh` needs `jq` too — without it the hook exits immediately, a no-op. `ctx-nudge.sh` and the statusline script look for a `rigops` binary on PATH or at `~/.local/bin/rigops`; if the binary isn't found (but `jq` is), `ctx-nudge.sh` falls back to hardcoded context tiers (250000 / 350000 / 500000, rearm 50000 — the same numbers as `context.nudge_tiers`/`rearm_tokens` in [CONFIG.md](CONFIG.md)) instead of reading config. The statusline hardcodes only the first two thresholds (250000 / 350000) for coloring, has no re-arm, and only reads config at all when `jq` is present. Without `jq`, the statusline's context and EIT segments both go blank, but it still prints and exits cleanly.
+The plugin works standalone. `skill-gate.sh` needs `jq`; `rg-flag-guard.sh` needs `python3` instead. `ctx-nudge.sh` needs `jq` too - without it the hook exits immediately, a no-op. `ctx-nudge.sh` and the statusline script look for a `rigops` binary on PATH or at `~/.local/bin/rigops`; if the binary isn't found (but `jq` is), `ctx-nudge.sh` falls back to hardcoded context tiers (250000 / 350000 / 500000, rearm 50000 - the same numbers as `context.nudge_tiers`/`rearm_tokens` in [CONFIG.md](CONFIG.md)) instead of reading config. The statusline hardcodes only the first two thresholds (250000 / 350000) for coloring, has no re-arm, and only reads config at all when `jq` is present. Without `jq`, the statusline's context and EIT segments both go blank, but it still prints and exits cleanly.
 
 ## Script install
 
@@ -126,15 +126,15 @@ From `bash install.sh --help`:
 | `--home DIR` | Override home for every derived path (used by the test suite; also usable to install into another account's home). |
 | `-h`, `--help` | Show help. |
 
-Env: `RIGOPS_INSTALL_LABEL_PREFIX` — launchd label prefix for the jobs it installs, default `com.rigops`. Read only by `install.sh`, mainly so smoke tests never collide with a real install's jobs.
+Env: `RIGOPS_INSTALL_LABEL_PREFIX` - launchd label prefix for the jobs it installs, default `com.rigops`. Read only by `install.sh`, mainly so smoke tests never collide with a real install's jobs.
 
 ### Idempotency
 
-Every installed file is hashed (SHA-256, `shasum -a 256` if present, else `sha256sum`) and recorded in `install.manifest.json` under the install prefix. A re-run hashes the source tree again and compares: a file whose hash already matches is left alone (`unchanged`). A genuine no-op re-run reports `installed=0 updated=0` in the final summary line — the unchanged count carries the rest.
+Every installed file is hashed (SHA-256, `shasum -a 256` if present, else `sha256sum`) and recorded in `install.manifest.json` under the install prefix. A re-run hashes the source tree again and compares: a file whose hash already matches is left alone (`unchanged`). A genuine no-op re-run reports `installed=0 updated=0` in the final summary line - the unchanged count carries the rest.
 
-launchd jobs follow the same idea: if the rendered plist's hash matches what's on disk *and* the job is currently loaded, it's left alone. Otherwise the plist is written and reloaded through `launchctl bootout` then `launchctl bootstrap`, in that order (trying the `gui/<uid>` domain first, falling back to `user/<uid>`) — this covers both a brand-new job and a changed one.
+launchd jobs follow the same idea: if the rendered plist's hash matches what's on disk *and* the job is currently loaded, it's left alone. Otherwise the plist is written and reloaded through `launchctl bootout` then `launchctl bootstrap`, in that order (trying the `gui/<uid>` domain first, falling back to `user/<uid>`) - this covers both a brand-new job and a changed one.
 
-Config and registry are scaffolded from `config/config.example.json` and `config/registry.example.md` **only if the destination doesn't already exist** — `install.sh` never overwrites a config file you've edited.
+Config and registry are scaffolded from `config/config.example.json` and `config/registry.example.md` **only if the destination doesn't already exist** - `install.sh` never overwrites a config file you've edited.
 
 ### Statusline wiring
 
@@ -142,13 +142,13 @@ Config and registry are scaffolded from `config/config.example.json` and `config
 
 ### Uninstall and purge
 
-`--uninstall` reads `install.manifest.json` and undoes exactly what it recorded — nothing else:
+`--uninstall` reads `install.manifest.json` and undoes exactly what it recorded - nothing else:
 
-- Each job is booted out of launchd. If its on-disk plist still matches the manifest's recorded hash, the plist is removed; if it's been edited since install, it's renamed to `<plist>.rigops-disabled` instead (with a printed restore command) — never silently deleted, never silently left live.
+- Each job is booted out of launchd. If its on-disk plist still matches the manifest's recorded hash, the plist is removed; if it's been edited since install, it's renamed to `<plist>.rigops-disabled` instead (with a printed restore command) - never silently deleted, never silently left live.
 - Each file is removed if its hash still matches what was installed; a file modified since install is left in place with a warning, never overwritten or deleted out from under you.
-- `__pycache__` directories under the prefix are swept (they're not in the manifest — Python writes them lazily) and the now-empty prefix tree is removed.
+- `__pycache__` directories under the prefix are swept (they're not in the manifest - Python writes them lazily) and the now-empty prefix tree is removed.
 
-`--purge` (requires `--uninstall`) additionally deletes the config, state, and log directories. It prompts for confirmation unless `--yes` is passed. Before deleting anything, each target passes a `purge_safe` check: it must be an absolute, non-symlink, existing directory named exactly `rigops`, distinct from `/` and from `$HOME` — checked both as given and after resolving any symlinked ancestor, so a bad manifest or an env override can only refuse the purge, never widen it. A refused target is reported with the exact `rm -rf` command to run by hand if you're sure.
+`--purge` (requires `--uninstall`) additionally deletes the config, state, and log directories. It prompts for confirmation unless `--yes` is passed. Before deleting anything, each target passes a `purge_safe` check: it must be an absolute, non-symlink, existing directory named exactly `rigops`, distinct from `/` and from `$HOME` - checked both as given and after resolving any symlinked ancestor, so a bad manifest or an env override can only refuse the purge, never widen it. A refused target is reported with the exact `rm -rf` command to run by hand if you're sure.
 
 If `RIGOPS_CONFIG` or `RIGOPS_STATE_DIR` pointed outside anything this installer created, that path is recorded as "managed externally," and `--purge` skips it, printing a note instead of touching it.
 
@@ -160,10 +160,10 @@ The symlink lands at `~/.local/bin/rigops`. If `~/.local/bin` isn't already on y
 
 `install.sh` runs anywhere Python 3.9+ and a POSIX shell exist, but launchd jobs are macOS-only. When `launchctl` isn't found, the installer automatically behaves as `--no-jobs` and prints `note: launchd not found; jobs skipped (Linux: see templates/cron/crontab.example)`.
 
-A cron fallback template ships at `templates/cron/crontab.example` — install with `install.sh --apply --no-jobs`, then add lines from that template yourself via `crontab -e`. It is **unverified**: read it before use. See [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md) for exactly what is and isn't exercised by CI on Linux.
+A cron fallback template ships at `templates/cron/crontab.example` - install with `install.sh --apply --no-jobs`, then add lines from that template yourself via `crontab -e`. It is **unverified**: read it before use. See [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md) for exactly what is and isn't exercised by CI on Linux.
 
 ## See also
 
-- [CONFIG.md](CONFIG.md) — every key both halves read.
-- [SAFETY.md](SAFETY.md) — what's destructive, what's opt-in, and the caps on each.
-- [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md) — platform coverage and what's unverified.
+- [CONFIG.md](CONFIG.md) - every key both halves read.
+- [SAFETY.md](SAFETY.md) - what's destructive, what's opt-in, and the caps on each.
+- [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md) - platform coverage and what's unverified.

@@ -12,7 +12,7 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`.
 
 No AI-authorship attribution: commits and PRs never carry authorship trailers crediting AI tools, and never carry "generated with" footers. The content stands on its own.
 
-No tracker-style keys anywhere — code, comments, commit messages, PR text. The redaction gate enforces this history-wide, not just in the tree. Write the actual reason in plain language instead — trackers move, code shouldn't depend on them.
+No tracker-style keys anywhere - code, comments, commit messages, PR text. The redaction gate enforces this history-wide, not just in the tree. Write the actual reason in plain language instead - trackers move, code shouldn't depend on them.
 
 ## Before pushing
 
@@ -20,11 +20,11 @@ No tracker-style keys anywhere — code, comments, commit messages, PR text. The
 
 ## Tests
 
-Every pure decision function gets a table test (stdlib `unittest`, zero runtime dependencies) (enforced from the first ported module; the suite and `make test` land with it). OS glue — `launchctl`, `ps`, `git` — is smoke-tested only.
+Every pure decision function gets a table test (stdlib `unittest`, zero runtime dependencies) (enforced from the first ported module; the suite and `make test` land with it). OS glue - `launchctl`, `ps`, `git` - is smoke-tested only.
 
 ## Example outputs
 
-Every example output block in README, docs/, or patterns/ is generated on a throwaway sandbox HOME (or hand-authored from scratch) — never captured from a real rig. A real-rig capture in a diff is a blocker, not a style nit.
+Every example output block in README, docs/, or patterns/ is generated on a throwaway sandbox HOME (or hand-authored from scratch) - never captured from a real rig. A real-rig capture in a diff is a blocker, not a style nit.
 
 ## Runtime
 

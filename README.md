@@ -1,8 +1,18 @@
 # rigops
 
-Ops layer for a long-running agent rig — the surrounding system of instructions, hooks, automation, tooling, and state that supports long-running coding agents.
+Ops layer for a long-running agent rig - the surrounding system of instructions, hooks, automation, tooling, and state that supports long-running coding agents.
 
-> **Status:** first public cut — v0.1.0, extracted from a working rig.
+You tweak that rig constantly: a leaner prompt, a new hook, a stricter permission gate. rigops exists to answer one question about every tweak - **did it actually work?**
+
+```bash
+rigops ledger                               # measure: weekly effort baseline
+rigops ledger note "trimmed system prompt"  # intervene: record what changed
+rigops ledger diff                          # judge: before vs. after
+```
+
+Everything else in the repo - context-tax tracking, automation-fleet doctor, workspace hygiene - exists to support that loop.
+
+> **Status:** first public cut - v0.1.0, extracted from a working rig.
 
 ## Positioning
 
@@ -56,9 +66,9 @@ flowchart LR
 
 ### 1. Measure, intervene, diff
 
-`rigops ledger` writes one append-only row a week: cost, latency, cache behavior, intervention count — whatever effectiveness levers matter for the rig. `rigops ledger note` records an intervention next to the week it happened: a prompt change, a new hook, a pruned rule. `rigops ledger diff` then shows week-over-week deltas per column, annotated with the interventions that landed between the two rows, so "did that help" gets an answer instead of a guess.
+`rigops ledger` writes one append-only row a week: cost, latency, cache behavior, intervention count - whatever effectiveness levers matter for the rig. `rigops ledger note` records an intervention next to the week it happened: a prompt change, a new hook, a pruned rule. `rigops ledger diff` then shows week-over-week deltas per column, annotated with the interventions that landed between the two rows, so "did that help" gets an answer instead of a guess.
 
-One column worth defining once: EIT (effective input tokens) = input + 1.25 × cache_creation + 0.1 × cache_read. It's the ledger's cost proxy — cache writes and reads aren't free, and weighting them lets a cache-heavy week compare fairly against a cache-cold one.
+One column worth defining once: EIT (effective input tokens) = input + 1.25 × cache_creation + 0.1 × cache_read. It's the ledger's cost proxy - cache writes and reads aren't free, and weighting them lets a cache-heavy week compare fairly against a cache-cold one.
 
 ```text
 ledger diff: 2026-08-10 -> 2026-08-17
@@ -88,7 +98,7 @@ Interventions in this window:
 
 ### 2. Context tax
 
-Every rig pays a fixed tax on top of whatever a turn actually needs: the bytes of always-loaded config — `CLAUDE.md`, rules, always-on skill text — get loaded on every single turn, whether that turn touches them or not. `rigops tax` breaks that tax down file by file. `rigops tax --history` tracks the same total across the ledger's history, so regrowth after a pruning pass shows up as a trend instead of staying invisible until the rig just feels slow again.
+Every rig pays a fixed tax on top of whatever a turn actually needs: the bytes of always-loaded config - `CLAUDE.md`, rules, always-on skill text - get loaded on every single turn, whether that turn touches them or not. `rigops tax` breaks that tax down file by file. `rigops tax --history` tracks the same total across the ledger's history, so regrowth after a pruning pass shows up as a trend instead of staying invisible until the rig just feels slow again.
 
 ```text
 file                             size
@@ -110,7 +120,7 @@ delta: -10215 B (-10.3%)
 
 ### 3. Fleet doctor
 
-The registry (`registry.md`) is plain markdown: one entry per automated job, with its cadence, its evidence file, and how long it's allowed to run before it counts as hung. `rigops doctor` reads it and judges each job — stale against its declared cadence, hung against `max_runtime_h`, cooling down after a repeated heal so a flapping job doesn't get restarted into the ground. It's report-only by default; `--heal` opts into the kill/kickstart side effects, and `--supervisor none` skips `launchctl` entirely on hosts that don't run launchd.
+The registry (`registry.md`) is plain markdown: one entry per automated job, with its cadence, its evidence file, and how long it's allowed to run before it counts as hung. `rigops doctor` reads it and judges each job - stale against its declared cadence, hung against `max_runtime_h`, cooling down after a repeated heal so a flapping job doesn't get restarted into the ground. It's report-only by default; `--heal` opts into the kill/kickstart side effects, and `--supervisor none` skips `launchctl` entirely on hosts that don't run launchd.
 
 ```text
 rigops doctor report 2026-08-23T10:53:12Z
@@ -145,7 +155,7 @@ reclaimable: 8.0K (apparent size; copy-on-write means actual is lower)
 
 ## Quickstart
 
-### Plugin only — thirty seconds, zero daemons
+### Plugin only - thirty seconds, zero daemons
 
 In Claude Code:
 
@@ -154,7 +164,7 @@ In Claude Code:
 /plugin install rigops@rigops
 ```
 
-This installs the commands, skills, and hooks. It degrades gracefully if the CLI half below isn't installed — no ledger or doctor data yet, but nothing breaks.
+This installs the commands, skills, and hooks. It degrades gracefully if the CLI half below isn't installed - no ledger or doctor data yet, but nothing breaks.
 
 ### Full install
 
@@ -180,9 +190,9 @@ rigops install: plan for ~ (dry run; re-run with --apply to act)
 
 A few flags worth knowing up front:
 
-- `--no-jobs` — install the CLI without touching launchd.
-- `--statusline` — wire the plugin statusline into `~/.claude/settings.json`.
-- `--uninstall --purge` — remove a previous install, including its config and state.
+- `--no-jobs` - install the CLI without touching launchd.
+- `--statusline` - wire the plugin statusline into `~/.claude/settings.json`.
+- `--uninstall --purge` - remove a previous install, including its config and state.
 
 ### First-week ritual
 
@@ -198,15 +208,15 @@ Note interventions as you make them: `rigops ledger note "<what you changed>"`.
 
 Two halves, one config.
 
-**Plugin half** — a Claude Code marketplace plugin: five commands (`/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:backlog`, `/rigops:week`), two skills (`ops-loop`, `fleet-triage`), three hooks (`skill-gate` and `ctx-nudge` on `UserPromptSubmit`, `rg-flag-guard` on `PreToolUse:Bash`), and a statusline. Zero daemons. No agents — deliberately; which subagent handles a task is a decision that belongs to the rig, not to rigops.
+**Plugin half** - a Claude Code marketplace plugin: five commands (`/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:backlog`, `/rigops:week`), two skills (`ops-loop`, `fleet-triage`), three hooks (`skill-gate` and `ctx-nudge` on `UserPromptSubmit`, `rg-flag-guard` on `PreToolUse:Bash`), and a statusline. Zero daemons. No agents - deliberately; which subagent handles a task is a decision that belongs to the rig, not to rigops.
 
-**Script half** — the `rigops` CLI (`eit`, `ledger`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`), plus hardened launchd templates for the `doctor` and `ledger` jobs, and a cron template for Linux hosts (unverified).
+**Script half** - the `rigops` CLI (`eit`, `ledger`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`), plus hardened launchd templates for the `doctor` and `ledger` jobs, and a cron template for Linux hosts (unverified).
 
 Both halves read the same `~/.config/rigops/config.json` (schema: [config/config.schema.json](config/config.schema.json)). Runtime state lives under `~/.local/state/rigops/`.
 
 ## Extracted from a working rig
 
-These patterns ran daily in a private agent rig for months before this repository existed. Genericizing them is the point of the public build: every example output above, and everywhere else in this repo, is generated on a throwaway sandbox `HOME` from seeded demo data — with the sandbox home path collapsed to `~` — never copied from that rig's real transcripts.
+These patterns ran daily in a private agent rig for months before this repository existed. Genericizing them is the point of the public build: every example output above, and everywhere else in this repo, is generated on a throwaway sandbox `HOME` from seeded demo data - with the sandbox home path collapsed to `~` - never copied from that rig's real transcripts.
 
 ## Pairs with
 
@@ -234,8 +244,8 @@ Python 3.9+, stdlib only. Full matrix: [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MAT
 - [docs/REGISTRY.md](docs/REGISTRY.md)
 - [docs/SAFETY.md](docs/SAFETY.md)
 - [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MATRIX.md)
-- [patterns/](patterns/) — the ideas, portable without the code: drift-ledger, context-tax, job-registry, hardened-launchd, tiered-refresh, auth-probe-gating, scope-gated-hooks.
+- [patterns/](patterns/) - the ideas, portable without the code: drift-ledger, context-tax, job-registry, hardened-launchd, tiered-refresh, auth-probe-gating, scope-gated-hooks.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).

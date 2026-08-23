@@ -345,7 +345,7 @@ class LedgerDiffTests(EnvIsolatedTestCase):
 
             text_result = _run_ledger(["diff", "--since", "2026-08-01"], env)
             self.assertEqual(text_result.returncode, 0)
-            self.assertNotIn("—", text_result.stdout)
+            self.assertNotIn("\u2014", text_result.stdout)
             ctx_line = next(
                 ln for ln in text_result.stdout.splitlines() if ln.startswith("ctx_p50")
             )
