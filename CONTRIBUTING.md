@@ -22,6 +22,10 @@ No tracker-style keys anywhere — code, comments, commit messages, PR text. The
 
 Every pure decision function gets a table test (stdlib `unittest`, zero runtime dependencies) (enforced from the first ported module; the suite and `make test` land with it). OS glue — `launchctl`, `ps`, `git` — is smoke-tested only.
 
+## Example outputs
+
+Every example output block in README, docs/, or patterns/ is generated on a throwaway sandbox HOME (or hand-authored from scratch) — never captured from a real rig. A real-rig capture in a diff is a blocker, not a style nit.
+
 ## Runtime
 
 Python 3.9 floor, stdlib only for shipped scripts. Dev tooling (`ruff`, `shellcheck`) is exempt.
