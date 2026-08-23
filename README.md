@@ -1,6 +1,6 @@
 # rigops
 
-Ops layer for a long-running agent rig.
+Ops layer for a long-running agent rig — the surrounding system of instructions, hooks, automation, tooling, and state that supports long-running coding agents.
 
 > **Status:** first public cut — v0.1.0, extracted from a working rig.
 
@@ -8,7 +8,7 @@ Ops layer for a long-running agent rig.
 
 `ccusage` tells you what you spent; rigops tells you whether the change you made last week worked.
 
-Spend dashboards exist. Point-in-time audits exist. Nobody ships week-over-week intervention tracking, config-regrowth-over-time, or launchd/cron automation-fleet health for agent rigs — rigops is that missing layer.
+Existing tools focus on spend and point-in-time audits. rigops focuses on week-over-week intervention tracking, config regrowth over time, and launchd/cron automation-fleet health for agent rigs.
 
 rigops is not:
 
