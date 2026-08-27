@@ -96,23 +96,23 @@ def _run_captured(
     exactly what a plain terminate leaves behind. The reaper's own process
     group is a different pgid and is never touched.
     """
-    proc = subprocess.Popen(
+    with subprocess.Popen(
         argv, start_new_session=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, env=env,
-    )
-    try:
-        stdout, stderr = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
+    ) as proc:
         try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            pass
-        try:
-            proc.communicate(timeout=5)
+            stdout, stderr = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
-            pass
-        raise subprocess.TimeoutExpired(argv, timeout) from None
-    return subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+            try:
+                proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+            raise subprocess.TimeoutExpired(argv, timeout) from None
+        return subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
 
 
 def git(repo: Path, *args: str, timeout: int = 120) -> subprocess.CompletedProcess:
@@ -791,6 +791,7 @@ def classify(wt: dict, repo: Path, target: str, live: list[Path], self_cwd: Path
 def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_days: int,
               ignored_dirs: set[str], ignored_prefixes: tuple[str, ...],
               remaining_s: float | None = None) -> dict:
+    scan_start = time.time()
     result = {"repo": str(repo), "target": None, "worktrees": [], "note": None,
               "timed_out": False, "listing_ok": True}
 
@@ -811,7 +812,10 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
                 if proc.returncode != 0:
                     result["note"] = f"fetch failed, using local refs: {git_error(proc.stderr)}"
 
-    list_timeout = clamp_timeout(120, remaining_s)
+    list_remaining = (
+        remaining_s - (time.time() - scan_start) if remaining_s is not None else None
+    )
+    list_timeout = clamp_timeout(120, list_remaining)
     if list_timeout is None:
         # A note may already be set by the fetch-skip branch above; don't
         # clobber it, but the listing must still be skipped and the caller
