@@ -25,6 +25,8 @@ CONFIG="${RIGOPS_SKILL_GATES:-${XDG_CONFIG_HOME:-$HOME/.config}/rigops/skill-gat
 
 PROMPT="$(printf '%s' "$IN" | jq -r '.prompt // empty' 2>/dev/null)"
 CWD="$(printf '%s' "$IN" | jq -r '.cwd // empty' 2>/dev/null)"
+SID="$(printf '%s' "$IN" | jq -r '.session_id // empty' 2>/dev/null)"
+SID=${SID//[^A-Za-z0-9_-]/_}
 [ -n "$PROMPT" ] || exit 0
 
 # System-injected turns (background-task notifications) carry agent output
@@ -61,6 +63,13 @@ GATES_JSON="$(cat "$CONFIG" 2>/dev/null || true)"
 [ -n "$GATES_JSON" ] || exit 0
 N="$(printf '%s' "$GATES_JSON" | jq '.gates | length' 2>/dev/null || true)"
 [[ "$N" =~ ^[0-9]+$ ]] || exit 0
+
+STATE_DIR=""
+if [ -n "$SID" ]; then
+  STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/rigops/skill-gate"
+  mkdir -p "$STATE_DIR" 2>/dev/null || true
+  find "$STATE_DIR" -type f -mtime +7 -delete 2>/dev/null || true
+fi
 
 i=0
 while [ "$i" -lt "$N" ]; do
@@ -132,6 +141,13 @@ while [ "$i" -lt "$N" ]; do
   fi
 
   [ "$FIRE" -eq 1 ] || continue
+
+  # Marker keyed by gate name -- a global marker would let one gate swallow another's mandate.
+  if [ -n "$STATE_DIR" ] && [ "${RIGOPS_SKILL_GATE_NO_DEDUPE:-}" != "1" ]; then
+    MARK="$STATE_DIR/${SID}.${name//[^A-Za-z0-9_-]/_}"
+    [ -f "$MARK" ] && continue
+    : > "$MARK" 2>/dev/null || true
+  fi
 
   if [ -n "$message" ]; then
     printf '%s\n' "$message"

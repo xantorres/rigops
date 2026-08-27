@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-27
+
+### Added
+
+- Ledger friction columns: `denials`, `denials_headless`, `corrections`,
+  `tier3_breaches`, `tool_err_per_100`, computed from user-role transcript
+  rows each `ledger write`. Historical rows render `-`. New config key
+  `friction.headless_projects` scopes the headless split.
+- skill-gate: each gate now fires at most once per session (marker files
+  under the state dir, 7-day GC). `RIGOPS_SKILL_GATE_NO_DEDUPE=1` restores
+  the old every-prompt behavior.
+
+### Fixed
+
+- reap: git subprocesses run in their own process group and are SIGKILLed
+  group-wide on timeout, so a hung remote can no longer stall a run for
+  hours past the deadline. The fetch and worktree-list timeouts are also
+  clamped to the remaining run budget. Deeper local git calls are not yet
+  deadline-clamped; worst-case overrun is one repo scan.
+
 ## [0.1.0] - 2026-08-24
 
 Initial release.

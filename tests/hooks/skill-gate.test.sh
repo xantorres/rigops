@@ -16,11 +16,18 @@ ACME="$WORK/acme-web"
 OTHER="$WORK/other-project"
 mkdir -p "$ACME" "$OTHER"
 
+# Dedupe markers land here, never under the real home.
+STATE_HOME="$WORK/state"
+export XDG_STATE_HOME="$STATE_HOME"
+
 PASS=0; FAIL=0
+CASE_N=0
 
 check() { # check <fire|quiet> <cwd> <prompt> <name>
-  local expect="$1" cwd="$2" prompt="$3" name="$4" out got
-  out="$(jq -n --arg p "$prompt" --arg c "$cwd" '{prompt:$p,cwd:$c}' | RIGOPS_SKILL_GATES="$GATES" bash "$HOOK")"
+  local expect="$1" cwd="$2" prompt="$3" name="$4" out got sid
+  CASE_N=$((CASE_N + 1))
+  sid="case-$CASE_N"
+  out="$(jq -n --arg p "$prompt" --arg c "$cwd" --arg s "$sid" '{prompt:$p,cwd:$c,session_id:$s}' | RIGOPS_SKILL_GATES="$GATES" bash "$HOOK")"
   case "$out" in
     *"MANDATORY (skill-gate:pr-review)"*) got=fire ;;
     *) got=quiet ;;
@@ -188,6 +195,74 @@ if [ -z "$ctrl_err" ] && [ "$rc" -eq 0 ]; then
 else
   FAIL=$((FAIL + 1)); printf 'FAIL  %s (rc=%s stderr=%s)\n' 'control byte in provenance_regex: stderr empty, rc 0' "$rc" "$ctrl_err"
 fi
+
+# --- dedupe: once-per-session-per-gate marker ---------------------------------
+dcheck() { # dcheck <fire|quiet> <cwd> <prompt> <sid> <gates-file> <gate-name> <name> [nodedupe]
+  local expect="$1" cwd="$2" prompt="$3" sid="$4" gates="$5" gate="$6" name="$7" nodedupe="${8:-}" out got
+  if [ -n "$nodedupe" ]; then
+    out="$(jq -n --arg p "$prompt" --arg c "$cwd" --arg s "$sid" '{prompt:$p,cwd:$c,session_id:$s}' | RIGOPS_SKILL_GATE_NO_DEDUPE=1 RIGOPS_SKILL_GATES="$gates" bash "$HOOK")"
+  else
+    out="$(jq -n --arg p "$prompt" --arg c "$cwd" --arg s "$sid" '{prompt:$p,cwd:$c,session_id:$s}' | RIGOPS_SKILL_GATES="$gates" bash "$HOOK")"
+  fi
+  case "$out" in
+    *"MANDATORY (skill-gate:$gate)"*) got=fire ;;
+    *) got=quiet ;;
+  esac
+  if [ "$got" = "$expect" ]; then
+    PASS=$((PASS + 1)); printf 'ok    %s\n' "$name"
+  else
+    FAIL=$((FAIL + 1)); printf 'FAIL  %s (expected %s, got %s)\n' "$name" "$expect" "$got"
+  fi
+}
+
+dcheck fire "$ACME" 'review PR 2294' 'dedupe-a' "$GATES" pr-review \
+  'dedupe: first prompt in session fires'
+dcheck quiet "$ACME" 'review PR 2294' 'dedupe-a' "$GATES" pr-review \
+  'dedupe: same prompt same session quiet'
+dcheck fire "$ACME" 'review PR 2294' 'dedupe-c' "$GATES" pr-review \
+  'dedupe: same prompt different session fires'
+
+out1="$(jq -n --arg p 'review PR 2294' --arg c "$ACME" '{prompt:$p,cwd:$c}' | RIGOPS_SKILL_GATES="$GATES" bash "$HOOK")"
+out2="$(jq -n --arg p 'review PR 2294' --arg c "$ACME" '{prompt:$p,cwd:$c}' | RIGOPS_SKILL_GATES="$GATES" bash "$HOOK")"
+if [[ "$out1" == *"MANDATORY (skill-gate:pr-review)"* && "$out2" == *"MANDATORY (skill-gate:pr-review)"* ]]; then
+  PASS=$((PASS + 1)); printf 'ok    %s\n' 'dedupe: no session_id in payload fires every time'
+else
+  FAIL=$((FAIL + 1)); printf 'FAIL  %s (out1=%s out2=%s)\n' 'dedupe: no session_id in payload fires every time' "$out1" "$out2"
+fi
+
+# Two gates, same session: gate-a's marker must not suppress gate-b.
+TWO_GATES="$WORK/two-gates.json"
+cat >"$TWO_GATES" <<'EOF'
+{
+  "gates": [
+    {
+      "name": "gate-a",
+      "skill": "acme:code-review",
+      "scope": {"cwd_substrings": ["acme"]},
+      "verb_regex": "\\breview\\b",
+      "noun_regex": "\\bpr\\b"
+    },
+    {
+      "name": "gate-b",
+      "skill": "acme:deploy-check",
+      "scope": {"cwd_substrings": ["acme"]},
+      "verb_regex": "\\bdeploy\\b",
+      "noun_regex": "\\bprod\\b"
+    }
+  ]
+}
+EOF
+TWO_SID="dedupe-two-gate"
+out1="$(jq -n --arg p 'review PR 2294' --arg c "$ACME" --arg s "$TWO_SID" '{prompt:$p,cwd:$c,session_id:$s}' | RIGOPS_SKILL_GATES="$TWO_GATES" bash "$HOOK")"
+out2="$(jq -n --arg p 'deploy to prod, also review PR 2294 again' --arg c "$ACME" --arg s "$TWO_SID" '{prompt:$p,cwd:$c,session_id:$s}' | RIGOPS_SKILL_GATES="$TWO_GATES" bash "$HOOK")"
+if [[ "$out1" == *"MANDATORY (skill-gate:gate-a)"* && "$out2" == *"MANDATORY (skill-gate:gate-b)"* && "$out2" != *"MANDATORY (skill-gate:gate-a)"* ]]; then
+  PASS=$((PASS + 1)); printf 'ok    %s\n' 'dedupe: two-gate config, gate-b fires after gate-a marked same session'
+else
+  FAIL=$((FAIL + 1)); printf 'FAIL  %s (out1=%s out2=%s)\n' 'dedupe: two-gate config, gate-b fires after gate-a marked same session' "$out1" "$out2"
+fi
+
+dcheck fire "$ACME" 'review PR 2294' 'dedupe-a' "$GATES" pr-review \
+  'dedupe: RIGOPS_SKILL_GATE_NO_DEDUPE=1 re-emits despite marker' 1
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
