@@ -25,7 +25,9 @@ BASE_MD_COLUMNS = [
 ]
 TAIL_MD_COLUMNS = [
     ("agent_per_100", "Agent/100"), ("cheap_model_eit_pct", "cheap-model EIT %"),
-    ("fixed_tax_b", "fixed tax"),
+    ("fixed_tax_b", "fixed tax"), ("denials", "denials"), ("denials_headless", "denials hl"),
+    ("corrections", "corrections"), ("tier3_breaches", "tier3 sess"),
+    ("tool_err_per_100", "tool err/100"),
 ]
 
 MD_HEADER = """# Token ledger
@@ -37,6 +39,10 @@ Agent/100 tracks delegation rate; cheap-model EIT % tracks cheap-model routing; 
 tracks output verbosity; cache % tracks prompt-cache reuse; fixed tax tracks the
 always-loaded config bytes named in `fixed_tax.paths`/`fixed_tax.globs`, the regrowth
 gauge for the per-session fixed context cost.
+Denials, denials hl, corrections, tier3 sess, and tool err/100 track interaction friction:
+permission denials (all vs. headless-run only), user self-corrections, sessions that crossed
+the third context-nudge tier, and tool-result errors per 100 turns; the correction pattern
+only anchors the first line of a message, so corrections voiced mid-sentence go uncounted.
 Machine form of the same rows: `ledger.jsonl`. Re-run with `--show` to print this table.
 
 """
@@ -143,6 +149,12 @@ def source_annotations(cfg, since: dt.datetime, until: dt.datetime) -> dict:
     return out
 
 
+def tier3_breach_sessions(turns: list[dict], tier3) -> int:
+    if not tier3:
+        return 0
+    return len({t["session"] for t in turns if transcripts.ctx(t) >= tier3})
+
+
 def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
     cfg = cfg if cfg is not None else rigops_config.load()
     watch_projects = rigops_config.get(cfg, "ledger.watch_projects", {}) or {}
@@ -174,6 +186,12 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
 
     win = [t for t in turns if since <= t["ts"] < until]
     win_main = [t for t in win if "/subagents/" not in t.get("path", "")]
+    nudge_tiers = rigops_config.get(cfg, "context.nudge_tiers", [250000, 350000, 500000])
+    tier3 = nudge_tiers[2] if isinstance(nudge_tiers, list) and len(nudge_tiers) >= 3 else None
+    headless = tuple(rigops_config.get(cfg, "friction.headless_projects", []) or [])
+    fr = transcripts.collect_friction(
+        since, until, transcripts_dir=transcripts_dir, headless_projects=headless
+    )
     win30 = [t for t in turns if since_30 <= t["ts"] < until]
     n = len(win)
     eits = [transcripts.eit(t) for t in win]
@@ -217,6 +235,11 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
         row[f"turn1_{col}"] = round(transcripts.percentile(sorted(vals), 0.1)) if vals else None
         row[f"turn1_{col}_p50"] = round(median(vals)) if vals else None
         row[f"sessions_{col}"] = len(vals)
+    row["denials"] = fr["denials"]
+    row["denials_headless"] = fr["denials_headless"]
+    row["corrections"] = fr["corrections"]
+    row["tier3_breaches"] = tier3_breach_sessions(win, tier3)
+    row["tool_err_per_100"] = round(fr["tool_errors"] / n * 100, 1) if n else None
     row["fixed_tax_b"] = fixed_tax_bytes(cfg)
     row["sources"] = source_annotations(cfg, since, until)
     return row
@@ -329,4 +352,8 @@ def summary_line(row: dict, prev: dict | None, base: dict | None, watch_projects
     if isinstance(ccusage_src, dict) and ccusage_src.get("cost_usd") is not None:
         parts.append(f"| spend ${ccusage_src.get('cost_usd')} (ccusage)")
     parts.append(f"| turns {row.get('turns')} sessions {row.get('sessions')}")
+    parts.append(
+        f"| denials {format_cell('denials', row.get('denials'))}"
+        f" corrections {format_cell('corrections', row.get('corrections'))}"
+    )
     return " ".join(parts)

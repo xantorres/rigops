@@ -9,6 +9,7 @@ DEFAULTS = {
     "transcripts_dir": "~/.claude/projects",
     "ledger": {"watch_projects": {}},
     "fixed_tax": {"paths": [], "globs": []},
+    "friction": {"headless_projects": []},
     "context": {"nudge_tiers": [250000, 350000, 500000], "rearm_tokens": 50000},
     "doctor": {
         "registry": "~/.config/rigops/registry.md",

@@ -18,6 +18,36 @@ CTX_BUCKETS = [
     (">500k", 500_000, float("inf")),
 ]
 
+# Hardcoded, not config: these patterns define the friction measurement itself,
+# so moving them to config would break week-over-week comparability.
+_DENIAL_ALTERNATIVES = (
+    r"permission (for this action was )?deni",
+    r"denied by the .* classifier",
+    r"user (has )?denied",
+    r"blocked by .*hook",
+    r"requires approval",
+    r"operation blocked",
+    r"PreToolUse:.*(deny|blocked)",
+)
+DENIAL_PATTERNS = re.compile("|".join(_DENIAL_ALTERNATIVES), re.IGNORECASE)
+CORRECTION_RE = re.compile(r"^\s*(no|nope|wrong|not what|stop|wait|undo|revert)\b", re.IGNORECASE)
+
+
+def classify_denial(text: str) -> bool:
+    return bool(DENIAL_PATTERNS.search(text))
+
+
+def _first_nonblank_line(text: str) -> str:
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped
+    return ""
+
+
+def is_correction(text: str) -> bool:
+    return bool(CORRECTION_RE.match(_first_nonblank_line(text)))
+
 
 def default_transcripts_dir() -> Path:
     cfg = rigops_config.load()
@@ -168,6 +198,102 @@ def collect_turns(since, until, transcripts_dir=None) -> list[dict]:
                 }
             )
     return turns
+
+
+def _flatten_tool_result_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            part.get("text", "")
+            for part in content
+            if isinstance(part, dict)
+            and part.get("type") == "text"
+            and isinstance(part.get("text"), str)
+        )
+    return ""
+
+
+def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -> dict:
+    """Count permission denials, self-corrections, and tool errors from user-role
+    transcript rows. Mirrors collect_turns' file walk, project derivation, and
+    window filter but keeps "user" rows; subagent transcripts are excluded since
+    subagent tool errors are not user friction.
+    """
+    root = _resolve_dir(transcripts_dir)
+    headless = set(headless_projects)
+    denials = 0
+    denials_headless = 0
+    corrections = 0
+    tool_errors = 0
+    skip_prefixes = ("<system-reminder", "<command-", "Caveat:", "[Request interrupted")
+    for path in find_transcripts(root):
+        if "/subagents/" in path:
+            continue
+        proj = project_label(path, root)
+        try:
+            fh = open(path)
+        except OSError:
+            continue
+        with fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(obj, dict) or obj.get("type") != "user":
+                    continue
+                ts_raw = obj.get("timestamp")
+                if not isinstance(ts_raw, str) or not ts_raw:
+                    continue
+                try:
+                    ts = parse_ts(ts_raw)
+                except ValueError:
+                    continue
+                if since is not None and ts < since:
+                    continue
+                if until is not None and ts >= until:
+                    continue
+                message = obj.get("message")
+                if not isinstance(message, dict):
+                    continue
+                content = message.get("content")
+                if isinstance(content, str):
+                    items = [{"type": "text", "text": content}]
+                elif isinstance(content, list):
+                    items = content
+                else:
+                    items = []
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    itype = item.get("type")
+                    if itype == "tool_result":
+                        if not item.get("is_error"):
+                            continue
+                        tool_errors += 1
+                        text = _flatten_tool_result_text(item.get("content"))
+                        if classify_denial(text):
+                            denials += 1
+                            if proj in headless:
+                                denials_headless += 1
+                    elif itype == "text":
+                        text = item.get("text")
+                        if not isinstance(text, str):
+                            continue
+                        if _first_nonblank_line(text).startswith(skip_prefixes):
+                            continue
+                        if is_correction(text):
+                            corrections += 1
+    return {
+        "denials": denials,
+        "denials_headless": denials_headless,
+        "corrections": corrections,
+        "tool_errors": tool_errors,
+    }
 
 
 def percentile(sorted_vals, p) -> float:

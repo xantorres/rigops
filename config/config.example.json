@@ -9,6 +9,9 @@
     "paths": ["~/.claude/CLAUDE.md"],
     "globs": []
   },
+  "friction": {
+    "headless_projects": ["ci-bot"]
+  },
   "context": {
     "nudge_tiers": [250000, 350000, 500000],
     "rearm_tokens": 50000

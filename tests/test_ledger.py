@@ -70,6 +70,11 @@ class BuildRowTests(EnvIsolatedTestCase):
             self.assertEqual(row["turn1_beta"], 600)
             self.assertEqual(row["turn1_beta_p50"], 600)
             self.assertEqual(row["sessions_beta"], 1)
+            self.assertEqual(row["denials"], 2)
+            self.assertEqual(row["denials_headless"], 0)
+            self.assertEqual(row["corrections"], 2)
+            self.assertEqual(row["tier3_breaches"], 0)
+            self.assertEqual(row["tool_err_per_100"], 60.0)
 
             explicit_size = (FIXTURE_FIXED_TAX / "explicit.md").stat().st_size
             plain_size = (FIXTURE_FIXED_TAX / "globbed" / "plain.md").stat().st_size
@@ -225,6 +230,43 @@ class ComputeDeltasTests(unittest.TestCase):
         self.assertEqual(
             deltas["fixed_tax_b"], {"old": None, "new": 2048, "delta": None, "pct": None}
         )
+
+
+TIER3_CASES = [
+    ("empty_turns", [], 500_000, 0),
+    (
+        "all_below_tier",
+        [
+            {"session": "s1", "input": 100_000, "cache_creation": 0, "cache_read": 0},
+            {"session": "s2", "input": 200_000, "cache_creation": 0, "cache_read": 0},
+        ],
+        500_000,
+        0,
+    ),
+    (
+        "one_session_two_breach_turns_counts_once",
+        [
+            {"session": "s1", "input": 500_000, "cache_creation": 0, "cache_read": 0},
+            {"session": "s1", "input": 600_000, "cache_creation": 0, "cache_read": 0},
+            {"session": "s2", "input": 100_000, "cache_creation": 0, "cache_read": 0},
+        ],
+        500_000,
+        1,
+    ),
+    (
+        "tier_none_is_zero",
+        [{"session": "s1", "input": 999_000, "cache_creation": 0, "cache_read": 0}],
+        None,
+        0,
+    ),
+]
+
+
+class Tier3BreachSessionsTests(unittest.TestCase):
+    def test_table(self):
+        for name, turns, tier3, expected in TIER3_CASES:
+            with self.subTest(name):
+                self.assertEqual(levers.tier3_breach_sessions(turns, tier3), expected)
 
 
 class LedgerNoteTests(EnvIsolatedTestCase):

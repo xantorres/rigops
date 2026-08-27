@@ -136,6 +136,70 @@ class PercentileTests(unittest.TestCase):
         self.assertEqual(transcripts.percentile([10, 20, 30, 40, 50], 0.9), 46.0)
 
 
+DENIAL_CASES = [
+    ("classifier_text", "Permission for this action was denied by the auto mode classifier", True),
+    ("blocked_by_hook", "blocked by stale-checkout hook", True),
+    ("requires_approval", "requires approval", True),
+    ("plain_command_failure", "npm ERR! code 1", False),
+    ("grep_no_such_file", "grep: No such file", False),
+]
+
+
+class ClassifyDenialTests(unittest.TestCase):
+    def test_table(self):
+        for name, text, expected in DENIAL_CASES:
+            with self.subTest(name):
+                self.assertEqual(transcripts.classify_denial(text), expected)
+
+
+CORRECTION_CASES = [
+    ("nope", "nope", True),
+    ("not_what_i_asked", "not what I asked", True),
+    ("revert_that", "revert that", True),
+    ("wait_em_dash_broke", "Wait — that broke X", True),
+    ("stop_gap_fine", "I know, stop-gap is fine", False),
+    ("now_add_tests", "now add tests", False),
+]
+
+
+class IsCorrectionTests(unittest.TestCase):
+    def test_table(self):
+        for name, text, expected in CORRECTION_CASES:
+            with self.subTest(name):
+                self.assertEqual(transcripts.is_correction(text), expected)
+
+
+class CollectFrictionWindowTests(unittest.TestCase):
+    def test_window_counts_and_headless_attribution(self):
+        since = transcripts.parse_ts("2026-08-11T00:00:00Z")
+        until = transcripts.parse_ts("2026-08-12T00:00:00Z")
+        fr = transcripts.collect_friction(
+            since, until, transcripts_dir=FIXTURE_DIR, headless_projects=("proj-alpha",)
+        )
+        self.assertEqual(fr["denials"], 2)
+        self.assertEqual(fr["denials_headless"], 1)
+        self.assertEqual(fr["corrections"], 2)
+        self.assertEqual(fr["tool_errors"], 3)
+
+    def test_no_headless_projects_configured_yields_zero_headless_denials(self):
+        since = transcripts.parse_ts("2026-08-11T00:00:00Z")
+        until = transcripts.parse_ts("2026-08-12T00:00:00Z")
+        fr = transcripts.collect_friction(since, until, transcripts_dir=FIXTURE_DIR)
+        self.assertEqual(fr["denials"], 2)
+        self.assertEqual(fr["denials_headless"], 0)
+
+    def test_out_of_window_denial_excluded_until_window_widens(self):
+        until = transcripts.parse_ts("2026-08-12T00:00:00Z")
+        narrow = transcripts.collect_friction(
+            transcripts.parse_ts("2026-08-11T00:00:00Z"), until, transcripts_dir=FIXTURE_DIR
+        )
+        wide = transcripts.collect_friction(
+            transcripts.parse_ts("2026-07-01T00:00:00Z"), until, transcripts_dir=FIXTURE_DIR
+        )
+        self.assertEqual(narrow["denials"], 2)
+        self.assertEqual(wide["denials"], 3)
+
+
 class WindowBoundaryTests(EnvIsolatedTestCase):
     def test_7day_windows_do_not_overlap_at_boundary(self):
         with tempfile.TemporaryDirectory() as tmp:
