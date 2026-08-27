@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import types
 import unittest
 from pathlib import Path
@@ -31,6 +32,47 @@ class EtimeToSecondsTests(unittest.TestCase):
         for name, text, expected in ETIME_CASES:
             with self.subTest(name):
                 self.assertEqual(reap._etime_to_seconds(text), expected)
+
+
+CLAMP_TIMEOUT_CASES = [
+    ("no_deadline_passes_base_through", 180, None, 180),
+    ("ample_remaining_uses_base", 180, 3600.0, 180),
+    ("remaining_below_base_wins", 180, 60.0, 60),
+    ("remaining_at_floor_is_none", 180, 5.0, None),
+    ("remaining_zero_is_none", 180, 0.0, None),
+    ("remaining_negative_is_none", 180, -12.0, None),
+    ("fractional_remaining_truncates", 120, 119.4, 119),
+]
+
+
+class ClampTimeoutTests(unittest.TestCase):
+    def test_table(self):
+        for name, base_s, remaining_s, expected in CLAMP_TIMEOUT_CASES:
+            with self.subTest(name):
+                self.assertEqual(reap.clamp_timeout(base_s, remaining_s), expected)
+
+
+class RunCapturedKillsProcessGroupTests(unittest.TestCase):
+    def test_sigterm_ignoring_child_group_killed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pgid_file = Path(tmp) / "pgid"
+            argv = ["sh", "-c", f"echo $$ > {pgid_file}; trap '' TERM; sleep 30"]
+            start = time.time()
+            with self.assertRaises(subprocess.TimeoutExpired):
+                reap._run_captured(argv, timeout=1, env=dict(os.environ))
+            self.assertLess(time.time() - start, 5)
+
+            pgid = int(pgid_file.read_text().strip())
+            deadline = time.time() + 2
+            gone = False
+            while time.time() < deadline:
+                try:
+                    os.killpg(pgid, 0)
+                except ProcessLookupError:
+                    gone = True
+                    break
+                time.sleep(0.05)
+            self.assertTrue(gone, "process group still alive after _run_captured timeout")
 
 
 PARSE_WORKTREES_CASES = [
@@ -497,6 +539,27 @@ class ClassifySelfInUseSymlinkTests(unittest.TestCase):
                 ignored_dirs=set(), ignored_prefixes=(),
             )
             self.assertEqual(verdict_self, "skip: self")
+
+
+class ScanRepoDeadlineTests(GitFixtureTestCase):
+    def test_zero_remaining_skips_fetch(self):
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("git must not run once the deadline is already spent")
+
+        orig_git = reap.git
+        reap.git = fail_if_called
+        try:
+            result = reap.scan_repo(
+                repo, [], self.tmp / "outside", True, 14, set(), (), remaining_s=0,
+            )
+        finally:
+            reap.git = orig_git
+
+        self.assertTrue(result["timed_out"])
+        self.assertIn("deadline: fetch skipped", result["note"])
 
 
 # --- section 4: worktree_has_real_changes -----------------------------------

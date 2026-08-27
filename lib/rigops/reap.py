@@ -72,16 +72,54 @@ GIT_ENV = {
 }
 
 
+def clamp_timeout(base_s: int, remaining_s: float | None, floor_s: int = 5) -> int | None:
+    """Cap a git timeout to what's left of the run deadline.
+
+    None means no deadline is in play, so base_s passes through unchanged. A
+    remaining budget at or under floor_s is too thin to risk the call at all;
+    the caller must skip it rather than race a doomed subprocess.
+    """
+    if remaining_s is None:
+        return int(base_s)
+    if remaining_s <= floor_s:
+        return None
+    return int(min(base_s, remaining_s))
+
+
+def _run_captured(
+    argv: list[str], timeout: int, env: dict[str, str],
+) -> subprocess.CompletedProcess:
+    """Run argv with captured output; a timeout SIGKILLs the whole process group.
+
+    start_new_session makes the child its own group leader (pgid == pid), so
+    the SIGKILL reaches git's ssh/credential-helper children too -- those are
+    exactly what a plain terminate leaves behind. The reaper's own process
+    group is a different pgid and is never touched.
+    """
+    proc = subprocess.Popen(
+        argv, start_new_session=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, env=env,
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+        try:
+            proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        raise subprocess.TimeoutExpired(argv, timeout) from None
+    return subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
+
+
 def git(repo: Path, *args: str, timeout: int = 120) -> subprocess.CompletedProcess:
     """Run git against a repository with hooks and prompts disabled."""
     env = {**os.environ, **GIT_ENV}
-    return subprocess.run(
-        ["git", "-c", "core.hooksPath=/dev/null", "-C", str(repo), *args],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        env=env,
-        check=False,
+    return _run_captured(
+        ["git", "-c", "core.hooksPath=/dev/null", "-C", str(repo), *args], timeout, env
     )
 
 
@@ -751,22 +789,39 @@ def classify(wt: dict, repo: Path, target: str, live: list[Path], self_cwd: Path
 
 
 def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_days: int,
-              ignored_dirs: set[str], ignored_prefixes: tuple[str, ...]) -> dict:
+              ignored_dirs: set[str], ignored_prefixes: tuple[str, ...],
+              remaining_s: float | None = None) -> dict:
     result = {"repo": str(repo), "target": None, "worktrees": [], "note": None,
               "timed_out": False, "listing_ok": True}
 
     if fetch:
-        try:
-            proc = git(repo, "fetch", "--prune", "--quiet", timeout=180)
-        except subprocess.TimeoutExpired:
+        fetch_timeout = clamp_timeout(180, remaining_s)
+        if fetch_timeout is None:
             result["timed_out"] = True
-            result["note"] = "fetch timeout, using local refs"
-            log(f"fetch timeout: {repo}")
+            result["note"] = "deadline: fetch skipped"
+            log(f"deadline: fetch skipped: {repo}")
         else:
-            if proc.returncode != 0:
-                result["note"] = f"fetch failed, using local refs: {git_error(proc.stderr)}"
+            try:
+                proc = git(repo, "fetch", "--prune", "--quiet", timeout=fetch_timeout)
+            except subprocess.TimeoutExpired:
+                result["timed_out"] = True
+                result["note"] = "fetch timeout, using local refs"
+                log(f"fetch timeout: {repo}")
+            else:
+                if proc.returncode != 0:
+                    result["note"] = f"fetch failed, using local refs: {git_error(proc.stderr)}"
 
-    porcelain = git_ok(repo, "worktree", "list", "--porcelain")
+    list_timeout = clamp_timeout(120, remaining_s)
+    if list_timeout is None:
+        # A note may already be set by the fetch-skip branch above; don't
+        # clobber it, but the listing must still be skipped and the caller
+        # must not be handed a stale worktree registry.
+        if result["note"] is None:
+            result["note"] = "deadline: worktree listing skipped"
+        result["listing_ok"] = False
+        return result
+
+    porcelain = git_ok(repo, "worktree", "list", "--porcelain", timeout=list_timeout)
     if porcelain is None:
         result["note"] = "cannot list worktrees"
         # Without the registry the stale-dir sweep cannot tell stale from live;
@@ -993,6 +1048,7 @@ def run(opts: Any) -> int:
             r, live, self_cwd, fetch=not opts.no_fetch, grace_days=opts.grace_days,
             ignored_dirs=opts.ignored_untracked_dirs,
             ignored_prefixes=opts.ignored_untracked_prefixes,
+            remaining_s=opts.deadline_s - (time.time() - run_start),
         ))
 
     snap = ps_snapshot()
