@@ -10,7 +10,7 @@
     "globs": []
   },
   "friction": {
-    "headless_projects": ["ci-bot"]
+    "headless_projects": ["-Users-example-agent-runner"]
   },
   "context": {
     "nudge_tiers": [250000, 350000, 500000],

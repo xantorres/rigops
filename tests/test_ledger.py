@@ -74,7 +74,7 @@ class BuildRowTests(EnvIsolatedTestCase):
             self.assertEqual(row["denials_headless"], 0)
             self.assertEqual(row["corrections"], 2)
             self.assertEqual(row["tier3_breaches"], 0)
-            self.assertEqual(row["tool_err_per_100"], 60.0)
+            self.assertEqual(row["tool_err_per_100"], 100.0)
 
             explicit_size = (FIXTURE_FIXED_TAX / "explicit.md").stat().st_size
             plain_size = (FIXTURE_FIXED_TAX / "globbed" / "plain.md").stat().st_size

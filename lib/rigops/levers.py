@@ -238,8 +238,10 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
     row["denials"] = fr["denials"]
     row["denials_headless"] = fr["denials_headless"]
     row["corrections"] = fr["corrections"]
-    row["tier3_breaches"] = tier3_breach_sessions(win, tier3)
-    row["tool_err_per_100"] = round(fr["tool_errors"] / n * 100, 1) if n else None
+    row["tier3_breaches"] = tier3_breach_sessions(win_main, tier3)
+    row["tool_err_per_100"] = (
+        round(fr["tool_errors"] / len(win_main) * 100, 1) if win_main else None
+    )
     row["fixed_tax_b"] = fixed_tax_bytes(cfg)
     row["sources"] = source_annotations(cfg, since, until)
     return row

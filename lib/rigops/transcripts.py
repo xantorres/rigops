@@ -28,9 +28,21 @@ _DENIAL_ALTERNATIVES = (
     r"requires approval",
     r"operation blocked",
     r"PreToolUse:.*(deny|blocked)",
+    r"permission to use .{0,160}denied",
+    r"has been denied",
+    r"user doesn'?t want to proceed",
+    r"tool use was rejected",
+    r"hook.{0,40}(denied|blocked)",
+    r"(denied|blocked).{0,40}hook",
+    r"checkout behind origin",
+    r"stale backend checkout",
 )
 DENIAL_PATTERNS = re.compile("|".join(_DENIAL_ALTERNATIVES), re.IGNORECASE)
-CORRECTION_RE = re.compile(r"^\s*(no|nope|wrong|not what|stop|wait|undo|revert)\b", re.IGNORECASE)
+CORRECTION_RE = re.compile(
+    r"^\s*(?:no(?![\w-])|nope\b|wrong\b|not what\b|undo\b|revert\b|"
+    r"stop(?=\s*(?:[-,.!:;]|$))|wait(?=\s*(?:[-,.!:;]|$)))",
+    re.IGNORECASE,
+)
 
 
 def classify_denial(text: str) -> bool:
@@ -216,12 +228,12 @@ def _flatten_tool_result_text(content) -> str:
 
 def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -> dict:
     """Count permission denials, self-corrections, and tool errors from user-role
-    transcript rows. Mirrors collect_turns' file walk, project derivation, and
+    transcript rows. Mirrors collect_turns' file walk, rel-path derivation, and
     window filter but keeps "user" rows; subagent transcripts are excluded since
     subagent tool errors are not user friction.
     """
     root = _resolve_dir(transcripts_dir)
-    headless = set(headless_projects)
+    headless = tuple(headless_projects)
     denials = 0
     denials_headless = 0
     corrections = 0
@@ -230,7 +242,8 @@ def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -
     for path in find_transcripts(root):
         if "/subagents/" in path:
             continue
-        proj = project_label(path, root)
+        rel_path = os.path.relpath(path, str(root))
+        is_headless = any(sub and sub in rel_path for sub in headless)
         try:
             fh = open(path)
         except OSError:
@@ -278,7 +291,7 @@ def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -
                         text = _flatten_tool_result_text(item.get("content"))
                         if classify_denial(text):
                             denials += 1
-                            if proj in headless:
+                            if is_headless:
                                 denials_headless += 1
                     elif itype == "text":
                         text = item.get("text")
@@ -288,6 +301,7 @@ def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -
                             continue
                         if is_correction(text):
                             corrections += 1
+                            break
     return {
         "denials": denials,
         "denials_headless": denials_headless,

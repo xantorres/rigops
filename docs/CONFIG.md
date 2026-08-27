@@ -63,6 +63,16 @@ Always-loaded config counted toward the "fixed tax" - bytes that reload on every
 {"fixed_tax": {"paths": ["~/.claude/CLAUDE.md"], "globs": []}}
 ```
 
+## `friction`
+
+Scopes the ledger's interaction-friction columns (`denials`, `denials_headless`, `corrections`, `tier3_breaches`, `tool_err_per_100` - see [LEDGER.md](LEDGER.md)).
+
+- `headless_projects` (`array<string>`, default `[]`) - substrings matched against each transcript's path *relative to `transcripts_dir`* (same semantics as `ledger.watch_projects`). A denial on a transcript path containing any of these substrings also counts toward `denials_headless`.
+
+```json
+{"friction": {"headless_projects": ["-Users-example-agent-runner"]}}
+```
+
 ## `context`
 
 Config for the plugin's `ctx-nudge` hook and the statusline.

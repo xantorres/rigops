@@ -38,6 +38,11 @@ EIT = input + 1.25 * cache_creation + 0.1 * cache_read
 | `Agent/100` | `Agent` tool calls per 100 main-thread turns (subagent transcripts excluded from both sides of the ratio). Delegation rate. |
 | `cheap-model EIT %` | Share of window EIT attributed to `sonnet`/`haiku`-family models. |
 | `fixed tax` | `fixed_tax.paths`/`fixed_tax.globs` byte total at write time - see [CONFIG.md](CONFIG.md#fixed_tax). |
+| `denials` | Permission-denial tool-result rows across the window's user turns. |
+| `denials hl` | Same, restricted to transcript paths matching a `friction.headless_projects` substring - see [CONFIG.md](CONFIG.md#friction). |
+| `corrections` | User text turns whose first line reads as a correction (at most one counted per turn). |
+| `tier3 sess` | Main-thread sessions with at least one turn at or above the third `context.nudge_tiers` threshold. |
+| `tool err/100` | `is_error` tool-result rows per 100 main-thread turns (subagent transcripts excluded from the denominator). |
 | `<name> turn-1 p10` | One column per `ledger.watch_projects` entry: turn-1 p10 restricted to sessions whose transcript path (relative to `transcripts_dir`) contains that entry's configured substring. |
 
 Any column can be `-` (no data yet - e.g. `sessions` and everything downstream of `watch_projects` on early rows, before per-session/per-project tracking had data to compute from).
@@ -187,7 +192,7 @@ Reading a diff every week, one deliberate change at a time, is the point - a sin
 
 ## See also
 
-- [CONFIG.md](CONFIG.md) - `ledger.watch_projects`, `fixed_tax`, `sources`.
+- [CONFIG.md](CONFIG.md) - `ledger.watch_projects`, `fixed_tax`, `friction`, `sources`.
 - [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md) - the Python floor these scripts run under.
 - [../patterns/drift-ledger.md](../patterns/drift-ledger.md)
 - [../patterns/context-tax.md](../patterns/context-tax.md)

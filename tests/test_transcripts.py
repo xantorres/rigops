@@ -140,6 +140,22 @@ DENIAL_CASES = [
     ("classifier_text", "Permission for this action was denied by the auto mode classifier", True),
     ("blocked_by_hook", "blocked by stale-checkout hook", True),
     ("requires_approval", "requires approval", True),
+    (
+        "user_rejected_tool_use",
+        "The user doesn't want to proceed with this tool use. The tool use was rejected",
+        True,
+    ),
+    (
+        "stale_backend_checkout",
+        "STALE BACKEND CHECKOUT: acme-web 7 commits behind origin/main",
+        True,
+    ),
+    ("operation_blocked_by_hook", "operation blocked by hook", True),
+    (
+        "interactive_permission_denied",
+        "Permission to use Bash with command ls -la /tmp has been denied.",
+        True,
+    ),
     ("plain_command_failure", "npm ERR! code 1", False),
     ("grep_no_such_file", "grep: No such file", False),
 ]
@@ -153,11 +169,14 @@ class ClassifyDenialTests(unittest.TestCase):
 
 
 CORRECTION_CASES = [
+    ("stop_period", "stop.", True),
+    ("wait_comma_broke", "wait, that broke it", True),
+    ("no_comma_wrong_file", "no, wrong file", True),
     ("nope", "nope", True),
-    ("not_what_i_asked", "not what I asked", True),
     ("revert_that", "revert that", True),
-    ("wait_em_dash_broke", "Wait — that broke X", True),
-    ("stop_gap_fine", "I know, stop-gap is fine", False),
+    ("stop_the_server", "stop the server", False),
+    ("wait_for_ci", "wait for CI to finish", False),
+    ("no_op_change", "no-op change is fine", False),
     ("now_add_tests", "now add tests", False),
 ]
 

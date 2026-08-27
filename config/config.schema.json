@@ -43,6 +43,20 @@
       },
       "additionalProperties": true
     },
+    "friction": {
+      "type": "object",
+      "description": "Scopes the ledger's interaction-friction columns (denials, corrections, tier3 breaches, tool errors).",
+      "properties": {
+        "headless_projects": {
+          "type": "array",
+          "description": "Substrings matched against each transcript's path relative to transcripts_dir; a denial on a matching path also counts toward denials_headless.",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
     "context": {
       "type": "object",
       "description": "Settings for the plugin's context-nudge hook and statusline.",
