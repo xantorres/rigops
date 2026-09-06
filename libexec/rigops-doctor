@@ -379,12 +379,16 @@ def main(argv=None) -> int:
         checks.append(run_disk_free_check(disk_free_cfg))
 
     fail_count = sum(1 for j in jobs if j["status"] in ("failing", "hung"))
+    # Reported, never paged: a stale row is a trend to read in the events log,
+    # not a nightly interruption, so it stays out of the notify predicate.
+    stale_count = sum(1 for j in jobs if j["status"] == "stale")
     checks_failed = any(c["status"] == "fail" for c in checks)
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     report_text = render_report(ts, jobs, checks, heal_log, args.supervisor)
 
     state.append_jsonl(events_path, {
-        "ts": ts, "jobs_checked": len(jobs), "fail_count": fail_count, "healed": heal_log,
+        "ts": ts, "jobs_checked": len(jobs), "fail_count": fail_count,
+        "stale_count": stale_count, "healed": heal_log,
     })
 
     notify_command = rigops_config.get(cfg, "doctor.notify_command", "")
@@ -399,7 +403,7 @@ def main(argv=None) -> int:
     if args.json:
         payload = {
             "ts": ts, "supervisor": args.supervisor, "jobs": jobs, "checks": checks,
-            "healed": heal_log, "fail_count": fail_count,
+            "healed": heal_log, "fail_count": fail_count, "stale_count": stale_count,
         }
         print(json.dumps(payload, indent=2, default=str))
     elif args.report:

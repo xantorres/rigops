@@ -392,6 +392,71 @@ class WatermarkFullPathNeedleTests(unittest.TestCase):
             self.assertEqual([r["status"] for r in results2], ["deduped", "deduped"])
 
 
+class WatermarkNestedPathNeedleTests(unittest.TestCase):
+    def _tripping_pair(self, tmp: str) -> tuple:
+        d = Path(tmp) / "memory"
+        d.mkdir()
+        index = d / "MEMORY.md"
+        index.write_bytes(b"x" * 9000)
+        dir_wm = {"name": "auto-memory", "path": str(d), "max_kb": 1, "area": "memory"}
+        file_wm = {"name": "memory-index", "path": str(index), "max_kb": 8, "area": "memory"}
+        return d, index, dir_wm, file_wm
+
+    def test_open_dir_line_does_not_dedupe_a_file_under_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d, index, dir_wm, file_wm = self._tripping_pair(tmp)
+            backlog_path = Path(tmp) / "backlog.md"
+            janitor.check_watermarks([dir_wm], backlog_path, ["memory"], apply=True)
+
+            results = janitor.check_watermarks([file_wm], backlog_path, ["memory"], apply=True)
+
+            self.assertEqual(results[0]["status"], "appended")
+            text = backlog_path.read_text(encoding="utf-8")
+            self.assertIn(f"watermark {d} tripped:", text)
+            self.assertIn(f"watermark {index} tripped:", text)
+
+    def test_open_file_line_does_not_dedupe_the_directory_holding_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d, index, dir_wm, file_wm = self._tripping_pair(tmp)
+            backlog_path = Path(tmp) / "backlog.md"
+            janitor.check_watermarks([file_wm], backlog_path, ["memory"], apply=True)
+
+            results = janitor.check_watermarks([dir_wm], backlog_path, ["memory"], apply=True)
+
+            self.assertEqual(results[0]["status"], "appended")
+            text = backlog_path.read_text(encoding="utf-8")
+            self.assertIn(f"watermark {index} tripped:", text)
+            self.assertIn(f"watermark {d} tripped:", text)
+
+
+class WatermarkFileStatErrorTests(unittest.TestCase):
+    def test_file_that_vanishes_before_the_stat_is_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            gone = Path(tmp) / "GONE.md"
+            gone.write_bytes(b"x" * 9000)
+            stays = Path(tmp) / "STAYS.md"
+            stays.write_bytes(b"x" * 9000)
+            wms = [
+                {"name": "gone", "path": str(gone), "max_kb": 8, "area": "memory"},
+                {"name": "stays", "path": str(stays), "max_kb": 8, "area": "memory"},
+            ]
+            backlog_path = Path(tmp) / "backlog.md"
+            real_file_watermark = janitor._file_watermark
+
+            def unlink_then_measure(f, name, max_files, max_kb):
+                if f == gone:
+                    f.unlink()
+                return real_file_watermark(f, name, max_files, max_kb)
+
+            janitor._file_watermark = unlink_then_measure
+            self.addCleanup(setattr, janitor, "_file_watermark", real_file_watermark)
+
+            results = janitor.check_watermarks(wms, backlog_path, ["memory"], apply=True)
+
+            self.assertEqual([r["name"] for r in results], ["stays"])
+            self.assertEqual(results[0]["status"], "appended")
+
+
 class WatermarkAppendErrorTests(unittest.TestCase):
     def test_missing_open_heading_records_error_status_no_raise(self):
         with tempfile.TemporaryDirectory() as tmp:

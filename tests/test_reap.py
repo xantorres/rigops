@@ -703,6 +703,68 @@ class ScanRepoDeadlineTests(GitFixtureTestCase):
         self.assertEqual(result["note"], "deadline: target unresolved")
         self.assertEqual([w["verdict"] for w in result["worktrees"]], ["skip: deadline"])
 
+class ResolveTargetBudgetTests(EnvIsolatedTestCase):
+    def _fake_clock_and_probes(self, spend_s: float) -> list:
+        clock = {"now": 1000.0}
+        probes = []
+
+        def probe(repo, *args, timeout=None, **kwargs):
+            probes.append(timeout)
+            clock["now"] += spend_s
+            return None
+
+        self.addCleanup(setattr, reap, "time", reap.time)
+        self.addCleanup(setattr, reap, "git_ok", reap.git_ok)
+        reap.time = types.SimpleNamespace(time=lambda: clock["now"])
+        reap.git_ok = probe
+        return probes
+
+    def test_each_candidate_is_clamped_against_what_is_left(self):
+        probes = self._fake_clock_and_probes(spend_s=20.0)
+
+        target = reap.resolve_target(Path("/nonexistent"), timeout=120, remaining_s=50)
+
+        self.assertIsNone(target)
+        self.assertEqual(probes, [50, 30, 10])
+
+    def test_spent_budget_stops_the_loop_instead_of_probing_on(self):
+        probes = self._fake_clock_and_probes(spend_s=60.0)
+
+        target = reap.resolve_target(Path("/nonexistent"), timeout=120, remaining_s=60)
+
+        self.assertIsNone(target)
+        self.assertEqual(probes, [60])
+
+    def test_no_deadline_probes_every_candidate_at_the_base_timeout(self):
+        probes = self._fake_clock_and_probes(spend_s=1000.0)
+
+        target = reap.resolve_target(Path("/nonexistent"), timeout=120)
+
+        self.assertIsNone(target)
+        self.assertEqual(probes, [120] * len(reap.MERGE_TARGETS))
+
+
+class ScanRepoTargetBudgetTests(GitFixtureTestCase):
+    def test_scan_hands_resolve_target_the_remaining_budget(self):
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        _run_git(["worktree", "add", "-b", "feature-one", str(self.tmp / "wt-one")], repo)
+        seen = {}
+
+        def record(repo_arg, timeout=None, remaining_s=None):
+            seen["timeout"] = timeout
+            seen["remaining_s"] = remaining_s
+            return None
+
+        self.addCleanup(setattr, reap, "resolve_target", reap.resolve_target)
+        reap.resolve_target = record
+
+        reap.scan_repo(repo, [], self.tmp / "outside", False, 14, set(), (), remaining_s=90)
+
+        self.assertIsNotNone(seen["remaining_s"])
+        self.assertLessEqual(seen["remaining_s"], 90)
+
+
 # --- section 4: worktree_has_real_changes -----------------------------------
 
 

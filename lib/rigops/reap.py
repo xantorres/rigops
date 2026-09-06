@@ -661,9 +661,23 @@ def age_days(path: Path) -> int | None:
     return int((datetime.now(timezone.utc).timestamp() - created) / 86400)
 
 
-def resolve_target(repo: Path, timeout: int = 120) -> str | None:
+def resolve_target(repo: Path, timeout: int = 120,
+                   remaining_s: float | None = None) -> str | None:
+    """First merge candidate whose commit exists, within the run deadline.
+
+    Every candidate is re-clamped against what is left: reusing one clamped
+    timeout would let a repository whose refs all hang spend the budget once
+    per candidate. A budget too thin for the next probe returns None, which
+    the caller already reads as "no target, skip the repository".
+    """
+    started = time.time()
     for ref in MERGE_TARGETS:
-        if git_ok(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}", timeout=timeout):
+        left = None if remaining_s is None else remaining_s - (time.time() - started)
+        probe_timeout = clamp_timeout(timeout, left)
+        if probe_timeout is None:
+            return None
+        if git_ok(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}",
+                  timeout=probe_timeout):
             return ref
     return None
 
@@ -890,7 +904,10 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
     if target_timeout is None:
         return out_of_time("deadline: target unresolved", entries[1:])
 
-    target = resolve_target(repo, timeout=target_timeout)
+    target = resolve_target(
+        repo, timeout=target_timeout,
+        remaining_s=None if remaining_s is None else remaining_s - (time.time() - scan_start),
+    )
     result["target"] = target
     if target is None:
         result["note"] = "no merge target resolved; repository skipped"

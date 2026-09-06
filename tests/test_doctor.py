@@ -376,8 +376,42 @@ class EventsJsonlTests(EnvIsolatedTestCase):
         lines = events_path.read_text().splitlines()
         self.assertEqual(len(lines), 1)
         event = json.loads(lines[0])
-        self.assertEqual(set(event), {"ts", "jobs_checked", "fail_count", "healed"})
+        self.assertEqual(
+            set(event), {"ts", "jobs_checked", "fail_count", "stale_count", "healed"}
+        )
         self.assertEqual(event["jobs_checked"], 1)
+        self.assertEqual(event["fail_count"], 0)
+
+
+class StaleCountTests(EnvIsolatedTestCase):
+    def _stale_registry(self) -> Path:
+        evidence = Path(self.tmp) / "evidence.log"
+        evidence.write_text("ran\n")
+        mtime = time.time() - 40 * 3600
+        os.utime(evidence, (mtime, mtime))
+        stale_item = NO_LABEL_ITEM.replace("health: -", f"health: {evidence}")
+        return _write_registry(self.tmp, OK_ITEM, stale_item)
+
+    def _run(self) -> dict:
+        registry_path = self._stale_registry()
+        with (
+            mock.patch.object(launchd, "is_loaded", side_effect=lambda c: c == "local.job-ok"),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, None, 0)),
+        ):
+            code, out = _run_doctor(["--json", "--registry", str(registry_path)])
+        self.assertEqual(code, 0)
+        return json.loads(out)
+
+    def test_json_payload_counts_the_stale_row(self):
+        payload = self._run()
+        self.assertEqual(payload["stale_count"], 1)
+        self.assertEqual(payload["fail_count"], 0)
+
+    def test_event_records_the_stale_count(self):
+        self._run()
+        events_path = Path(self.tmp) / "state" / "doctor" / "events.jsonl"
+        event = json.loads(events_path.read_text().splitlines()[0])
+        self.assertEqual(event["stale_count"], 1)
         self.assertEqual(event["fail_count"], 0)
 
 

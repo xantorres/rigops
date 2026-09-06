@@ -375,7 +375,10 @@ def check_watermarks(watermarks: list, backlog_path, areas: list, apply: bool) -
                     caps.append(f"{max_files} files")
             elif d.is_file():
                 files = 1
-                kb, tripped = _file_watermark(d, name, max_files, max_kb)
+                try:
+                    kb, tripped = _file_watermark(d, name, max_files, max_kb)
+                except OSError:
+                    continue
                 measured = f"{kb}KB"
             else:
                 continue
@@ -391,7 +394,10 @@ def check_watermarks(watermarks: list, backlog_path, areas: list, apply: bool) -
                 # deletions already happened.
                 try:
                     text = backlog_p.read_text(encoding="utf-8") if backlog_p.exists() else ""
-                    needle = f"watermark {d}"
+                    # Anchored on both sides: a bare path prefix would let an open
+                    # line for a file inside a watched directory dedupe the
+                    # directory's own line, and vice versa.
+                    needle = f"watermark {d} tripped:"
                     if rigops_backlog.has_open_line(text, needle):
                         status = "deduped"
                     else:
