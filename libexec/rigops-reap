@@ -35,7 +35,9 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true",
                         help="with --apply, print the commands without running them")
     parser.add_argument("--json", action="store_true", help="machine-readable report")
-    parser.add_argument("--repo", type=Path, help="scan one repository instead of the whole tree")
+    parser.add_argument("--repo", type=Path, action="append",
+                        help="scan this repository instead of the whole tree; "
+                             "repeatable, absolute or relative path to one repository")
     parser.add_argument("--root", type=Path,
                         help="scan this tree only, overriding the configured reaper.roots list")
     parser.add_argument("--no-fetch", action="store_true",

@@ -243,6 +243,20 @@ class DiscoverReposUnreadableDirTests(EnvIsolatedTestCase):
             self.assertEqual(repos, [good_repo])
 
 
+class DiscoverReposDepthTests(EnvIsolatedTestCase):
+    def test_depth_one_and_two_dirs_found_git_files_and_nested_repos_skipped(self):
+        root = self.tmp / "root"
+        (root / "x" / ".git").mkdir(parents=True)
+        (root / "x" / "inner" / ".git").mkdir(parents=True)
+        (root / "g" / "y" / ".git").mkdir(parents=True)
+        (root / "g" / "z").mkdir(parents=True)
+        (root / "g" / "z" / ".git").write_text("gitdir: /elsewhere/.git/modules/z\n")
+        (root / "w").mkdir(parents=True)
+        (root / "w" / ".git").write_text("gitdir: /elsewhere/.git/worktrees/w\n")
+
+        self.assertEqual(reap.discover_repos(root), [root / "g" / "y", root / "x"])
+
+
 class LiveWorktreeCwdsNullPidTests(EnvIsolatedTestCase):
     def test_null_pid_ignored_no_raise(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -693,7 +707,7 @@ class RunApplyJsonPurityTests(GitFixtureTestCase):
 
         opts = types.SimpleNamespace(
             selftest=False, apply=True, dry_run=False, json=True,
-            repo=repo, roots=[], no_fetch=True, grace_days=14,
+            repo=[repo], roots=[], no_fetch=True, grace_days=14,
             sessions_dir=sessions_dir, deadline_s=60,
             max_kills_per_tree=20, orphan_min_age_s=172800, kill_grace_s=5,
             ignored_untracked_dirs=set(), ignored_untracked_prefixes=(),
@@ -713,6 +727,42 @@ class RunApplyJsonPurityTests(GitFixtureTestCase):
         self.assertFalse(wt_path.exists())
 
 
+class RunRepeatedRepoTests(GitFixtureTestCase):
+    def _scanned(self, repos):
+        sessions_dir = self.tmp / "sessions"
+        sessions_dir.mkdir(exist_ok=True)
+        opts = types.SimpleNamespace(
+            selftest=False, apply=False, dry_run=False, json=True,
+            repo=repos, roots=[], no_fetch=True, grace_days=14,
+            sessions_dir=sessions_dir, deadline_s=60,
+            max_kills_per_tree=20, orphan_min_age_s=172800, kill_grace_s=5,
+            ignored_untracked_dirs=set(), ignored_untracked_prefixes=(),
+        )
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.assertEqual(reap.run(opts), 0)
+        return [r["repo"] for r in json.loads(buf.getvalue())["repos"]]
+
+    def test_every_repo_flag_is_scanned(self):
+        first = self.tmp / "first"
+        second = self.tmp / "second"
+        _init_repo(first)
+        _init_repo(second)
+
+        self.assertEqual(
+            self._scanned([first, second]),
+            [str(first.resolve()), str(second.resolve())],
+        )
+
+    def test_duplicate_paths_are_scanned_once(self):
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        alias = self.tmp / "alias"
+        os.symlink(repo, alias)
+
+        self.assertEqual(self._scanned([repo, alias, repo]), [str(repo.resolve())])
+
+
 class RunSummaryTests(GitFixtureTestCase):
     def test_summary_line_reports_the_deadline_skip_count(self):
         repo = self.tmp / "repo"
@@ -723,7 +773,7 @@ class RunSummaryTests(GitFixtureTestCase):
 
         opts = types.SimpleNamespace(
             selftest=False, apply=False, dry_run=False, json=True,
-            repo=repo, roots=[], no_fetch=True, grace_days=14,
+            repo=[repo], roots=[], no_fetch=True, grace_days=14,
             sessions_dir=sessions_dir, deadline_s=60,
             max_kills_per_tree=20, orphan_min_age_s=172800, kill_grace_s=5,
             ignored_untracked_dirs=set(), ignored_untracked_prefixes=(),

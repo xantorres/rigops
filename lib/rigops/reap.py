@@ -183,17 +183,25 @@ def dir_size(path: Path) -> int:
 
 
 def discover_repos(root: Path) -> list[Path]:
-    """Primary checkouts two levels under root. A worktree carries a .git file
-    rather than a directory, which keeps linked worktrees out of the list even
-    when they sit alongside real repositories."""
+    """Primary checkouts one or two levels under root, so a root holding
+    checkouts directly and a root holding groups of them both work.
+
+    A worktree or submodule carries a .git file rather than a directory, which
+    keeps both out of the list even when they sit alongside real repositories.
+    A checkout found at the first level is not descended into: anything nested
+    under it belongs to that repository, not beside it.
+    """
     repos = []
     try:
-        groups = sorted(p for p in root.iterdir() if p.is_dir())
+        entries = sorted(p for p in root.iterdir() if p.is_dir())
     except OSError:
         return repos
-    for group in groups:
+    for entry in entries:
+        if (entry / ".git").is_dir():
+            repos.append(entry)
+            continue
         try:
-            candidates = sorted(p for p in group.iterdir() if p.is_dir())
+            candidates = sorted(p for p in entry.iterdir() if p.is_dir())
         except OSError:
             continue
         for candidate in candidates:
@@ -1062,7 +1070,13 @@ def run(opts: Any) -> int:
         return 2
 
     if opts.repo:
-        repos = [opts.repo.resolve()]
+        repos = []
+        seen = set()
+        for selected in opts.repo:
+            resolved = selected.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                repos.append(resolved)
     else:
         repos = []
         for root in opts.roots:
