@@ -67,11 +67,11 @@ rigops doctor report 2026-08-23T10:53:12Z
 supervisor: none
 
 == jobs ==
-id              status   runtime  evidence age  action
---------------  -------  -------  ------------  ---------
-nightly-backup  ok       -        2.0h          none
-metrics-rollup  stale    -        72.0h         kickstart
-log-prune       unknown  -        -             none
+id              status  runtime  evidence age  action
+--------------  ------  -------  ------------  ------
+nightly-backup  ok      -        2.0h          none
+metrics-rollup  stale   -        72.0h         none
+not judged (no launchd label, no evidence): log-prune
 
 == checks ==
 name          status  detail
@@ -80,7 +80,7 @@ backup-fresh  ok      exit 0
 disk-free     ok      400.2GB free on ~
 ```
 
-`metrics-rollup` is `stale` here: its evidence is 72h old against an expected 15-minute cadence. `log-prune` is `unknown`, not `ok` or `stale` - its `health` field is `-`, so it's never evidence-checked at all; `unknown` means "no data," not "broken."
+`metrics-rollup` is `stale` here: its evidence is 72h old against an expected 15-minute cadence. Its action is `none` because `--supervisor none` has nothing to kickstart. `log-prune` has neither a launchd label nor a `health` path, so it is never judged at all and collapses into the footer line instead of a table row; that is "no data," not "broken."
 
 ## Registry hygiene
 

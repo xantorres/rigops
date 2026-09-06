@@ -127,11 +127,11 @@ rigops doctor report 2026-08-23T10:53:12Z
 supervisor: none
 
 == jobs ==
-id              status   runtime  evidence age  action
---------------  -------  -------  ------------  ---------
-nightly-backup  ok       -        2.0h          none
-metrics-rollup  stale    -        72.0h         kickstart
-log-prune       unknown  -        -             none
+id              status  runtime  evidence age  action
+--------------  ------  -------  ------------  ------
+nightly-backup  ok      -        2.0h          none
+metrics-rollup  stale   -        72.0h         none
+not judged (no launchd label, no evidence): log-prune
 
 == checks ==
 name          status  detail

@@ -149,7 +149,7 @@ Config for `rigops janitor` (see [SAFETY.md](SAFETY.md) for the delete cap).
   - `name`, `path` (base file or directory), `glob` (default `*`; matched against entry **names** only - a pattern containing `/` matches nothing), `older_than_days`, `max_depth`.
   - `action`: `delete` (remove every match) · `truncate` (keep the last `keep_lines` lines of a file, default `500`) · `keep_newest_n` (delete all but the newest `keep` matches by mtime, default `3`) · `report` (list matches, never act) · `command` (run `command` via `/bin/sh -c` with `timeout_s`, default `120`, under `--apply` only).
   - `dirs` (`bool`) - match directories instead of files. `only_empty` (`bool`) - with `dirs`, match only empty directories.
-- `watermarks` (`array`, default `[]`) - each `{name, path, max_files, max_kb, area}`; `path` is a directory or a glob over directories. A tripped watermark appends one deduplicated line to the backlog under `area` (default `"memory"`) - only under `--apply`.
+- `watermarks` (`array`, default `[]`) - each `{name, path, max_files, max_kb, area}`; `path` is a glob: a directory match is judged by `max_files` and `max_kb`, a single-file match by `max_kb` only (`max_files` against a file is a configuration error and says so on stderr). A tripped watermark appends one deduplicated line to the backlog under `area` (default `"memory"`) - only under `--apply`.
 - `max_delete` (`int`, default `200`) - total delete/`keep_newest_n` budget for the whole run. A directory candidate counts as one plus every file and directory under it. A rule whose match total would push the running count over the cap is skipped **whole**, never partially applied.
 
 ```json

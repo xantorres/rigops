@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - janitor: a watermark whose glob matches a single file is judged by
   `max_kb` instead of being skipped. `max_files` against a file is a
   configuration error and says so on stderr.
+- doctor: the events log and `--json` carry `stale_count` beside
+  `fail_count`, so report-only stale rows stay countable without
+  opening the report. Staleness still never triggers the notify
+  command.
 
 ### Changed
 
@@ -28,8 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the notify command, the events log and `--json`; nonzero is left to an
   unreadable registry or a bad argument. A red job elsewhere in the fleet
   no longer made the doctor kickstart itself.
-- doctor: on-demand rows collapse into one footer line under the table.
-  The JSON payload still lists every job.
+- doctor: an item with no launchd label and no evidence collapses into one
+  footer line under the table. The JSON payload still lists every job.
 
 ### Fixed
 
