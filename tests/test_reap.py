@@ -658,6 +658,50 @@ class ScanRepoDeadlineTests(GitFixtureTestCase):
         self.assertEqual(verdicts[1], "skip: deadline")
         self.assertTrue(result["timed_out"])
 
+    def test_listing_deadline_marks_the_repository_timed_out(self):
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+
+        result = reap.scan_repo(
+            repo, [], self.tmp / "outside", False, 14, set(), (), remaining_s=0,
+        )
+
+        self.assertTrue(result["timed_out"])
+        self.assertFalse(result["listing_ok"])
+        self.assertIn("worktree listing skipped", result["note"])
+
+    def test_target_resolution_deadline_skips_every_worktree(self):
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        _run_git(["worktree", "add", "-b", "feature-one", str(self.tmp / "wt-one")], repo)
+
+        clock = {"now": 1000.0}
+        real_parse = reap.parse_worktrees
+
+        def burn_the_budget(porcelain):
+            clock["now"] += 100.0
+            return real_parse(porcelain)
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("git must not run once the deadline is already spent")
+
+        self.addCleanup(setattr, reap, "time", reap.time)
+        self.addCleanup(setattr, reap, "parse_worktrees", reap.parse_worktrees)
+        self.addCleanup(setattr, reap, "resolve_target", reap.resolve_target)
+        self.addCleanup(setattr, reap, "default_branch", reap.default_branch)
+        reap.time = types.SimpleNamespace(time=lambda: clock["now"])
+        reap.parse_worktrees = burn_the_budget
+        reap.resolve_target = fail_if_called
+        reap.default_branch = fail_if_called
+
+        result = reap.scan_repo(
+            repo, [], self.tmp / "outside", False, 14, set(), (), remaining_s=60,
+        )
+
+        self.assertTrue(result["timed_out"])
+        self.assertTrue(result["listing_ok"])
+        self.assertEqual(result["note"], "deadline: target unresolved")
+        self.assertEqual([w["verdict"] for w in result["worktrees"]], ["skip: deadline"])
 
 # --- section 4: worktree_has_real_changes -----------------------------------
 

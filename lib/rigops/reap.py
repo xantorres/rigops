@@ -661,9 +661,9 @@ def age_days(path: Path) -> int | None:
     return int((datetime.now(timezone.utc).timestamp() - created) / 86400)
 
 
-def resolve_target(repo: Path) -> str | None:
+def resolve_target(repo: Path, timeout: int = 120) -> str | None:
     for ref in MERGE_TARGETS:
-        if git_ok(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"):
+        if git_ok(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}", timeout=timeout):
             return ref
     return None
 
@@ -678,7 +678,7 @@ def is_ignored_untracked(path: str, ignored_dirs: set[str],
     return False
 
 
-def default_branch(repo: Path) -> str:
+def default_branch(repo: Path, timeout: int = 120) -> str:
     """Resolve the parent repo's default branch for the dirty-diff comparison.
 
     Independent of MERGE_TARGETS/resolve_target: that mechanism picks whatever
@@ -686,7 +686,7 @@ def default_branch(repo: Path) -> str:
     is specifically the remote's advertised default, with a literal fallback
     so the diff check always has something to compare against.
     """
-    ref = git_ok(repo, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
+    ref = git_ok(repo, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD", timeout=timeout)
     if ref and ref.startswith("refs/remotes/"):
         return ref.removeprefix("refs/remotes/")
     return "main"
@@ -850,16 +850,27 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
                 if proc.returncode != 0:
                     result["note"] = f"fetch failed, using local refs: {git_error(proc.stderr)}"
 
-    list_remaining = (
-        remaining_s - (time.time() - scan_start) if remaining_s is not None else None
-    )
-    list_timeout = clamp_timeout(120, list_remaining)
+    # Every git call from here on is capped at what is left of the run
+    # deadline, so one slow repository cannot carry the run past it.
+    def budget() -> int | None:
+        left = None if remaining_s is None else remaining_s - (time.time() - scan_start)
+        return clamp_timeout(120, left)
+
+    def out_of_time(note: str, unjudged: list[dict]) -> dict:
+        """Close the scan on the deadline: the worktrees left over stay unjudged."""
+        result["timed_out"] = True
+        result["note"] = note
+        for wt in unjudged:
+            wt["verdict"] = DEADLINE_SKIP
+            result["worktrees"].append(wt)
+        return result
+
+    list_timeout = budget()
     if list_timeout is None:
         # A note may already be set by the fetch-skip branch above; don't
         # clobber it, but the listing must still be skipped and the caller
         # must not be handed a stale worktree registry.
-        if result["note"] is None:
-            result["note"] = "deadline: worktree listing skipped"
+        out_of_time(result["note"] or "deadline: worktree listing skipped", [])
         result["listing_ok"] = False
         return result
 
@@ -875,7 +886,11 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
     if len(entries) <= 1:
         return result
 
-    target = resolve_target(repo)
+    target_timeout = budget()
+    if target_timeout is None:
+        return out_of_time("deadline: target unresolved", entries[1:])
+
+    target = resolve_target(repo, timeout=target_timeout)
     result["target"] = target
     if target is None:
         result["note"] = "no merge target resolved; repository skipped"
@@ -884,7 +899,11 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
             result["worktrees"].append(wt)
         return result
 
-    default_branch_ref = default_branch(repo)
+    branch_timeout = budget()
+    if branch_timeout is None:
+        return out_of_time("deadline: default branch unresolved", entries[1:])
+
+    default_branch_ref = default_branch(repo, timeout=branch_timeout)
 
     # entries[0] is the primary checkout and is never a candidate.
     for wt in entries[1:]:
