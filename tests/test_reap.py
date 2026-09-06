@@ -15,7 +15,47 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from rigops import reap  # noqa: E402
+from rigops import reap, state  # noqa: E402
+
+# Resolved before any test rewrites the environment: the log the operator's own
+# reaper runs append to, which no test may touch.
+OPERATOR_LOG = state.state_dir() / "reap.log"
+_operator_log_stat = None
+
+
+def _stat_operator_log():
+    if not OPERATOR_LOG.exists():
+        return None
+    st = OPERATOR_LOG.stat()
+    return st.st_mtime_ns, st.st_size
+
+
+def setUpModule():
+    global _operator_log_stat
+    _operator_log_stat = _stat_operator_log()
+
+
+def tearDownModule():
+    assert _stat_operator_log() == _operator_log_stat, (
+        f"a test in this module wrote to {OPERATOR_LOG}"
+    )
+
+
+class EnvIsolatedTestCase(unittest.TestCase):
+    """Base for every case here: reap.log() appends to state.state_dir()."""
+
+    def setUp(self):
+        self._env_backup = dict(os.environ)
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmpdir.name)
+        os.environ["RIGOPS_STATE_DIR"] = str(self.tmp / "state")
+        os.environ["RIGOPS_CONFIG"] = str(self.tmp / "config.json")
+
+    def tearDown(self):
+        self._tmpdir.cleanup()
+        os.environ.clear()
+        os.environ.update(self._env_backup)
+
 
 # --- section 1: pure tables --------------------------------------------------
 
@@ -27,7 +67,7 @@ ETIME_CASES = [
 ]
 
 
-class EtimeToSecondsTests(unittest.TestCase):
+class EtimeToSecondsTests(EnvIsolatedTestCase):
     def test_table(self):
         for name, text, expected in ETIME_CASES:
             with self.subTest(name):
@@ -45,14 +85,14 @@ CLAMP_TIMEOUT_CASES = [
 ]
 
 
-class ClampTimeoutTests(unittest.TestCase):
+class ClampTimeoutTests(EnvIsolatedTestCase):
     def test_table(self):
         for name, base_s, remaining_s, expected in CLAMP_TIMEOUT_CASES:
             with self.subTest(name):
                 self.assertEqual(reap.clamp_timeout(base_s, remaining_s), expected)
 
 
-class RunCapturedKillsProcessGroupTests(unittest.TestCase):
+class RunCapturedKillsProcessGroupTests(EnvIsolatedTestCase):
     def test_sigterm_ignoring_child_group_killed(self):
         with tempfile.TemporaryDirectory() as tmp:
             pgid_file = Path(tmp) / "pgid"
@@ -122,7 +162,7 @@ PARSE_WORKTREES_CASES = [
 ]
 
 
-class ParseWorktreesTests(unittest.TestCase):
+class ParseWorktreesTests(EnvIsolatedTestCase):
     def test_table(self):
         for name, porcelain, expected in PARSE_WORKTREES_CASES:
             with self.subTest(name):
@@ -138,7 +178,7 @@ PATH_CLAIMS_CASES = [
 ]
 
 
-class PathClaimsTests(unittest.TestCase):
+class PathClaimsTests(EnvIsolatedTestCase):
     def test_table(self):
         for name, path, target, expected in PATH_CLAIMS_CASES:
             with self.subTest(name):
@@ -155,7 +195,7 @@ IGNORED_UNTRACKED_CASES = [
 ]
 
 
-class IsIgnoredUntrackedTests(unittest.TestCase):
+class IsIgnoredUntrackedTests(EnvIsolatedTestCase):
     def test_table(self):
         for name, path, expected in IGNORED_UNTRACKED_CASES:
             with self.subTest(name):
@@ -174,14 +214,14 @@ GIT_ERROR_CASES = [
 ]
 
 
-class GitErrorTests(unittest.TestCase):
+class GitErrorTests(EnvIsolatedTestCase):
     def test_table(self):
         for name, stderr, expected in GIT_ERROR_CASES:
             with self.subTest(name):
                 self.assertEqual(reap.git_error(stderr), expected)
 
 
-class DiscoverReposUnreadableDirTests(unittest.TestCase):
+class DiscoverReposUnreadableDirTests(EnvIsolatedTestCase):
     def test_unreadable_group_dir_skipped_others_found(self):
         if os.geteuid() == 0:
             self.skipTest("root can read mode 000 dirs")
@@ -203,7 +243,7 @@ class DiscoverReposUnreadableDirTests(unittest.TestCase):
             self.assertEqual(repos, [good_repo])
 
 
-class LiveWorktreeCwdsNullPidTests(unittest.TestCase):
+class LiveWorktreeCwdsNullPidTests(EnvIsolatedTestCase):
     def test_null_pid_ignored_no_raise(self):
         with tempfile.TemporaryDirectory() as tmp:
             sessions_dir = Path(tmp)
@@ -215,7 +255,7 @@ class LiveWorktreeCwdsNullPidTests(unittest.TestCase):
 # --- section 2: kill machinery, synthetic snapshots, no real signals --------
 
 
-class DescendantsTests(unittest.TestCase):
+class DescendantsTests(EnvIsolatedTestCase):
     def test_grandchild_reachable_through_closure(self):
         snap = {
             100: {"ppid": 1, "pgid": 100, "uid": 0, "tty": "??",
@@ -230,7 +270,7 @@ class DescendantsTests(unittest.TestCase):
         self.assertEqual(reap._descendants({100}, snap), {100, 101, 102})
 
 
-class FilterKillableTests(unittest.TestCase):
+class FilterKillableTests(EnvIsolatedTestCase):
     def test_uid_tty_and_protected_filtering(self):
         my_uid = os.getuid()
         other_uid = my_uid + 1
@@ -253,7 +293,7 @@ class FilterKillableTests(unittest.TestCase):
         self.assertEqual(result, {900001, 900004})
 
 
-class KillPidsTests(unittest.TestCase):
+class KillPidsTests(EnvIsolatedTestCase):
     def test_apply_false_returns_would_list_no_kill(self):
         snap = {900001: {"ppid": 1, "pgid": 900001, "uid": os.getuid(), "tty": "??",
                          "etimes": 10, "command": "sleep 300"}}
@@ -272,7 +312,7 @@ class KillPidsTests(unittest.TestCase):
         self.assertEqual(result["killed"], 0)
 
 
-class ProtectedPidsOwnPgidTests(unittest.TestCase):
+class ProtectedPidsOwnPgidTests(EnvIsolatedTestCase):
     def test_complete_walk_same_pgid_stranger_not_protected(self):
         my_pid = os.getpid()
         my_pgrp = os.getpgrp()
@@ -307,7 +347,7 @@ ALIVE_FOR_BLOCKING_CASES = [
 ]
 
 
-class AliveForBlockingStatusTests(unittest.TestCase):
+class AliveForBlockingStatusTests(EnvIsolatedTestCase):
     def test_table(self):
         orig_run = subprocess.run
         try:
@@ -360,7 +400,7 @@ REMOVAL_BLOCKERS_CASES = [
 ]
 
 
-class RemovalBlockersTests(unittest.TestCase):
+class RemovalBlockersTests(EnvIsolatedTestCase):
     def test_table(self):
         for name, rooted, attempted, kill_result, alive, expected in REMOVAL_BLOCKERS_CASES:
             with self.subTest(name):
@@ -389,19 +429,12 @@ def _rev_parse(repo: Path, ref: str) -> str:
     return _run_git(["rev-parse", ref], repo).stdout.strip()
 
 
-class GitFixtureTestCase(unittest.TestCase):
+class GitFixtureTestCase(EnvIsolatedTestCase):
     def setUp(self):
-        self._env_backup = dict(os.environ)
+        super().setUp()
         os.environ["GIT_CONFIG_GLOBAL"] = "/dev/null"
         os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
         os.environ["GIT_TERMINAL_PROMPT"] = "0"
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self.tmp = Path(self._tmpdir.name)
-
-    def tearDown(self):
-        self._tmpdir.cleanup()
-        os.environ.clear()
-        os.environ.update(self._env_backup)
 
 
 # --- section 3: classify on real tiny git fixtures --------------------------
@@ -515,7 +548,7 @@ class ClassifyTests(GitFixtureTestCase):
         self.assertEqual(verdict, reap.PRUNE)
 
 
-class ClassifySelfInUseSymlinkTests(unittest.TestCase):
+class ClassifySelfInUseSymlinkTests(EnvIsolatedTestCase):
     def test_symlink_alias_still_matches_self_and_live(self):
         with tempfile.TemporaryDirectory() as tmp:
             real_wt = Path(tmp) / "real" / "wt"
@@ -565,7 +598,7 @@ class ScanRepoDeadlineTests(GitFixtureTestCase):
 # --- section 4: worktree_has_real_changes -----------------------------------
 
 
-class WorktreeHasRealChangesPureTests(unittest.TestCase):
+class WorktreeHasRealChangesPureTests(EnvIsolatedTestCase):
     def test_all_ignored_untracked_returns_false(self):
         status = "?? node_modules/a.js\n"
         result = reap.worktree_has_real_changes(
@@ -607,7 +640,6 @@ class RunApplyJsonPurityTests(GitFixtureTestCase):
 
         sessions_dir = self.tmp / "sessions"
         sessions_dir.mkdir()
-        os.environ["RIGOPS_STATE_DIR"] = str(self.tmp / "state")
 
         opts = types.SimpleNamespace(
             selftest=False, apply=True, dry_run=False, json=True,
@@ -629,6 +661,18 @@ class RunApplyJsonPurityTests(GitFixtureTestCase):
         self.assertEqual(target["verdict"], reap.REAP)
         self.assertTrue(target["applied"]["removed"])
         self.assertFalse(wt_path.exists())
+
+
+# --- section 6: log isolation -----------------------------------------------
+
+
+class LogIsolationTests(EnvIsolatedTestCase):
+    def test_log_writes_under_the_state_dir_of_the_current_environment(self):
+        reap.log("marker")
+
+        log_file = Path(os.environ["RIGOPS_STATE_DIR"]) / "reap.log"
+        self.assertTrue(log_file.exists())
+        self.assertIn("marker", log_file.read_text())
 
 
 if __name__ == "__main__":
