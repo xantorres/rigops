@@ -547,6 +547,28 @@ class ClassifyTests(GitFixtureTestCase):
         # this verdict; only the final classification is asserted here.
         self.assertEqual(verdict, reap.PRUNE)
 
+    def test_spent_budget_is_skip_deadline_and_runs_no_git(self):
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        wt_path = self.tmp / "wt-merged"
+        _run_git(["worktree", "add", "-b", "feature-merged", str(wt_path)], repo)
+        wt = {"path": str(wt_path), "branch": "feature-merged",
+              "head": _rev_parse(repo, "feature-merged"),
+              "bare": False, "detached": False, "locked": False, "prunable": False}
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("git must not run once the deadline is already spent")
+
+        for name in ("git", "git_ok", "git_lines"):
+            self.addCleanup(setattr, reap, name, getattr(reap, name))
+            setattr(reap, name, fail_if_called)
+
+        verdict = reap.classify(
+            wt, repo, "main", [], self.tmp / "outside", "main", 14,
+            ignored_dirs=set(), ignored_prefixes=(), remaining_s=0,
+        )
+        self.assertEqual(verdict, "skip: deadline")
+
 
 class ClassifySelfInUseSymlinkTests(EnvIsolatedTestCase):
     def test_symlink_alias_still_matches_self_and_live(self):
@@ -593,6 +615,34 @@ class ScanRepoDeadlineTests(GitFixtureTestCase):
 
         self.assertTrue(result["timed_out"])
         self.assertIn("deadline: fetch skipped", result["note"])
+
+    def test_budget_spent_mid_repo_skips_the_remaining_worktrees(self):
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        for name in ("wt-one", "wt-two"):
+            _run_git(["worktree", "add", "-b", f"feature-{name}", str(self.tmp / name)], repo)
+
+        clock = {"now": 1000.0}
+        real_age_days = reap.age_days
+
+        def burn_the_budget(path):
+            clock["now"] += 100.0
+            return real_age_days(path)
+
+        self.addCleanup(setattr, reap, "time", reap.time)
+        self.addCleanup(setattr, reap, "age_days", reap.age_days)
+        reap.time = types.SimpleNamespace(time=lambda: clock["now"])
+        reap.age_days = burn_the_budget
+
+        result = reap.scan_repo(
+            repo, [], self.tmp / "outside", False, 14, set(), (), remaining_s=60,
+        )
+
+        verdicts = [w["verdict"] for w in result["worktrees"]]
+        self.assertEqual(len(verdicts), 2)
+        self.assertNotEqual(verdicts[0], "skip: deadline")
+        self.assertEqual(verdicts[1], "skip: deadline")
+        self.assertTrue(result["timed_out"])
 
 
 # --- section 4: worktree_has_real_changes -----------------------------------
@@ -661,6 +711,30 @@ class RunApplyJsonPurityTests(GitFixtureTestCase):
         self.assertEqual(target["verdict"], reap.REAP)
         self.assertTrue(target["applied"]["removed"])
         self.assertFalse(wt_path.exists())
+
+
+class RunSummaryTests(GitFixtureTestCase):
+    def test_summary_line_reports_the_deadline_skip_count(self):
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        _run_git(["worktree", "add", "-b", "feature-merged", str(self.tmp / "wt-merged")], repo)
+        sessions_dir = self.tmp / "sessions"
+        sessions_dir.mkdir()
+
+        opts = types.SimpleNamespace(
+            selftest=False, apply=False, dry_run=False, json=True,
+            repo=repo, roots=[], no_fetch=True, grace_days=14,
+            sessions_dir=sessions_dir, deadline_s=60,
+            max_kills_per_tree=20, orphan_min_age_s=172800, kill_grace_s=5,
+            ignored_untracked_dirs=set(), ignored_untracked_prefixes=(),
+        )
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(reap.run(opts), 0)
+
+        log_lines = (Path(os.environ["RIGOPS_STATE_DIR"]) / "reap.log").read_text().splitlines()
+        summary = [line for line in log_lines if "reaper:" in line][-1]
+        self.assertIn("deadline_skipped=0", summary)
 
 
 # --- section 6: log isolation -----------------------------------------------

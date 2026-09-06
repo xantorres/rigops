@@ -64,6 +64,7 @@ MERGE_TARGETS = (
 
 REAP = "reap"
 PRUNE = "prune"
+DEADLINE_SKIP = "skip: deadline"
 
 GIT_ENV = {
     "GIT_TERMINAL_PROMPT": "0",
@@ -684,7 +685,8 @@ def default_branch(repo: Path) -> str:
 
 
 def worktree_has_real_changes(path: Path, status: str, default_branch_ref: str,
-                              ignored_dirs: set[str], ignored_prefixes: tuple[str, ...]) -> bool:
+                              ignored_dirs: set[str], ignored_prefixes: tuple[str, ...],
+                              timeout: int = 120) -> bool:
     """Decide whether porcelain output represents real work.
 
     Untracked entries matching the ignored dirs/prefixes never count. A
@@ -708,12 +710,14 @@ def worktree_has_real_changes(path: Path, status: str, default_branch_ref: str,
     if not tracked:
         return False
 
-    diff = git_ok(path, "diff", default_branch_ref, "--stat", "--", *tracked)
+    diff = git_ok(path, "diff", default_branch_ref, "--stat", "--", *tracked,
+                  timeout=timeout)
     # Unreadable comparison must not clear a dirty flag.
     return diff is None or bool(diff)
 
 
-def has_unpushed_commits(repo: Path, wt_path: Path, merged: bool) -> bool:
+def has_unpushed_commits(repo: Path, wt_path: Path, merged: bool,
+                         timeout: int = 120) -> bool:
     """True when this worktree holds commits that exist nowhere else.
 
     `@{u}..` is the direct answer when an upstream is configured. Without
@@ -721,18 +725,19 @@ def has_unpushed_commits(repo: Path, wt_path: Path, merged: bool) -> bool:
     (its commits are captured by the merge) and an unmerged one is not --
     that is the only case where local-only work would be lost.
     """
-    upstream = git_ok(wt_path, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+    upstream = git_ok(wt_path, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}",
+                      timeout=timeout)
     if upstream:
-        ahead = git_ok(wt_path, "log", "@{u}..", "--oneline")
+        ahead = git_ok(wt_path, "log", "@{u}..", "--oneline", timeout=timeout)
         return ahead is None or bool(ahead)
     return not merged
 
 
-def commit_age_days(repo: Path, sha: str) -> int | None:
+def commit_age_days(repo: Path, sha: str, timeout: int = 120) -> int | None:
     """Days since the branch's tip commit -- independent of the worktree
     directory's filesystem age, which resets if the worktree is recreated
     without the branch itself gaining new work."""
-    ts = git_ok(repo, "log", "-1", "--format=%ct", sha)
+    ts = git_ok(repo, "log", "-1", "--format=%ct", sha, timeout=timeout)
     if not ts:
         return None
     try:
@@ -743,7 +748,7 @@ def commit_age_days(repo: Path, sha: str) -> int | None:
 
 def classify(wt: dict, repo: Path, target: str, live: list[Path], self_cwd: Path,
              default_branch_ref: str, grace_days: int, ignored_dirs: set[str],
-             ignored_prefixes: tuple[str, ...]) -> str:
+             ignored_prefixes: tuple[str, ...], remaining_s: float | None = None) -> str:
     if wt["prunable"]:
         return PRUNE
     if wt["bare"]:
@@ -762,28 +767,53 @@ def classify(wt: dict, repo: Path, target: str, live: list[Path], self_cwd: Path
     if not path.is_dir():
         return PRUNE
 
+    # Every step below shells out to git. Each call is capped at what is left
+    # of the run deadline, so a repository full of slow worktrees cannot carry
+    # the run hours past it.
+    started = time.time()
+
+    def budget() -> int | None:
+        left = None if remaining_s is None else remaining_s - (time.time() - started)
+        return clamp_timeout(120, left)
+
+    timeout = budget()
+    if timeout is None:
+        return DEADLINE_SKIP
     try:
         merged = git(repo, "merge-base", "--is-ancestor",
-                    f"refs/heads/{wt['branch']}", target).returncode == 0
+                    f"refs/heads/{wt['branch']}", target, timeout=timeout).returncode == 0
     except subprocess.TimeoutExpired:
         return "skip: unreadable"
 
-    if has_unpushed_commits(repo, path, merged):
+    timeout = budget()
+    if timeout is None:
+        return DEADLINE_SKIP
+    if has_unpushed_commits(repo, path, merged, timeout=timeout):
         return "needs-push"
 
     if not merged:
-        age = commit_age_days(repo, wt["head"]) if wt["head"] else None
+        timeout = budget()
+        if timeout is None:
+            return DEADLINE_SKIP
+        age = commit_age_days(repo, wt["head"], timeout=timeout) if wt["head"] else None
         if age is None or age <= grace_days:
             return "skip: unmerged"
 
+    timeout = budget()
+    if timeout is None:
+        return DEADLINE_SKIP
     # -uall so build output and other untracked leftovers count as work in
     # progress rather than being silently discarded.
-    status = git_lines(path, "status", "--porcelain", "-uall")
+    status = git_lines(path, "status", "--porcelain", "-uall", timeout=timeout)
     if status is None:
         return "skip: unreadable"
-    if status and worktree_has_real_changes(path, status, default_branch_ref,
-                                            ignored_dirs, ignored_prefixes):
-        return "skip: dirty"
+    if status:
+        timeout = budget()
+        if timeout is None:
+            return DEADLINE_SKIP
+        if worktree_has_real_changes(path, status, default_branch_ref,
+                                     ignored_dirs, ignored_prefixes, timeout=timeout):
+            return "skip: dirty"
 
     return REAP
 
@@ -850,8 +880,13 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
 
     # entries[0] is the primary checkout and is never a candidate.
     for wt in entries[1:]:
+        wt_remaining = (
+            remaining_s - (time.time() - scan_start) if remaining_s is not None else None
+        )
         wt["verdict"] = classify(wt, repo, target, live, self_cwd, default_branch_ref, grace_days,
-                                  ignored_dirs, ignored_prefixes)
+                                  ignored_dirs, ignored_prefixes, remaining_s=wt_remaining)
+        if wt["verdict"] == DEADLINE_SKIP:
+            result["timed_out"] = True
         wt["size"] = dir_size(Path(wt["path"])) if wt["verdict"] == REAP else 0
         wt["age_days"] = age_days(Path(wt["path"]))
         result["worktrees"].append(wt)
@@ -1152,8 +1187,10 @@ def run(opts: Any) -> int:
     kept_unpushed = sum(1 for w in all_worktrees if w["verdict"] == "needs-push")
     kept_locked = sum(1 for w in all_worktrees if w["verdict"] == "skip: locked")
     timeouts = sum(1 for res in results if res.get("timed_out"))
+    deadline_skipped = sum(1 for w in all_worktrees if w["verdict"] == DEADLINE_SKIP)
     log(f"reaper: eligible={eligible} removed={removed} kept_dirty={kept_dirty} "
         f"kept_unpushed={kept_unpushed} kept_locked={kept_locked} timeouts={timeouts} "
+        f"deadline_skipped={deadline_skipped} "
         f"killed={killed_total} kill_failed={kill_failed_total} "
         f"elapsed={int(time.time() - run_start)}s deadline_hit={int(deadline_hit)}")
 
