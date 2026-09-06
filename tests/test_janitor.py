@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 import sys
 import tempfile
@@ -430,6 +432,58 @@ class WatermarkCapsTextTests(unittest.TestCase):
             text = backlog_path.read_text(encoding="utf-8")
             self.assertNotIn("None", text)
             self.assertIn("caps 2 files", text)
+
+
+class WatermarkFileMatchTests(unittest.TestCase):
+    def test_file_over_max_kb_trips_and_reports_size_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "MEMORY.md"
+            f.write_bytes(b"x" * 9000)
+            wm = {"name": "memory-index", "path": str(f), "max_kb": 8, "area": "memory"}
+            backlog_path = Path(tmp) / "backlog.md"
+
+            results = janitor.check_watermarks([wm], backlog_path, ["memory"], apply=True)
+
+            self.assertTrue(results[0]["tripped"])
+            self.assertEqual(results[0]["status"], "appended")
+            text = backlog_path.read_text(encoding="utf-8")
+            self.assertIn(f"watermark {f} tripped: 9KB (caps 8KB)", text)
+            self.assertNotIn("files", text)
+            self.assertTrue(backlog.lint(text, ["memory"])["ok"])
+
+    def test_file_under_max_kb_does_not_trip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "MEMORY.md"
+            f.write_bytes(b"x" * 200)
+            wm = {"name": "memory-index", "path": str(f), "max_kb": 8, "area": "memory"}
+            backlog_path = Path(tmp) / "backlog.md"
+
+            results = janitor.check_watermarks([wm], backlog_path, ["memory"], apply=True)
+
+            self.assertFalse(results[0]["tripped"])
+            self.assertEqual(results[0]["status"], "ok")
+            self.assertFalse(backlog_path.exists())
+
+    def test_max_files_on_a_file_warns_once_and_still_judges_size(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "MEMORY.md"
+            f.write_bytes(b"x" * 9000)
+            wm = {
+                "name": "memory-index", "path": str(f),
+                "max_files": 2, "max_kb": 8, "area": "memory",
+            }
+            backlog_path = Path(tmp) / "backlog.md"
+
+            buf = io.StringIO()
+            with contextlib.redirect_stderr(buf):
+                results = janitor.check_watermarks([wm], backlog_path, ["memory"], apply=True)
+
+            warning = f"warning: watermark memory-index: max_files ignored for file {f}"
+            self.assertEqual(buf.getvalue().count(warning), 1)
+            self.assertTrue(results[0]["tripped"])
+            text = backlog_path.read_text(encoding="utf-8")
+            self.assertIn(f"watermark {f} tripped: 9KB (caps 8KB)", text)
+            self.assertNotIn("2 files", text)
 
 
 class DirWeightCapTests(unittest.TestCase):

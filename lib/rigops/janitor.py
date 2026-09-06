@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import fnmatch
 import glob
+import math
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from datetime import datetime
@@ -338,6 +340,18 @@ def _dir_size_kb(d: Path) -> int:
     return total // 1024
 
 
+def _file_watermark(f: Path, name: str, max_files, max_kb) -> tuple:
+    """Judge a single-file match: only a size cap can apply to one file.
+
+    Size rounds up so a reported KB figure never reads as being at the cap it
+    just tripped.
+    """
+    if max_files is not None:
+        print(f"warning: watermark {name}: max_files ignored for file {f}", file=sys.stderr)
+    size = f.stat().st_size
+    return math.ceil(size / 1024), max_kb is not None and size / 1024 > max_kb
+
+
 def check_watermarks(watermarks: list, backlog_path, areas: list, apply: bool) -> list:
     results = []
     backlog_p = Path(backlog_path)
@@ -349,13 +363,24 @@ def check_watermarks(watermarks: list, backlog_path, areas: list, apply: bool) -
         area = wm.get("area", "memory")
         for match in sorted(glob.glob(pattern)):
             d = Path(match)
-            if not d.is_dir():
+            caps = []
+            if d.is_dir():
+                files = _dir_files_at_depth1(d)
+                kb = _dir_size_kb(d)
+                tripped = (max_files is not None and files > max_files) or (
+                    max_kb is not None and kb > max_kb
+                )
+                measured = f"{files} files, {kb}KB"
+                if max_files is not None:
+                    caps.append(f"{max_files} files")
+            elif d.is_file():
+                files = 0
+                kb, tripped = _file_watermark(d, name, max_files, max_kb)
+                measured = f"{kb}KB"
+            else:
                 continue
-            files = _dir_files_at_depth1(d)
-            kb = _dir_size_kb(d)
-            tripped = (max_files is not None and files > max_files) or (
-                max_kb is not None and kb > max_kb
-            )
+            if max_kb is not None:
+                caps.append(f"{max_kb}KB")
             if not tripped:
                 status = "ok"
             elif not apply:
@@ -371,13 +396,8 @@ def check_watermarks(watermarks: list, backlog_path, areas: list, apply: bool) -
                         status = "deduped"
                     else:
                         today = datetime.now().strftime("%Y-%m-%d")
-                        caps = []
-                        if max_files is not None:
-                            caps.append(f"{max_files} files")
-                        if max_kb is not None:
-                            caps.append(f"{max_kb}KB")
                         msg = (
-                            f"watermark {d} tripped: {files} files, {kb}KB "
+                            f"watermark {d} tripped: {measured} "
                             f"(caps {'/'.join(caps)}). Fix: compaction pass."
                         )
                         rigops_backlog.add_line(backlog_p, area, msg, today, areas)
