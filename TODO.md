@@ -40,11 +40,8 @@ is a real seam hit during adoption, not speculation.
   even for `always-on`/`KeepAlive` jobs, so `--heal` would kill them on a default
   6h ceiling. Adopters must set huge per-item `max_runtime_h`; a cadence-aware
   skip would be safer.
-- [ ] No self-exclusion: the doctor judges its own registry item, so a transient
-  nonzero exit makes the next run kickstart the doctor job itself (cooldown-capped).
-- [ ] No registry group/trigger filter: every item is judged, so on-demand and
-  manual entries pad the report as `unknown`. A `doctor.groups` allowlist would
-  restore signal.
+- [ ] Self-exclusion covers the live pid only: a nonzero exit on the doctor's own item still kickstarts it.
+- [x] Items with no label and no evidence are listed in one report footer line instead of padding the table.
 - [ ] No chain-step evidence checks (a job that only proves itself via another
   job's output file); such items read `unknown`.
 - [ ] Registry required fields beyond `id` are documentation-only, and

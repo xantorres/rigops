@@ -88,6 +88,19 @@ UNRELATED_PLIST_ITEM = """\
 """
 
 
+NO_LABEL_ITEM = """\
+  - id: job-nolabel
+    domain: x
+    trigger: launchd.daily
+    entry_point: x
+    output: x
+    cadence: daily 02:00
+    last_verified: 2026-08-01
+    health: -
+    group: AUTOMATED-LAUNCHD
+"""
+
+
 def _write_registry(tmp: str, *item_texts: str) -> Path:
     path = Path(tmp) / "registry.md"
     path.write_text("schema: rigops.v1\nitems:\n" + "".join(item_texts) + "---\n")
@@ -206,6 +219,96 @@ class SupervisorNoneTests(EnvIsolatedTestCase):
         self.assertEqual(code, 0)
         payload = json.loads(out)
         self.assertEqual(payload["jobs"][0]["status"], "ok")
+
+
+class EvidenceFallbackTests(EnvIsolatedTestCase):
+    def _judge_without_a_label(self, item_text: str) -> dict:
+        registry_path = _write_registry(self.tmp, item_text)
+
+        def _fail(*a, **k):
+            raise AssertionError("an unresolved label must not reach launchctl")
+
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=False),
+            mock.patch.object(launchd, "job_snapshot", side_effect=_fail),
+        ):
+            code, out = _run_doctor(["--json", "--registry", str(registry_path)])
+        self.assertEqual(code, 0)
+        return json.loads(out)["jobs"][0]
+
+    def _item_with_evidence(self, age_h: float) -> str:
+        evidence = Path(self.tmp) / "evidence.log"
+        evidence.write_text("ran\n")
+        mtime = time.time() - age_h * 3600
+        os.utime(evidence, (mtime, mtime))
+        return NO_LABEL_ITEM.replace("health: -", f"health: {evidence}")
+
+    def test_fresh_evidence_judges_ok(self):
+        job = self._judge_without_a_label(self._item_with_evidence(1))
+        self.assertEqual(job["status"], "ok")
+        self.assertIsNone(job["label"])
+
+    def test_evidence_past_the_cadence_judges_stale(self):
+        job = self._judge_without_a_label(self._item_with_evidence(40))
+        self.assertEqual(job["status"], "stale")
+        self.assertEqual(job["action"], "kickstart")
+        self.assertIsNone(job["label"])
+
+    def test_no_label_and_no_evidence_stays_unknown(self):
+        job = self._judge_without_a_label(NO_LABEL_ITEM)
+        self.assertEqual(job["status"], "unknown")
+        self.assertEqual(job["action"], "none")
+        self.assertIsNone(job["label"])
+        self.assertIsNone(job["evidence_age_h"])
+
+
+class UnjudgedFooterTests(EnvIsolatedTestCase):
+    def _mixed_registry(self) -> Path:
+        second = NO_LABEL_ITEM.replace("job-nolabel", "job-nolabel-2")
+        return _write_registry(self.tmp, OK_ITEM, NO_LABEL_ITEM, second)
+
+    def _run(self, extra_args: list) -> str:
+        registry_path = self._mixed_registry()
+        with (
+            mock.patch.object(launchd, "is_loaded", side_effect=lambda c: c == "local.job-ok"),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, None, 0)),
+        ):
+            code, out = _run_doctor(extra_args + ["--registry", str(registry_path)])
+        self.assertEqual(code, 0)
+        return out
+
+    def test_report_collapses_unjudged_items_into_one_footer_line(self):
+        out = self._run(["--report"])
+        footer = "not judged (no launchd label, no evidence): job-nolabel, job-nolabel-2"
+        self.assertIn(footer, out)
+        table = out.split("== jobs ==")[1].split("not judged")[0]
+        self.assertIn("job-ok", table)
+        self.assertNotIn("job-nolabel", table)
+
+    def test_json_still_carries_every_item(self):
+        payload = json.loads(self._run(["--json"]))
+        self.assertEqual(
+            [j["id"] for j in payload["jobs"]], ["job-ok", "job-nolabel", "job-nolabel-2"]
+        )
+
+
+class CadenceParsingTests(unittest.TestCase):
+    def test_monthly_beats_the_manual_keyword(self):
+        self.assertEqual(doctor.cadence_interval_hours("manual, expected at least monthly"), 720)
+
+    def test_quarterly_is_staleness_checkable(self):
+        self.assertEqual(doctor.cadence_interval_hours("quarterly 1st 10:00"), 2184)
+
+    def test_daily_time_beats_a_manual_kickstart_note(self):
+        self.assertEqual(doctor.cadence_interval_hours("daily 08:30 (manual kickstart ok)"), 24)
+
+    def test_weekly_with_a_day_and_time(self):
+        self.assertEqual(doctor.cadence_interval_hours("weekly Mon 07:45"), 168)
+
+    def test_cadences_without_an_expected_interval(self):
+        for cadence in ("on-demand", "event", "always-on"):
+            with self.subTest(cadence=cadence):
+                self.assertIsNone(doctor.cadence_interval_hours(cadence))
 
 
 class CustomCheckTests(unittest.TestCase):

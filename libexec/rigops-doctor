@@ -25,22 +25,27 @@ CADENCE_DAILY_HHMM_RE = re.compile(r"daily\s+(\d{1,2}):(\d{2})")
 CADENCE_EVERY_MIN_RE = re.compile(r"every\s+(\d+)\s*min", re.IGNORECASE)
 CADENCE_KEEPALIVE_RE = re.compile(r"always-on|keepalive", re.IGNORECASE)
 CADENCE_WEEKLY_RE = re.compile(r"weekly", re.IGNORECASE)
+CADENCE_MONTHLY_RE = re.compile(r"monthly", re.IGNORECASE)
+CADENCE_QUARTERLY_RE = re.compile(r"quarterly", re.IGNORECASE)
 CADENCE_ONDEMAND_RE = re.compile(r"on-demand|manual|deadline", re.IGNORECASE)
 HEALTH_TRAILING_NOTE_RE = re.compile(r"\s*\([^)]*\)\s*$")
 
 
 def cadence_interval_hours(cadence: str):
-    """Expected interval in hours, or None if the cadence isn't staleness-checkable."""
+    """Expected interval in hours, or None if the cadence isn't staleness-checkable.
+
+    Interval words win over the uncheckable ones: cadences routinely name
+    both ("manual, expected at least monthly", "daily 08:30 (manual
+    kickstart ok)"), and the interval half is the one that can be checked.
+    """
     if not cadence:
-        return None
-    if CADENCE_ONDEMAND_RE.search(cadence):
-        return None
-    if CADENCE_EVENT_RE.search(cadence):
-        return None
-    if CADENCE_KEEPALIVE_RE.search(cadence):
         return None
     if CADENCE_WEEKLY_RE.search(cadence):
         return 7 * 24
+    if CADENCE_QUARTERLY_RE.search(cadence):
+        return 91 * 24
+    if CADENCE_MONTHLY_RE.search(cadence):
+        return 30 * 24
     times = CADENCE_DAILY_HHMM_RE.findall(cadence)
     if times:
         occurrences = len(times) if len(times) > 1 else 1
@@ -49,6 +54,12 @@ def cadence_interval_hours(cadence: str):
     if m:
         minutes = int(m.group(1))
         return minutes / 60 if minutes > 0 else None
+    if CADENCE_ONDEMAND_RE.search(cadence):
+        return None
+    if CADENCE_EVENT_RE.search(cadence):
+        return None
+    if CADENCE_KEEPALIVE_RE.search(cadence):
+        return None
     return None
 
 
@@ -137,10 +148,9 @@ def _judge_launchd_item(item: dict, prefixes: list, heal_cooldown_active: bool) 
     job_id = item.get("id", "unknown")
     label = _label_for_item(item, prefixes)
     if label is None:
-        return {
-            "id": job_id, "status": "unknown", "action": "none",
-            "runtime_h": None, "evidence_age_h": None, "label": None, "pid": None,
-        }
+        # No label is not "no information": the item's own evidence file still
+        # says whether it ran. Unknown means neither a label nor evidence.
+        return _judge_evidence_only_item(item, heal_cooldown_active)
 
     _, pid, last_exit = launchd.job_snapshot(label)
     if pid == os.getpid():
@@ -242,8 +252,18 @@ def _notify(command: str, report_path: Path) -> str:
     return ""
 
 
+def _is_unjudged(job: dict) -> bool:
+    """No label and no evidence: the row would carry nothing but its own id."""
+    return (
+        job["status"] == "unknown"
+        and job["label"] is None
+        and job["evidence_age_h"] is None
+    )
+
+
 def render_report(ts: str, jobs: list, checks: list, heal_log: list, supervisor: str) -> str:
     lines = [f"rigops doctor report {ts}", f"supervisor: {supervisor}", "", "== jobs =="]
+    unjudged = [j for j in jobs if _is_unjudged(j)]
     job_rows = [
         [
             j["id"], j["status"],
@@ -251,12 +271,15 @@ def render_report(ts: str, jobs: list, checks: list, heal_log: list, supervisor:
             f"{j['evidence_age_h']:.1f}h" if j["evidence_age_h"] is not None else "-",
             j["action"],
         ]
-        for j in jobs
+        for j in jobs if not _is_unjudged(j)
     ]
-    lines.append(
-        fmt.table(job_rows, ["id", "status", "runtime", "evidence age", "action"])
-        if job_rows else "no registry items"
-    )
+    if job_rows:
+        lines.append(fmt.table(job_rows, ["id", "status", "runtime", "evidence age", "action"]))
+    elif not jobs:
+        lines.append("no registry items")
+    if unjudged:
+        ids = ", ".join(j["id"] for j in unjudged)
+        lines.append(f"not judged (no launchd label, no evidence): {ids}")
     lines.append("")
     lines.append("== checks ==")
     check_rows = [[c["name"], c["status"], c["detail"]] for c in checks]
