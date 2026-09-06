@@ -446,6 +446,7 @@ class WatermarkFileMatchTests(unittest.TestCase):
 
             self.assertTrue(results[0]["tripped"])
             self.assertEqual(results[0]["status"], "appended")
+            self.assertEqual(results[0]["files"], 1)
             text = backlog_path.read_text(encoding="utf-8")
             self.assertIn(f"watermark {f} tripped: 9KB (caps 8KB)", text)
             self.assertNotIn("files", text)

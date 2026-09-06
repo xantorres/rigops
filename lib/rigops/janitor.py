@@ -374,7 +374,8 @@ def check_watermarks(watermarks: list, backlog_path, areas: list, apply: bool) -
                 if max_files is not None:
                     caps.append(f"{max_files} files")
             elif d.is_file():
-                files = 0
+                # File kb rounds up (tripped always means kb > max_kb); dir kb above keeps its floor.
+                files = 1
                 kb, tripped = _file_watermark(d, name, max_files, max_kb)
                 measured = f"{kb}KB"
             else:
