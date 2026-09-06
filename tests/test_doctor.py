@@ -251,7 +251,7 @@ class EvidenceFallbackTests(EnvIsolatedTestCase):
     def test_evidence_past_the_cadence_judges_stale(self):
         job = self._judge_without_a_label(self._item_with_evidence(40))
         self.assertEqual(job["status"], "stale")
-        self.assertEqual(job["action"], "kickstart")
+        self.assertEqual(job["action"], "none")
         self.assertIsNone(job["label"])
 
     def test_no_label_and_no_evidence_stays_unknown(self):

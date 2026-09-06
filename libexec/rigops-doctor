@@ -42,10 +42,10 @@ def cadence_interval_hours(cadence: str):
         return None
     if CADENCE_WEEKLY_RE.search(cadence):
         return 7 * 24
-    if CADENCE_QUARTERLY_RE.search(cadence):
-        return 91 * 24
     if CADENCE_MONTHLY_RE.search(cadence):
         return 30 * 24
+    if CADENCE_QUARTERLY_RE.search(cadence):
+        return 91 * 24
     times = CADENCE_DAILY_HHMM_RE.findall(cadence)
     if times:
         occurrences = len(times) if len(times) > 1 else 1
@@ -185,6 +185,9 @@ def _judge_evidence_only_item(item: dict, heal_cooldown_active: bool) -> dict:
         evidence_age_h=evidence_age_h, expected_interval_h=interval_h,
         heal_cooldown_active=heal_cooldown_active,
     )
+    if action == "kickstart":
+        # No label means no supervisor to kickstart: report only, status stays stale.
+        action = "none"
     return {
         "id": job_id, "status": status, "action": action, "runtime_h": None,
         "evidence_age_h": evidence_age_h, "label": None, "pid": None,
