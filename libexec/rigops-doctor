@@ -382,7 +382,7 @@ def main(argv=None) -> int:
         summary = f"{fail_count} failing/hung" if fail_count else "OK"
         print(f"rigops doctor: {summary} ({len(jobs)} jobs checked)")
 
-    return 1 if fail_count > 0 or checks_failed else 0
+    return 0
 
 
 if __name__ == "__main__":

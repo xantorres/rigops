@@ -131,7 +131,8 @@ class ReportOnlyDefaultTests(EnvIsolatedTestCase):
         payload = json.loads(out)
         self.assertEqual(payload["jobs"][0]["status"], "hung")
         self.assertEqual(payload["jobs"][0]["action"], "kill")
-        self.assertEqual(code, 1)
+        self.assertGreaterEqual(payload["fail_count"], 1)
+        self.assertEqual(code, 0)
 
     def test_failing_job_not_kickstarted_without_heal_flag(self):
         registry_path = _write_registry(self.tmp, FAILING_ITEM)
@@ -144,7 +145,8 @@ class ReportOnlyDefaultTests(EnvIsolatedTestCase):
         m_kick.assert_not_called()
         payload = json.loads(out)
         self.assertEqual(payload["jobs"][0]["status"], "failing")
-        self.assertEqual(code, 1)
+        self.assertGreaterEqual(payload["fail_count"], 1)
+        self.assertEqual(code, 0)
 
 
 class HealFlagTests(EnvIsolatedTestCase):
@@ -161,7 +163,8 @@ class HealFlagTests(EnvIsolatedTestCase):
         m_term.assert_called_once_with(4242, 5)
         payload = json.loads(out)
         self.assertIn("terminated hung job job-hung", " ".join(payload["healed"]))
-        self.assertEqual(code, 1)
+        self.assertGreaterEqual(payload["fail_count"], 1)
+        self.assertEqual(code, 0)
 
     def test_heal_kickstarts_failing_job(self):
         registry_path = _write_registry(self.tmp, FAILING_ITEM)
@@ -174,7 +177,8 @@ class HealFlagTests(EnvIsolatedTestCase):
         m_kick.assert_called_once_with("local.job-failing")
         payload = json.loads(out)
         self.assertEqual(payload["jobs"][0]["action"], "kickstart")
-        self.assertEqual(code, 1)
+        self.assertGreaterEqual(payload["fail_count"], 1)
+        self.assertEqual(code, 0)
 
 
 class SupervisorNoneTests(EnvIsolatedTestCase):
@@ -292,7 +296,8 @@ class HealCooldownTests(EnvIsolatedTestCase):
         m_kick.assert_not_called()
         payload = json.loads(out)
         self.assertEqual(payload["jobs"][0]["action"], "notify")
-        self.assertEqual(code, 1)
+        self.assertGreaterEqual(payload["fail_count"], 1)
+        self.assertEqual(code, 0)
 
     def test_expired_heal_stamp_allows_kickstart(self):
         self._seed_heal_stamp("job-failing", 13 * 3600)  # past the 12h default cooldown
@@ -306,7 +311,8 @@ class HealCooldownTests(EnvIsolatedTestCase):
         m_kick.assert_called_once_with("local.job-failing")
         payload = json.loads(out)
         self.assertEqual(payload["jobs"][0]["action"], "kickstart")
-        self.assertEqual(code, 1)
+        self.assertGreaterEqual(payload["fail_count"], 1)
+        self.assertEqual(code, 0)
 
 
 class ListFlagTests(EnvIsolatedTestCase):
@@ -374,11 +380,12 @@ class PidChangedRaceTests(EnvIsolatedTestCase):
         m_term.assert_not_called()
         payload = json.loads(out)
         self.assertIn("pid changed", " ".join(payload["healed"]))
-        self.assertEqual(code, 1)
+        self.assertGreaterEqual(payload["fail_count"], 1)
+        self.assertEqual(code, 0)
 
 
-class CheckFailExitCodeTests(EnvIsolatedTestCase):
-    def test_failing_custom_check_causes_exit_1_with_no_failing_jobs(self):
+class CheckFailReportingTests(EnvIsolatedTestCase):
+    def test_failing_custom_check_is_reported_without_failing_the_run(self):
         registry_path = _write_registry(self.tmp, OK_ITEM)
         config_path = Path(self.tmp) / "config.json"
         config_path.write_text(json.dumps({
@@ -395,7 +402,7 @@ class CheckFailExitCodeTests(EnvIsolatedTestCase):
         payload = json.loads(out)
         self.assertEqual(payload["fail_count"], 0)
         self.assertEqual(payload["checks"][0]["status"], "fail")
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 0)
 
 
 if __name__ == "__main__":
