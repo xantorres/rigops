@@ -231,6 +231,51 @@ class ComputeDeltasTests(unittest.TestCase):
             deltas["fixed_tax_b"], {"old": None, "new": 2048, "delta": None, "pct": None}
         )
 
+    def test_nested_model_shares_become_per_model_columns(self):
+        old = {"date": "2026-08-24", "eit_pct_by_model": {"opus": 61.0, "sonnet": 22.3}}
+        new = {"date": "2026-08-31", "eit_pct_by_model": {"opus": 71.0, "sonnet": 17.3}}
+        deltas = levers.compute_deltas(old, new)
+        self.assertEqual(
+            deltas["opus_pct"], {"old": 61.0, "new": 71.0, "delta": 10.0, "pct": 16.4}
+        )
+        self.assertEqual(
+            deltas["sonnet_pct"], {"old": 22.3, "new": 17.3, "delta": -5.0, "pct": -22.4}
+        )
+        self.assertNotIn("eit_pct_by_model", deltas)
+
+    def test_cave_score_read_from_nested_sources(self):
+        old = {"date": "2026-08-24", "cave_score": 74}
+        new = {"date": "2026-08-31", "sources": {"cave": {"cave_score": 80, "report_date": "x"}}}
+        deltas = levers.compute_deltas(old, new)
+        self.assertEqual(deltas["cave_score"], {"old": 74, "new": 80, "delta": 6, "pct": 8.1})
+
+    def test_empty_cave_source_leaves_cave_score_missing_instead_of_raising(self):
+        old = {"date": "2026-08-24", "cave_score": 74}
+        new = {"date": "2026-08-31", "sources": {"rtk": {"commands": 27173}, "cave": {}}}
+        deltas = levers.compute_deltas(old, new)
+        self.assertEqual(
+            deltas["cave_score"], {"old": 74, "new": None, "delta": None, "pct": None}
+        )
+
+    def test_snapshot_counters_stay_out_of_the_diff(self):
+        old = {
+            "date": "2026-08-24", "turns": 50,
+            "rtk_commands": 3195, "rtk_saved_pct": 41.0, "rtk_saved_tokens": 900_000,
+        }
+        new = {
+            "date": "2026-08-31", "turns": 60,
+            "sources": {"rtk": {"commands": 27173, "saved_pct": 44.2, "snapshot": True}},
+        }
+        deltas = levers.compute_deltas(old, new)
+        self.assertEqual([k for k in deltas if "rtk" in k or "saved" in k], [])
+        self.assertIn("turns", deltas)
+
+    def test_bool_value_never_becomes_a_column(self):
+        old = {"date": "2026-08-24", "snapshot": False, "turns": 50}
+        new = {"date": "2026-08-31", "snapshot": True, "turns": 60}
+        deltas = levers.compute_deltas(old, new)
+        self.assertNotIn("snapshot", deltas)
+
 
 TIER3_CASES = [
     ("empty_turns", [], 500_000, 0),

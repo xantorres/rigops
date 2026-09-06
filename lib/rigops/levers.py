@@ -266,7 +266,21 @@ def pct_delta(new, old) -> str:
     return f"{d:+.0f}%"
 
 
-DIFF_SKIP_COLUMNS = {"date", "label", "notes"}
+DIFF_SKIP_COLUMNS = {
+    "date", "label", "notes",
+    "rtk_commands", "rtk_saved_pct", "rtk_saved_tokens",
+}
+
+
+def flatten_for_diff(row: dict) -> dict:
+    """Top-level scalars plus per-model shares and the cave score lifted out of `sources`."""
+    flat = {k: v for k, v in row.items() if not isinstance(v, dict)}
+    for model, share in (row.get("eit_pct_by_model") or {}).items():
+        flat[f"{model}_pct"] = share
+    nested_cave = ((row.get("sources") or {}).get("cave") or {}).get("cave_score")
+    if "cave_score" not in flat and isinstance(nested_cave, (int, float)):
+        flat["cave_score"] = nested_cave
+    return flat
 
 
 def diff_columns(old: dict, new: dict) -> list[str]:
@@ -284,6 +298,7 @@ def diff_columns(old: dict, new: dict) -> list[str]:
 
 
 def compute_deltas(old: dict, new: dict) -> dict:
+    old, new = flatten_for_diff(old), flatten_for_diff(new)
     deltas = {}
     for key in diff_columns(old, new):
         ov, nv = old.get(key), new.get(key)
