@@ -12,7 +12,7 @@ rigops ledger diff                          # judge: before vs. after
 
 Everything else in the repo - context-tax tracking, automation-fleet doctor, workspace hygiene - exists to support that loop.
 
-> **Status:** first public cut - v0.2.0, extracted from a working rig.
+> **Status:** first public cut - v0.3.0, extracted from a working rig.
 
 ## Positioning
 

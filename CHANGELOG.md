@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-06
+
+### Added
+
+- reap: `--repo` is repeatable and resolved paths are deduped, so one run
+  can scan several checkouts and a checkout named twice is scanned once.
+  Discovery now accepts a `.git` directory one or two levels below the
+  root, not only `root/<group>/<repo>`.
+- reap: the run summary carries `deadline_skipped`, the worktrees a spent
+  budget left unjudged.
+- ledger: `diff` lifts the per-model shares and the cave score out of the
+  nested source payloads, so the Opus share is visible again. rtk counters
+  are all-time snapshots and stay out of the diff.
+- janitor: a watermark whose glob matches a single file is judged by
+  `max_kb` instead of being skipped. `max_files` against a file is a
+  configuration error and says so on stderr.
+
+### Changed
+
+- doctor: a completed run exits 0. Fleet health flows through the report,
+  the notify command, the events log and `--json`; nonzero is left to an
+  unreadable registry or a bad argument. A red job elsewhere in the fleet
+  no longer made the doctor kickstart itself.
+- doctor: on-demand rows collapse into one footer line under the table.
+  The JSON payload still lists every job.
+
+### Fixed
+
+- reap: the run deadline is enforced inside each repository scan. The
+  worktree listing, every per-worktree git call, and merge-target and
+  default-branch resolution take what is left of the budget; worktrees
+  with nothing left are reported as deadline skips rather than judged.
+  Nightly runs no longer finish hours past a 3600 s deadline.
+- doctor: an item whose launchd label does not resolve is judged by
+  evidence age. Unknown is reserved for an item with neither a label nor
+  evidence.
+- doctor: interval cadences are tested before the on-demand pattern, and
+  monthly and quarterly are understood, so "manual, expected at least
+  monthly" is staleness-checked.
+- doctor: a stale item with no label reports no action, since the heal
+  loop skips those and nothing would act on a kickstart.
+- janitor: a tripped single-file watermark reports one file, not zero.
+- reap tests: every case redirects the state directory and the config path
+  into a temporary directory, so a run can no longer append fake kill and
+  overflow lines to the operator's reaper log.
+
 ## [0.2.0] - 2026-08-27
 
 ### Added
