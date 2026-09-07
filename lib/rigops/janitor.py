@@ -340,14 +340,12 @@ def _dir_size_kb(d: Path) -> int:
     return total // 1024
 
 
-def _file_watermark(f: Path, name: str, max_files, max_kb) -> tuple:
+def _file_watermark(f: Path, max_kb) -> tuple:
     """Judge a single-file match: only a size cap can apply to one file.
 
     Size rounds up so a reported KB figure never reads as being at the cap it
     just tripped.
     """
-    if max_files is not None:
-        print(f"warning: watermark {name}: max_files ignored for file {f}", file=sys.stderr)
     size = f.stat().st_size
     return math.ceil(size / 1024), max_kb is not None and size / 1024 > max_kb
 
@@ -361,6 +359,9 @@ def check_watermarks(watermarks: list, backlog_path, areas: list, apply: bool) -
         max_files = wm.get("max_files")
         max_kb = wm.get("max_kb")
         area = wm.get("area", "memory")
+        # The cap is a property of the watermark, not of any one match, so a
+        # glob resolving to many files still says it once.
+        warned_max_files = False
         for match in sorted(glob.glob(pattern)):
             d = Path(match)
             caps = []
@@ -375,8 +376,12 @@ def check_watermarks(watermarks: list, backlog_path, areas: list, apply: bool) -
                     caps.append(f"{max_files} files")
             elif d.is_file():
                 files = 1
+                if max_files is not None and not warned_max_files:
+                    print(f"warning: watermark {name}: max_files ignored for file matches",
+                          file=sys.stderr)
+                    warned_max_files = True
                 try:
-                    kb, tripped = _file_watermark(d, name, max_files, max_kb)
+                    kb, tripped = _file_watermark(d, max_kb)
                 except OSError:
                     continue
                 measured = f"{kb}KB"

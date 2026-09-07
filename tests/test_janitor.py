@@ -443,10 +443,10 @@ class WatermarkFileStatErrorTests(unittest.TestCase):
             backlog_path = Path(tmp) / "backlog.md"
             real_file_watermark = janitor._file_watermark
 
-            def unlink_then_measure(f, name, max_files, max_kb):
+            def unlink_then_measure(f, max_kb):
                 if f == gone:
                     f.unlink()
-                return real_file_watermark(f, name, max_files, max_kb)
+                return real_file_watermark(f, max_kb)
 
             janitor._file_watermark = unlink_then_measure
             self.addCleanup(setattr, janitor, "_file_watermark", real_file_watermark)
@@ -544,12 +544,30 @@ class WatermarkFileMatchTests(unittest.TestCase):
             with contextlib.redirect_stderr(buf):
                 results = janitor.check_watermarks([wm], backlog_path, ["memory"], apply=True)
 
-            warning = f"warning: watermark memory-index: max_files ignored for file {f}"
+            warning = "warning: watermark memory-index: max_files ignored for file matches"
             self.assertEqual(buf.getvalue().count(warning), 1)
             self.assertTrue(results[0]["tripped"])
             text = backlog_path.read_text(encoding="utf-8")
             self.assertIn(f"watermark {f} tripped: 9KB (caps 8KB)", text)
             self.assertNotIn("2 files", text)
+
+    def test_max_files_warns_once_per_watermark_not_once_per_matched_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ("a", "b", "c"):
+                (Path(tmp) / f"{name}.md").write_bytes(b"x" * 9000)
+            wm = {
+                "name": "memory-index", "path": str(Path(tmp) / "*.md"),
+                "max_files": 2, "max_kb": 8, "area": "memory",
+            }
+            backlog_path = Path(tmp) / "backlog.md"
+
+            buf = io.StringIO()
+            with contextlib.redirect_stderr(buf):
+                results = janitor.check_watermarks([wm], backlog_path, ["memory"], apply=True)
+
+            self.assertEqual(len(results), 3)
+            self.assertTrue(all(r["tripped"] for r in results))
+            self.assertEqual(buf.getvalue().count("max_files ignored"), 1)
 
 
 class DirWeightCapTests(unittest.TestCase):
