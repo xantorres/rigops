@@ -1,6 +1,6 @@
 .PHONY: check gate gate-history shellcheck ruff test test-hooks validate-manifests plugin-validate hooks smoke smoke-launchd
 
-check: gate gate-history shellcheck ruff test test-hooks validate-manifests plugin-validate
+check: gate gate-history shellcheck ruff test test-hooks smoke validate-manifests plugin-validate
 
 gate:
 	bash tools/redaction-gate.sh
