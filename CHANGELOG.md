@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-09-07
+
+### Added
+
+- CLI: `rigops version` (and `rigops --version`) prints the installed
+  version, so a report can name the copy it came from.
+- reap: the run summary carries `listing_skipped`, the repositories whose
+  worktree listing the deadline cut short. `deadline_skipped` counts
+  worktrees, so it read 0 when none were ever enumerated.
+
+### Changed
+
+- The install smoke test runs as part of `make check`. It is hermetic --
+  a throwaway `HOME`, `--no-jobs`, no network -- and adds about 14 s.
+  `make smoke-launchd` stays manual: it loads real launchd jobs.
+
+### Fixed
+
+- reap: the worktree size probe is capped at what is left of the run
+  deadline instead of a fixed 120 s, the last call in a repository scan
+  that could carry a run past its deadline. A budget too thin to spend
+  leaves the size at 0 and marks the repository timed out.
+- janitor: the `max_files ignored` warning is printed once per watermark
+  instead of once per matched file.
+- ledger: `diff` no longer lets the per-model share lifted out of
+  `eit_pct_by_model` overwrite a top-level `<model>_pct`, matching the
+  precedence the cave score lift already had.
+- tests: `tests/__init__.py` makes `python3 -m unittest tests.<module>`
+  work alongside `unittest discover`.
+
 ## [0.3.0] - 2026-09-06
 
 ### Added

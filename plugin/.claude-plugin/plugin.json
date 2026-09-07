@@ -1,6 +1,6 @@
 {
   "name": "rigops",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Weekly intervention ledger, context-tax tracker, launchd fleet doctor, and backlog governance for Claude Code rigs",
   "author": { "name": "Xan Torres" },
   "homepage": "https://github.com/xantorres/rigops",
