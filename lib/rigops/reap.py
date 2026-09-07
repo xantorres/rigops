@@ -73,6 +73,18 @@ GIT_ENV = {
 }
 
 
+def remaining_after(remaining_s: float | None, started: float) -> float | None:
+    """What is left of a budget whose clock started at `started`.
+
+    Negative is a real answer, not an error: clamp_timeout reads anything at
+    or below its floor as too thin to spend, so an overspent budget refuses
+    the next call rather than being rounded back up to zero.
+    """
+    if remaining_s is None:
+        return None
+    return remaining_s - (time.time() - started)
+
+
 def clamp_timeout(base_s: int, remaining_s: float | None, floor_s: int = 5) -> int | None:
     """Cap a git timeout to what's left of the run deadline.
 
@@ -677,8 +689,7 @@ def resolve_target(repo: Path, timeout: int = 120,
     """
     started = time.time()
     for ref in MERGE_TARGETS:
-        left = None if remaining_s is None else remaining_s - (time.time() - started)
-        probe_timeout = clamp_timeout(timeout, left)
+        probe_timeout = clamp_timeout(timeout, remaining_after(remaining_s, started))
         if probe_timeout is None:
             return None
         if git_ok(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}",
@@ -800,8 +811,7 @@ def classify(wt: dict, repo: Path, target: str, live: list[Path], self_cwd: Path
     started = time.time()
 
     def budget() -> int | None:
-        left = None if remaining_s is None else remaining_s - (time.time() - started)
-        return clamp_timeout(120, left)
+        return clamp_timeout(120, remaining_after(remaining_s, started))
 
     timeout = budget()
     if timeout is None:
@@ -872,8 +882,7 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
     # Every git call from here on is capped at what is left of the run
     # deadline, so one slow repository cannot carry the run past it.
     def budget() -> int | None:
-        left = None if remaining_s is None else remaining_s - (time.time() - scan_start)
-        return clamp_timeout(120, left)
+        return clamp_timeout(120, remaining_after(remaining_s, scan_start))
 
     def out_of_time(note: str, unjudged: list[dict]) -> dict:
         """Close the scan on the deadline: the worktrees left over stay unjudged."""
@@ -915,7 +924,7 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
 
     target = resolve_target(
         repo, timeout=target_timeout,
-        remaining_s=None if remaining_s is None else remaining_s - (time.time() - scan_start),
+        remaining_s=remaining_after(remaining_s, scan_start),
     )
     result["target"] = target
     if target is None:
@@ -933,11 +942,11 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
 
     # entries[0] is the primary checkout and is never a candidate.
     for wt in entries[1:]:
-        wt_remaining = (
-            remaining_s - (time.time() - scan_start) if remaining_s is not None else None
+        wt["verdict"] = classify(
+            wt, repo, target, live, self_cwd, default_branch_ref, grace_days,
+            ignored_dirs, ignored_prefixes,
+            remaining_s=remaining_after(remaining_s, scan_start),
         )
-        wt["verdict"] = classify(wt, repo, target, live, self_cwd, default_branch_ref, grace_days,
-                                  ignored_dirs, ignored_prefixes, remaining_s=wt_remaining)
         if wt["verdict"] == DEADLINE_SKIP:
             result["timed_out"] = True
         wt["size"] = 0
@@ -1152,7 +1161,7 @@ def run(opts: Any) -> int:
             r, live, self_cwd, fetch=not opts.no_fetch, grace_days=opts.grace_days,
             ignored_dirs=opts.ignored_untracked_dirs,
             ignored_prefixes=opts.ignored_untracked_prefixes,
-            remaining_s=opts.deadline_s - (time.time() - run_start),
+            remaining_s=remaining_after(opts.deadline_s, run_start),
         ))
 
     snap = ps_snapshot()

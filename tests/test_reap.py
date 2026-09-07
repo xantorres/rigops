@@ -92,6 +92,23 @@ class ClampTimeoutTests(EnvIsolatedTestCase):
                 self.assertEqual(reap.clamp_timeout(base_s, remaining_s), expected)
 
 
+class RemainingAfterTests(EnvIsolatedTestCase):
+    def test_no_deadline_stays_none(self):
+        self.assertIsNone(reap.remaining_after(None, 1000.0))
+
+    def test_budget_shrinks_by_the_time_already_spent(self):
+        self.addCleanup(setattr, reap, "time", reap.time)
+        reap.time = types.SimpleNamespace(time=lambda: 1030.0)
+
+        self.assertEqual(reap.remaining_after(90.0, 1000.0), 60.0)
+
+    def test_overspent_budget_goes_negative_rather_than_clamping(self):
+        self.addCleanup(setattr, reap, "time", reap.time)
+        reap.time = types.SimpleNamespace(time=lambda: 1200.0)
+
+        self.assertEqual(reap.remaining_after(90.0, 1000.0), -110.0)
+
+
 class RunCapturedKillsProcessGroupTests(EnvIsolatedTestCase):
     def test_sigterm_ignoring_child_group_killed(self):
         with tempfile.TemporaryDirectory() as tmp:
