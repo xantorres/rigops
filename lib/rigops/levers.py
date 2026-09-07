@@ -275,8 +275,11 @@ DIFF_SKIP_COLUMNS = {
 def flatten_for_diff(row: dict) -> dict:
     """Top-level scalars plus per-model shares and the cave score lifted out of `sources`."""
     flat = {k: v for k, v in row.items() if not isinstance(v, dict)}
+    # Both lifts defer to a flat key of the same name: older rows wrote these
+    # at the top level, and a lift that overwrote one would silently rewrite
+    # history mid-comparison.
     for model, share in (row.get("eit_pct_by_model") or {}).items():
-        flat[f"{model}_pct"] = share
+        flat.setdefault(f"{model}_pct", share)
     nested_cave = ((row.get("sources") or {}).get("cave") or {}).get("cave_score")
     if "cave_score" not in flat and isinstance(nested_cave, (int, float)):
         flat["cave_score"] = nested_cave

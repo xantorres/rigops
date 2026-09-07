@@ -243,6 +243,21 @@ class ComputeDeltasTests(unittest.TestCase):
         )
         self.assertNotIn("eit_pct_by_model", deltas)
 
+    def test_a_flat_model_pct_key_wins_over_the_nested_lift(self):
+        row = {"date": "2026-08-31", "opus_pct": 61.0,
+               "eit_pct_by_model": {"opus": 71.0, "sonnet": 17.3}}
+
+        flat = levers.flatten_for_diff(row)
+
+        self.assertEqual(flat["opus_pct"], 61.0)
+        self.assertEqual(flat["sonnet_pct"], 17.3)
+
+    def test_a_flat_cave_score_wins_over_the_nested_lift(self):
+        row = {"date": "2026-08-31", "cave_score": 74,
+               "sources": {"cave": {"cave_score": 80}}}
+
+        self.assertEqual(levers.flatten_for_diff(row)["cave_score"], 74)
+
     def test_cave_score_read_from_nested_sources(self):
         old = {"date": "2026-08-24", "cave_score": 74}
         new = {"date": "2026-08-31", "sources": {"cave": {"cave_score": 80, "report_date": "x"}}}
