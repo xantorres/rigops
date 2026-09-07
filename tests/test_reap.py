@@ -765,6 +765,76 @@ class ScanRepoTargetBudgetTests(GitFixtureTestCase):
         self.assertLessEqual(seen["remaining_s"], 90)
 
 
+class DirSizeBudgetTests(EnvIsolatedTestCase):
+    def test_timeout_is_passed_through_to_du(self):
+        seen = {}
+
+        def record(argv, **kwargs):
+            seen["argv"] = argv
+            seen["timeout"] = kwargs.get("timeout")
+            return types.SimpleNamespace(returncode=0, stdout="8\t/x\n")
+
+        self.addCleanup(setattr, reap, "subprocess", reap.subprocess)
+        reap.subprocess = types.SimpleNamespace(
+            run=record, TimeoutExpired=subprocess.TimeoutExpired,
+        )
+        size = reap.dir_size(Path("/x"), timeout=17)
+
+        self.assertEqual(size, 8 * 1024)
+        self.assertEqual(seen["timeout"], 17)
+
+
+class ScanRepoDirSizeBudgetTests(GitFixtureTestCase):
+    def _repo_with_one_reapable_worktree(self) -> Path:
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        _run_git(["worktree", "add", "-b", "feature-one", str(self.tmp / "wt-one")], repo)
+        return repo
+
+    def test_scan_hands_dir_size_the_remaining_budget(self):
+        repo = self._repo_with_one_reapable_worktree()
+        seen = {}
+
+        def record(path, timeout=None):
+            seen["timeout"] = timeout
+            return 0
+
+        self.addCleanup(setattr, reap, "classify", reap.classify)
+        self.addCleanup(setattr, reap, "dir_size", reap.dir_size)
+        reap.classify = lambda *a, **k: reap.REAP
+        reap.dir_size = record
+
+        reap.scan_repo(repo, [], self.tmp / "outside", False, 14, set(), (), remaining_s=90)
+
+        self.assertIsNotNone(seen["timeout"])
+        self.assertLessEqual(seen["timeout"], 90)
+
+    def test_spent_budget_skips_the_size_probe(self):
+        repo = self._repo_with_one_reapable_worktree()
+        clock = {"now": 1000.0}
+
+        def burn_then_reap(*args, **kwargs):
+            clock["now"] += 100.0
+            return reap.REAP
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("du must not run once the deadline is already spent")
+
+        self.addCleanup(setattr, reap, "time", reap.time)
+        self.addCleanup(setattr, reap, "classify", reap.classify)
+        self.addCleanup(setattr, reap, "dir_size", reap.dir_size)
+        reap.time = types.SimpleNamespace(time=lambda: clock["now"])
+        reap.classify = burn_then_reap
+        reap.dir_size = fail_if_called
+
+        result = reap.scan_repo(
+            repo, [], self.tmp / "outside", False, 14, set(), (), remaining_s=60,
+        )
+
+        self.assertEqual([w["size"] for w in result["worktrees"]], [0])
+
+
+
 # --- section 4: worktree_has_real_changes -----------------------------------
 
 

@@ -168,12 +168,17 @@ def human(n: int) -> str:
     return f"{n:.1f}P"
 
 
-def dir_size(path: Path) -> int:
+def dir_size(path: Path, timeout: int = 120) -> int:
     """Apparent size on disk. Copy-on-write clones inflate this, so treat the
-    total as an upper bound on what a removal actually frees."""
+    total as an upper bound on what a removal actually frees.
+
+    The caller passes a timeout already clamped to the run deadline: `du` on a
+    cold or networked tree is as capable of outliving the deadline as any of
+    the git calls around it.
+    """
     try:
         proc = subprocess.run(
-            ["du", "-sk", str(path)], capture_output=True, text=True, timeout=120, check=False
+            ["du", "-sk", str(path)], capture_output=True, text=True, timeout=timeout, check=False
         )
         if proc.returncode == 0:
             return int(proc.stdout.split()[0]) * 1024
@@ -931,7 +936,13 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
                                   ignored_dirs, ignored_prefixes, remaining_s=wt_remaining)
         if wt["verdict"] == DEADLINE_SKIP:
             result["timed_out"] = True
-        wt["size"] = dir_size(Path(wt["path"])) if wt["verdict"] == REAP else 0
+        wt["size"] = 0
+        if wt["verdict"] == REAP:
+            size_timeout = budget()
+            if size_timeout is None:
+                result["timed_out"] = True
+            else:
+                wt["size"] = dir_size(Path(wt["path"]), timeout=size_timeout)
         wt["age_days"] = age_days(Path(wt["path"]))
         result["worktrees"].append(wt)
     return result
