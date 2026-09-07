@@ -199,6 +199,19 @@ def dir_size(path: Path, timeout: int = 120) -> int:
     return 0
 
 
+def _has_git_dir(path: Path) -> bool:
+    """True when path/.git is a directory.
+
+    A directory the run cannot read is not a repository as far as this walk is
+    concerned. Linux raises EACCES on the probe where macOS answers False, and
+    one unreadable directory must not abort the scan of an entire root.
+    """
+    try:
+        return (path / ".git").is_dir()
+    except OSError:
+        return False
+
+
 def discover_repos(root: Path) -> list[Path]:
     """Primary checkouts one or two levels under root, so a root holding
     checkouts directly and a root holding groups of them both work.
@@ -214,7 +227,7 @@ def discover_repos(root: Path) -> list[Path]:
     except OSError:
         return repos
     for entry in entries:
-        if (entry / ".git").is_dir():
+        if _has_git_dir(entry):
             repos.append(entry)
             continue
         try:
@@ -222,7 +235,7 @@ def discover_repos(root: Path) -> list[Path]:
         except OSError:
             continue
         for candidate in candidates:
-            if (candidate / ".git").is_dir():
+            if _has_git_dir(candidate):
                 repos.append(candidate)
     return repos
 

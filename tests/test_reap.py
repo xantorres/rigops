@@ -252,9 +252,23 @@ class DiscoverReposUnreadableDirTests(EnvIsolatedTestCase):
             blocked_group = root / "blocked"
             blocked_group.mkdir()
             os.chmod(blocked_group, 0o000)
+
+            # macOS still answers stat() for a path inside a mode-000
+            # directory, so the chmod alone leaves this test passing there
+            # while Linux raises. Deny it explicitly to get the same walk on
+            # both.
+            real_is_dir = Path.is_dir
+
+            def deny_under_blocked(self, *args, **kwargs):
+                if self != blocked_group and blocked_group in self.parents:
+                    raise PermissionError(13, "Permission denied", str(self))
+                return real_is_dir(self, *args, **kwargs)
+
+            Path.is_dir = deny_under_blocked
             try:
                 repos = reap.discover_repos(root)
             finally:
+                Path.is_dir = real_is_dir
                 os.chmod(blocked_group, 0o755)
 
             self.assertEqual(repos, [good_repo])
