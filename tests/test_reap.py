@@ -961,6 +961,50 @@ class RunSummaryTests(GitFixtureTestCase):
         log_lines = (Path(os.environ["RIGOPS_STATE_DIR"]) / "reap.log").read_text().splitlines()
         summary = [line for line in log_lines if "reaper:" in line][-1]
         self.assertIn("deadline_skipped=0", summary)
+        self.assertIn("listing_skipped=0", summary)
+
+    def test_summary_line_counts_a_repository_whose_listing_was_skipped(self):
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        _run_git(["worktree", "add", "-b", "feature-merged", str(self.tmp / "wt-merged")], repo)
+        sessions_dir = self.tmp / "sessions"
+        sessions_dir.mkdir()
+
+        opts = types.SimpleNamespace(
+            selftest=False, apply=False, dry_run=False, json=True,
+            repo=[repo], roots=[], no_fetch=True, grace_days=14,
+            # At clamp_timeout's floor, so the run loop still enters the scan
+            # but every call inside it is judged too thin to risk.
+            sessions_dir=sessions_dir, deadline_s=5,
+            max_kills_per_tree=20, orphan_min_age_s=172800, kill_grace_s=5,
+            ignored_untracked_dirs=set(), ignored_untracked_prefixes=(),
+        )
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(reap.run(opts), 0)
+
+        log_lines = (Path(os.environ["RIGOPS_STATE_DIR"]) / "reap.log").read_text().splitlines()
+        summary = [line for line in log_lines if "reaper:" in line][-1]
+        self.assertIn("deadline_skipped=0", summary)
+        self.assertIn("listing_skipped=1", summary)
+
+
+class ScanRepoListingSkippedFlagTests(GitFixtureTestCase):
+    def test_deadline_on_the_listing_is_distinct_from_an_unreadable_one(self):
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+
+        deadline = reap.scan_repo(
+            repo, [], self.tmp / "outside", False, 14, set(), (), remaining_s=0,
+        )
+        self.assertTrue(deadline["listing_skipped"])
+
+        self.addCleanup(setattr, reap, "git_ok", reap.git_ok)
+        reap.git_ok = lambda *a, **k: None
+        unreadable = reap.scan_repo(repo, [], self.tmp / "outside", False, 14, set(), ())
+
+        self.assertFalse(unreadable["listing_ok"])
+        self.assertFalse(unreadable["listing_skipped"])
 
 
 # --- section 6: log isolation -----------------------------------------------

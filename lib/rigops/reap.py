@@ -850,7 +850,7 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
               remaining_s: float | None = None) -> dict:
     scan_start = time.time()
     result = {"repo": str(repo), "target": None, "worktrees": [], "note": None,
-              "timed_out": False, "listing_ok": True}
+              "timed_out": False, "listing_ok": True, "listing_skipped": False}
 
     if fetch:
         fetch_timeout = clamp_timeout(180, remaining_s)
@@ -891,6 +891,10 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
         # must not be handed a stale worktree registry.
         out_of_time(result["note"] or "deadline: worktree listing skipped", [])
         result["listing_ok"] = False
+        # No worktree was ever enumerated, so there is nothing for a
+        # skip: deadline verdict to attach to and deadline_skipped stays 0.
+        # This flag is the only record that the repository went unscanned.
+        result["listing_skipped"] = True
         return result
 
     porcelain = git_ok(repo, "worktree", "list", "--porcelain", timeout=list_timeout)
@@ -1249,9 +1253,10 @@ def run(opts: Any) -> int:
     kept_locked = sum(1 for w in all_worktrees if w["verdict"] == "skip: locked")
     timeouts = sum(1 for res in results if res.get("timed_out"))
     deadline_skipped = sum(1 for w in all_worktrees if w["verdict"] == DEADLINE_SKIP)
+    listing_skipped = sum(1 for res in results if res.get("listing_skipped"))
     log(f"reaper: eligible={eligible} removed={removed} kept_dirty={kept_dirty} "
         f"kept_unpushed={kept_unpushed} kept_locked={kept_locked} timeouts={timeouts} "
-        f"deadline_skipped={deadline_skipped} "
+        f"deadline_skipped={deadline_skipped} listing_skipped={listing_skipped} "
         f"killed={killed_total} kill_failed={kill_failed_total} "
         f"elapsed={int(time.time() - run_start)}s deadline_hit={int(deadline_hit)}")
 
