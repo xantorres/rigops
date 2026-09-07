@@ -7,7 +7,7 @@
       "name": "rigops",
       "source": "./plugin",
       "description": "Weekly intervention ledger, context-tax tracker, launchd fleet doctor, and backlog governance for Claude Code rigs",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "license": "MIT",
       "homepage": "https://github.com/xantorres/rigops",
       "repository": "https://github.com/xantorres/rigops",
