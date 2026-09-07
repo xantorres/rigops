@@ -44,6 +44,9 @@ case "$cmd" in
         usage
         exit 0
         ;;
+    --version)
+        cmd=version
+        ;;
 esac
 
 target="$LIBEXEC/rigops-$cmd"

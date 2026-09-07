@@ -194,6 +194,8 @@ A few flags worth knowing up front:
 - `--statusline` - wire the plugin statusline into `~/.claude/settings.json`.
 - `--uninstall --purge` - remove a previous install, including its config and state.
 
+`rigops help` lists the commands; `rigops version` (or `rigops --version`) prints the installed version, which is what a bug report needs.
+
 ### First-week ritual
 
 After a week of normal use, run `/rigops:week` in Claude Code, or by hand:
@@ -210,7 +212,7 @@ Two halves, one config.
 
 **Plugin half** - a Claude Code marketplace plugin: five commands (`/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:backlog`, `/rigops:week`), two skills (`ops-loop`, `fleet-triage`), three hooks (`skill-gate` and `ctx-nudge` on `UserPromptSubmit`, `rg-flag-guard` on `PreToolUse:Bash`), and a statusline. Zero daemons. No agents - deliberately; which subagent handles a task is a decision that belongs to the rig, not to rigops.
 
-**Script half** - the `rigops` CLI (`eit`, `ledger`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`), plus hardened launchd templates for the `doctor` and `ledger` jobs, and a cron template for Linux hosts (unverified).
+**Script half** - the `rigops` CLI (`eit`, `ledger`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`, `version`), plus hardened launchd templates for the `doctor` and `ledger` jobs, and a cron template for Linux hosts (unverified).
 
 Both halves read the same `~/.config/rigops/config.json` (schema: [config/config.schema.json](config/config.schema.json)). Runtime state lives under `~/.local/state/rigops/`.
 
