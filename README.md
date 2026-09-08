@@ -122,6 +122,8 @@ delta: -10215 B (-10.3%)
 
 The registry (`registry.md`) is plain markdown: one entry per automated job, with its cadence, its evidence file, and how long it's allowed to run before it counts as hung. `rigops doctor` reads it and judges each job - stale against its declared cadence, hung against `max_runtime_h`, cooling down after a repeated heal so a flapping job doesn't get restarted into the ground. It's report-only by default; `--heal` opts into the kill/kickstart side effects, and `--supervisor none` skips `launchctl` entirely on hosts that don't run launchd.
 
+The same command also lints the config that drives the rig. `rigops doctor --config-only` runs a package of checks, one module per check, discovered by filename: every path, agent, skill, plugin id, MCP server, launchd label and model id named in the instruction files has to resolve against the filesystem, the enabled-plugin list and `launchctl`; the always-on instruction surface has to stay under a token ceiling; plan files have to match their own documented grammar. Prose cannot be type-checked, so a pointer to something deleted months ago is the defect that survives longest. Findings print as backlog lines with a stable id, and any finding exits nonzero, which is what makes the check usable from a pre-commit hook.
+
 ```text
 rigops doctor report 2026-08-23T10:53:12Z
 supervisor: none

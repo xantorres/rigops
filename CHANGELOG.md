@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- doctor: a `rigops/doctor/` package of config checks, one module per check,
+  discovered by naming convention (`check_*.py`). Each module imports
+  `rigops.core` and nothing else from the package, and `check_imports` fails the
+  run when a module reaches for a sibling or grows past its line cap.
+- doctor: `check_pointers` extracts every path, agent, skill, plugin id, MCP
+  server, launchd label and model id from the instruction surface (CLAUDE.md,
+  rules, references, skills, agents, settings.json, the vault entry points and
+  personal-repo CLAUDE.md files) and asserts each one resolves against the
+  filesystem, `enabledPlugins`, `installed_plugins.json` and `launchctl list`.
+  Prose cannot be type-checked, so a pointer to something deleted is the one
+  defect class that rots silently; this makes it a build failure.
+- doctor: `check_budget` caps the always-on instruction surface, meaning
+  CLAUDE.md plus the rules that carry no `paths:` frontmatter plus the memory
+  index, measured as bytes over four. Ceiling is `doctor.budget.always_on_tokens`.
+- doctor: `check_plans` lints plan filenames, frontmatter and archive placement
+  against the grammar the plans directory documents.
+- doctor: `--config-only`, `--no-config` and `--check NAME` flags. Findings print
+  in the backlog line grammar with a stable id derived from the defect, so a run
+  can be deduplicated against an existing backlog. A finding exits nonzero
+  everywhere except under `--heal`, the unattended supervisor path whose own
+  registry row is judged by that exit code.
+- core: a `rigops/core/` package holding the shared config, state and `Finding`
+  primitives, the single import hop the modular packages are allowed.
+
 ## [0.3.2] - 2026-09-07
 
 ### Fixed

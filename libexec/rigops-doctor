@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import config as rigops_config  # noqa: E402
+from rigops import doctor as config_checks  # noqa: E402
 from rigops import fmt, launchd, state  # noqa: E402
 from rigops import judge as rigops_judge  # noqa: E402
 from rigops import registry as rigops_registry  # noqa: E402
@@ -296,6 +297,27 @@ def render_report(ts: str, jobs: list, checks: list, heal_log: list, supervisor:
     return "\n".join(lines) + "\n"
 
 
+def render_findings(findings: list) -> str:
+    if not findings:
+        return "config checks: 0 findings\n"
+    lines = [f"config checks: {len(findings)} findings"]
+    lines.extend(f.line() for f in findings)
+    return "\n".join(lines) + "\n"
+
+
+def report_config_checks(cfg: dict, args) -> int:
+    findings = config_checks.run_checks(cfg, only=set(args.check or []) or None)
+    if args.json:
+        print(json.dumps(
+            [{"id": f.id, "check": f.check, "area": f.area, "symptom": f.symptom,
+              "evidence": f.evidence, "fix": f.fix} for f in findings],
+            indent=2,
+        ))
+    else:
+        print(render_findings(findings), end="")
+    return 1 if findings else 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Health watchdog for the rigops job fleet.")
     ap.add_argument("--report", action="store_true", help="print the full report to stdout")
@@ -314,9 +336,24 @@ def main(argv=None) -> int:
         help="'none' skips launchctl entirely and judges from evidence file ages only",
     )
     ap.add_argument("--registry", help="registry file path (default: config doctor.registry)")
+    ap.add_argument(
+        "--config-only", action="store_true",
+        help="run only the config checks (pointers, budget, plans, imports) and skip the fleet",
+    )
+    ap.add_argument(
+        "--no-config", action="store_true", help="skip the config checks",
+    )
+    ap.add_argument(
+        "--check", action="append", metavar="NAME",
+        help=f"limit config checks to NAME (repeatable); one of {', '.join(config_checks.names())}",
+    )
     args = ap.parse_args(argv)
 
     cfg = rigops_config.load()
+
+    if args.config_only:
+        return report_config_checks(cfg, args)
+
     registry_path = (
         rigops_config.expand(args.registry) if args.registry
         else rigops_config.expand(rigops_config.get(cfg, "doctor.registry"))
@@ -400,19 +437,31 @@ def main(argv=None) -> int:
         if notify_error:
             state.append_jsonl(events_path, {"ts": ts, "event": notify_error})
 
+    findings = [] if args.no_config else config_checks.run_checks(cfg, only=set(args.check or []) or None)
+
     if args.json:
         payload = {
             "ts": ts, "supervisor": args.supervisor, "jobs": jobs, "checks": checks,
             "healed": heal_log, "fail_count": fail_count, "stale_count": stale_count,
+            "findings": [
+                {"id": f.id, "check": f.check, "area": f.area, "symptom": f.symptom,
+                 "evidence": f.evidence, "fix": f.fix}
+                for f in findings
+            ],
         }
         print(json.dumps(payload, indent=2, default=str))
     elif args.report:
         print(report_text, end="")
+        print(render_findings(findings), end="")
     else:
         summary = f"{fail_count} failing/hung" if fail_count else "OK"
         print(f"rigops doctor: {summary} ({len(jobs)} jobs checked)")
+        print(render_findings(findings), end="")
 
-    return 0
+    # --heal is the unattended supervisor path, and its own registry row judges it
+    # by this exit code: a config finding there would make the watchdog report
+    # itself as failing. Everywhere else a finding is a build failure.
+    return 1 if findings and not args.heal else 0
 
 
 if __name__ == "__main__":

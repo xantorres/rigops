@@ -108,9 +108,15 @@ def _write_registry(tmp: str, *item_texts: str) -> Path:
 
 
 def _run_doctor(args: list) -> tuple:
+    """Run the fleet half only.
+
+    These tests isolate the state dir and the config but not HOME, so the config
+    checks would read the real instruction surface and let an unrelated finding
+    decide the exit code. The config checks have their own suite.
+    """
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        code = doctor.main(args)
+        code = doctor.main(list(args) + ["--no-config"])
     return code, buf.getvalue()
 
 
