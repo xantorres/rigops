@@ -343,8 +343,11 @@ def main(argv=None) -> int:
     ap.add_argument(
         "--no-config", action="store_true", help="skip the config checks",
     )
+    # choices, not a free string: an unrecognised name would otherwise build an
+    # empty filter, run nothing and report a clean tree, so a typo in the name of
+    # a check would read as "all clear".
     ap.add_argument(
-        "--check", action="append", metavar="NAME",
+        "--check", action="append", metavar="NAME", choices=config_checks.names(),
         help=f"limit config checks to NAME (repeatable); one of {', '.join(config_checks.names())}",
     )
     args = ap.parse_args(argv)

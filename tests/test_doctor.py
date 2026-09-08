@@ -120,6 +120,16 @@ def _run_doctor(args: list) -> tuple:
     return code, buf.getvalue()
 
 
+class CheckSelectionTests(unittest.TestCase):
+    def test_unknown_check_name_is_rejected_rather_than_selecting_nothing(self):
+        """A typo must not filter every check out and then report a clean rig."""
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            with self.assertRaises(SystemExit) as raised:
+                doctor.main(["--config-only", "--check", "pointrs"])
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("invalid choice", err.getvalue())
+
+
 class EnvIsolatedTestCase(unittest.TestCase):
     def setUp(self):
         self._env = dict(os.environ)

@@ -28,13 +28,25 @@ def discover() -> list:
 
 
 def run_checks(cfg: dict, only=None) -> list:
-    """Run every discovered check and return its findings, sorted by id."""
+    """Run every discovered check and return its findings, sorted by id.
+
+    A check that raises becomes a finding of its own rather than a traceback: it
+    is one broken module, and letting it abort the run would take the other three
+    with it and leave the pre-commit hook with no report to show.
+    """
     findings = []
     for name, module in discover():
         if only and name not in only:
             continue
-        for finding in module.run(cfg) or []:
-            findings.append(finding)
+        try:
+            findings.extend(module.run(cfg) or [])
+        except Exception as exc:  # noqa: BLE001 - a check must not take the run down
+            findings.append(core.Finding(
+                check=name, area="rigops", key="crashed",
+                symptom=f"check `{name}` raised {type(exc).__name__}",
+                evidence=str(exc) or type(exc).__name__,
+                fix="fix the check; until then it is reporting nothing about its area",
+            ))
     return sorted(findings, key=lambda f: (f.check, f.id))
 
 

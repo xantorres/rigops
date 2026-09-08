@@ -8,7 +8,7 @@ check owns both limits.
 
 from __future__ import annotations
 
-import re
+import ast
 
 from rigops import core
 
@@ -17,8 +17,6 @@ CHECK = "imports"
 
 DEFAULT_MAX_LINES = 400
 EXEMPT_PACKAGES = {"core", "sources"}
-FROM_RE = re.compile(r"^\s*from\s+rigops(?:\.([a-z_]+))?\s+import\s+(.+)$")
-IMPORT_RE = re.compile(r"^\s*import\s+rigops\.([a-z_]+)")
 
 
 def _package_root():
@@ -36,6 +34,40 @@ def _rel(path, root):
     return f"rigops/{path.relative_to(root)}"
 
 
+def _siblings(source):
+    """Yield (lineno, name) for every import naming something under rigops.
+
+    Parsed rather than matched line by line: a dotted submodule, a relative
+    import and a parenthesised import list are all ordinary ways to write the
+    violation, and a regex over source lines recognised none of them.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                parts = alias.name.split(".")
+                if parts[0] == "rigops" and len(parts) > 1:
+                    yield node.lineno, parts[1]
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 1:
+                continue  # inside the module's own package, which the rule allows
+            if node.level > 1:
+                # `from ..judge import x` climbs out of the package to a sibling.
+                head = (node.module or "").split(".")[0]
+                names = [head] if head else [a.name for a in node.names]
+            elif (node.module or "").split(".")[0] == "rigops":
+                rest = (node.module or "").split(".")[1:]
+                names = rest[:1] or [a.name for a in node.names]
+            else:
+                continue
+            for name in names:
+                if name:
+                    yield node.lineno, name
+
+
 def run(cfg):
     root = _package_root()
     if not root.is_dir():
@@ -45,32 +77,24 @@ def run(cfg):
     for package in _packages(root):
         for module in sorted(package.rglob("*.py")):
             try:
-                lines = module.read_text(errors="replace").splitlines()
+                source = module.read_text(errors="replace")
             except OSError:
                 continue
             where = _rel(module, root)
-            if len(lines) > max_lines:
+            line_count = len(source.splitlines())
+            if line_count > max_lines:
                 findings.append(core.Finding(
                     check=CHECK, area=AREA, key=f"size:{where}",
-                    symptom=f"module is {len(lines)} lines against a {max_lines} line cap",
+                    symptom=f"module is {line_count} lines against a {max_lines} line cap",
                     evidence=where, fix="split it, or raise doctor.imports.max_lines deliberately",
                 ))
-            for lineno, line in enumerate(lines, 1):
-                match = FROM_RE.match(line)
-                if match:
-                    sibling = match.group(1)
-                    names = [n.strip().split(" as ")[0] for n in match.group(2).split(",")]
-                    imported = [sibling] if sibling else names
-                else:
-                    plain = IMPORT_RE.match(line)
-                    imported = [plain.group(1)] if plain else []
-                for name in imported:
-                    if name in ("core", package.name) or name.startswith("_"):
-                        continue
-                    findings.append(core.Finding(
-                        check=CHECK, area=AREA, key=f"import:{where}:{name}",
-                        symptom=f"`{package.name}` module imports sibling `rigops.{name}`",
-                        evidence=f"{where}:{lineno}",
-                        fix="route it through rigops.core instead",
-                    ))
+            for lineno, name in _siblings(source):
+                if name in ("core", package.name) or name.startswith("_"):
+                    continue
+                findings.append(core.Finding(
+                    check=CHECK, area=AREA, key=f"import:{where}:{name}",
+                    symptom=f"`{package.name}` module imports sibling `rigops.{name}`",
+                    evidence=f"{where}:{lineno}",
+                    fix="route it through rigops.core instead",
+                ))
     return findings

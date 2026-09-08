@@ -33,8 +33,21 @@ def _frontmatter(path):
     for line in match.group(1).splitlines():
         key, sep, value = line.partition(":")
         if sep:
-            fields[key.strip()] = value.strip()
+            fields[key.strip()] = _scalar(value)
     return fields
+
+
+def _scalar(value):
+    """A quoted or commented value is the same value: `status: "done"` is done.
+
+    Comparing the raw text called a well-formed plan malformed and, worse, let a
+    finished plan that quotes its status sit outside the archive unreported.
+    """
+    value = value.strip()
+    if value[:1] in ("'", '"'):
+        closing = value.find(value[0], 1)
+        return value[1:closing] if closing > 0 else value[1:]
+    return value.split(" #", 1)[0].strip()
 
 
 def _plans_dir(cfg):
