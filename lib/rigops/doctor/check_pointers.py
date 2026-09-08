@@ -67,7 +67,7 @@ BUILTIN_AGENTS = {
 # Absolute paths live outside the home directory too, and the tools this rig
 # names most often (the package manager prefix, the system binaries) all do. The
 # lookbehind keeps the match from starting inside a longer token, so a relative
-# path such as `.claude/bin/run.sh` is not read as `/bin/run.sh`.
+# path such as `.config/bin/run.sh` is not read as `/bin/run.sh`.
 PATH_ROOTS = "opt|usr|etc|srv|var|tmp|private|bin|sbin|Applications|Library|Volumes"
 
 
