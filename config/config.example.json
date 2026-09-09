@@ -27,7 +27,8 @@
       ],
       "disk_free": null
     },
-    "notify_command": ""
+    "notify_command": "",
+    "rtk": {"version": "0.42.4"}
   },
   "reaper": {
     "roots": ["~/projects"],
@@ -69,5 +70,6 @@
     "timeout_s": 60,
     "path": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
     "keychain_service": ""
-  }
+  },
+  "render": {"source": "~/rig"}
 }

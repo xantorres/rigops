@@ -83,8 +83,9 @@ phrasing, Spanish, pasted URLs), reported false positives that used to fire
 file, malformed JSON), and the two delimiter-collision cases above - an `@` in
 a provenance regex still fires cleanly, a literal control byte in one causes
 the gate to be skipped rather than erroring. The full hook suite (skill-gate,
-ctx-nudge, ctx-probe, rg-flag-guard, statusline) totals 56 passed, 0 failed in
-this checkout.
+ctx-nudge, ctx-probe, statusline) totals 52 passed, 0 failed in this checkout.
+The `rg -r`/`-rn`/`-rl` guard now lives in the user's own `PreToolUse`
+dispatcher, not in this plugin.
 
 ## Adopting it without rigops
 

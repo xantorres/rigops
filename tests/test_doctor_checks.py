@@ -12,7 +12,14 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import core, doctor  # noqa: E402
-from rigops.doctor import check_budget, check_imports, check_plans, check_pointers  # noqa: E402
+from rigops.doctor import (  # noqa: E402
+    check_budget,
+    check_imports,
+    check_plans,
+    check_pointers,
+    check_render,
+    check_rtk,
+)
 
 
 class FindingIdTests(unittest.TestCase):
@@ -424,6 +431,36 @@ class CheckPointersTests(unittest.TestCase):
         self.assertIn(f"skill:absent-skill-xyz:{label}", keys)
         self.assertFalse(any("absent-deny" in k for k in keys))
         self.assertTrue(all(f.evidence == label for f in findings))
+
+
+class CheckRtkTests(unittest.TestCase):
+    def test_missing_binary_yields_missing_finding(self):
+        with mock.patch.object(core, "run", return_value=""):
+            findings = check_rtk.run({})
+        self.assertEqual([f.key for f in findings], ["missing"])
+
+    def test_matching_version_yields_no_finding(self):
+        with mock.patch.object(core, "run", return_value="rtk 0.42.4\n"):
+            findings = check_rtk.run({})
+        self.assertEqual(findings, [])
+
+    def test_mismatched_version_yields_version_finding(self):
+        with mock.patch.object(core, "run", return_value="rtk 0.41.0\n"):
+            findings = check_rtk.run({})
+        self.assertEqual([f.key for f in findings], ["version"])
+
+    def test_configured_expected_version_is_honoured(self):
+        cfg = {"doctor": {"rtk": {"version": "0.41.0"}}}
+        with mock.patch.object(core, "run", return_value="rtk 0.41.0\n"):
+            findings = check_rtk.run(cfg)
+        self.assertEqual(findings, [])
+
+
+class CheckRenderTests(unittest.TestCase):
+    def test_missing_source_dir_yields_no_findings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = {"render": {"source": str(Path(tmp) / "does-not-exist")}}
+            self.assertEqual(check_render.run(cfg), [])
 
 
 class RunChecksTests(unittest.TestCase):

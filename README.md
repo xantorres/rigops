@@ -12,7 +12,7 @@ rigops ledger diff                          # judge: before vs. after
 
 Everything else in the repo - context-tax tracking, automation-fleet doctor, workspace hygiene - exists to support that loop.
 
-> **Status:** first public cut - v0.4.0, extracted from a working rig.
+> **Status:** first public cut - v0.5.0, extracted from a working rig.
 
 ## Positioning
 
@@ -212,7 +212,7 @@ Note interventions as you make them: `rigops ledger note "<what you changed>"`.
 
 Two halves, one config.
 
-**Plugin half** - a Claude Code marketplace plugin: five commands (`/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:backlog`, `/rigops:week`), two skills (`ops-loop`, `fleet-triage`), three hooks (`skill-gate` and `ctx-nudge` on `UserPromptSubmit`, `rg-flag-guard` on `PreToolUse:Bash`), and a statusline. Zero daemons. No agents - deliberately; which subagent handles a task is a decision that belongs to the rig, not to rigops.
+**Plugin half** - a Claude Code marketplace plugin: five commands (`/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:backlog`, `/rigops:week`), two skills (`ops-loop`, `fleet-triage`), two hooks (`skill-gate` and `ctx-nudge` on `UserPromptSubmit`), and a statusline. The `rg -r`/`-rn`/`-rl` guard that used to ship here now lives in the user's own `PreToolUse` dispatcher. Zero daemons. No agents - deliberately; which subagent handles a task is a decision that belongs to the rig, not to rigops.
 
 **Script half** - the `rigops` CLI (`eit`, `ledger`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`, `version`), plus hardened launchd templates for the `doctor` and `ledger` jobs, and a cron template for Linux hosts (unverified).
 

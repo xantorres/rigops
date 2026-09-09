@@ -338,7 +338,7 @@ def main(argv=None) -> int:
     ap.add_argument("--registry", help="registry file path (default: config doctor.registry)")
     ap.add_argument(
         "--config-only", action="store_true",
-        help="run only the config checks (pointers, budget, plans, imports) and skip the fleet",
+        help="run only the config checks (pointers, budget, plans, imports, render, rtk) and skip the fleet",
     )
     ap.add_argument(
         "--no-config", action="store_true", help="skip the config checks",

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-09
+
+### Added
+
+- render: a `rigops.render` package and `rigops render` command that renders a
+  single source tree onto every surface that consumes it: `claude` (CLAUDE.md,
+  rules, agents, skills into `~/.claude`), `codex` (a trimmed AGENTS.md digest
+  and per-agent TOML into `~/.codex`), `local` (the law and voice sections into
+  `~/.config/ai-agent/system-prompt.md`), `agents` (a generated agent roster at
+  `~/.claude/references/agents.md`), and `repos` (a fixed AGENTS.md pointer
+  into every registered repo). `--check` reports drift without writing; `all`
+  renders every target in one pass.
+- doctor: `check_render` runs `rigops render all --check` and turns every
+  drifted or stale path into a finding; `check_rtk` pins the token-reduction
+  proxy to a configured version and flags a missing install or a mismatch.
+
+### Removed
+
+- plugin: the `rg -r`/`-rn`/`-rl` guard hook is no longer shipped with the
+  plugin. It now lives in the user's own `PreToolUse` dispatcher.
+
 ## [0.4.0] - 2026-09-08
 
 ### Added

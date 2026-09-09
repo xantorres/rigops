@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+
+from rigops import config as rigops_config  # noqa: E402
+from rigops import core, render  # noqa: E402
+
+TARGETS = ["claude", "codex", "local", "agents", "repos", "all"]
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="rigops-render")
+    ap.add_argument("targets", nargs="+", choices=TARGETS)
+    ap.add_argument("--check", action="store_true", help="report drift instead of writing")
+    ap.add_argument("--json", action="store_true", help="emit JSON with --check")
+    ap.add_argument("--source", help="source tree (default: config render.source, or ~/rig)")
+    ap.add_argument("--home", help="home to render into (default: the real home)")
+    args = ap.parse_args(argv)
+
+    cfg = rigops_config.load()
+    default_source = core.cfg_get(cfg, "render.source", str(core.HOME / "rig"))
+    source = core.expand(args.source) if args.source else core.expand(default_source)
+    home = core.expand(args.home) if args.home else core.HOME
+
+    rendered = render.render_selected(args.targets, source, home)
+
+    if args.check:
+        results = render.check(rendered)
+        if args.json:
+            print(json.dumps(results, indent=2))
+        else:
+            for item in results:
+                print(f"{item['state']} {item['path']}")
+        bad = [item for item in results if item["state"] != "skipped"]
+        return 1 if bad else 0
+
+    for line in render.apply(rendered, home):
+        print(line)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

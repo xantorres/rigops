@@ -3,9 +3,6 @@
     "UserPromptSubmit": [
       {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/skill-gate.sh\""}]},
       {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ctx-nudge.sh\""}]}
-    ],
-    "PreToolUse": [
-      {"matcher": "Bash", "hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/rg-flag-guard.sh\""}]}
     ]
   }
 }

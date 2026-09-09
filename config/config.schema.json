@@ -356,6 +356,17 @@
         }
       },
       "additionalProperties": true
+    },
+    "render": {
+      "type": "object",
+      "description": "Settings for `rigops render` (renders a source tree onto ~/.claude, ~/.codex, ~/.config/ai-agent and pointer repos).",
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Root of the rendered source tree (law.md, rules/, agents/, skills/, registry/)."
+        }
+      },
+      "additionalProperties": true
     }
   },
   "additionalProperties": true
