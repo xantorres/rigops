@@ -20,7 +20,7 @@ Commands:
 
 All paths anywhere in config accept `~` and `$VAR` expansion.
 
-State directory (where `ledger.jsonl`, `ledger.md`, `interventions.jsonl`, and the `doctor`/`reap` logs live): `${RIGOPS_STATE_DIR:-${XDG_STATE_HOME:-~/.local/state}/rigops}`.
+State directory (where `ledger.jsonl`, `ledger.md`, `interventions.jsonl`, `eval.jsonl`, and the `doctor`/`reap` logs live): `${RIGOPS_STATE_DIR:-${XDG_STATE_HOME:-~/.local/state}/rigops}`.
 
 ### Env vars
 
@@ -224,7 +224,31 @@ Headless-credential probe: does the unattended `claude -p` credential still work
 }
 ```
 
+## `eval`
+
+Defaults for `rigops eval run` (see [EVAL.md](EVAL.md)). Each key has a matching flag, which wins for that one run.
+
+- `cases_dir` (`string`, default `""`, flag `--cases`) - directory of case files, one JSON case per file.
+- `system_file` (`string`, default `""`, flag `--system`) - system prompt sent before every case; empty sends none. Usually this is the file under test.
+- `endpoint` (`string`, default `""`, flag `--endpoint`) - base URL of an OpenAI-compatible API, e.g. `http://127.0.0.1:1234/v1`; `/chat/completions` is appended unless the URL already ends with it. Credentials, a query or a fragment in the URL are refused; use `api_key_env`.
+- `model` (`string`, default `""`, flag `--model`) - model id sent with every request.
+- `api_key_env` (`string`, default `""`, flag `--api-key-env`) - name of the env var holding a bearer token. Empty sends no `Authorization` header. The token itself never lands in config or in `eval.jsonl`.
+
+`cases_dir`, `endpoint` and `model` have no usable default: `rigops eval run` exits `2` naming whichever one neither the flag nor config supplied.
+
+```json
+{
+  "eval": {
+    "cases_dir": "~/projects/myapp/eval/cases",
+    "system_file": "~/projects/myapp/prompts/system.md",
+    "endpoint": "http://127.0.0.1:1234/v1",
+    "model": "local-model",
+    "api_key_env": ""
+  }
+}
+```
+
 ## See also
 
 - [INSTALL.md](INSTALL.md) - what scaffolds the config file, and when.
-- [LEDGER.md](LEDGER.md), [REGISTRY.md](REGISTRY.md), [SAFETY.md](SAFETY.md) - the commands these keys drive.
+- [LEDGER.md](LEDGER.md), [EVAL.md](EVAL.md), [REGISTRY.md](REGISTRY.md), [SAFETY.md](SAFETY.md) - the commands these keys drive.

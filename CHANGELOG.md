@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- eval: a `rigops.eval` package and `rigops eval` command that gates prompt
+  and model changes on a versioned case suite, run against any
+  OpenAI-compatible endpoint. A case is one JSON file: a prompt plus
+  `contains`, `not_contains`, `regex`, `not_regex`, `json` and `json_keys`
+  assertions. `run` scores pass rate and p50/p95 latency per group and appends
+  one row per run to `eval.jsonl`; `diff` compares two runs on the cases they
+  share unchanged and exits 1 when any case that passed in the base run stops
+  passing, or, with `--latency-tolerance`, when a group's p95 grows past the
+  tolerance. It exits 2 rather than 0 when the comparison cannot be trusted: a
+  baseline case that errored, or a passing case edited or deleted since. `list`
+  prints the run history. A seeded demo suite ships under `examples/eval/`.
+
 ## [0.5.0] - 2026-09-09
 
 ### Added
