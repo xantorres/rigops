@@ -113,7 +113,7 @@ RIGOPS_LINK="$SMOKE_HOME/.local/bin/rigops"
 
 run "$RIGOPS_LINK" help
 [ "$RC" -eq 0 ] || fail "rigops help exit $RC: $OUT"
-for cmd in config doctor eit ledger tax; do
+for cmd in config doctor eit eval ledger tax; do
     case "$OUT" in
         *"$cmd"*) : ;;
         *) fail "rigops help missing command: $cmd" ;;
@@ -198,6 +198,22 @@ case "$OUT" in
     *'"sources"'*) : ;;
     *) fail "rigops ledger --dry-run --json missing sources key: $OUT" ;;
 esac
+
+echo "smoke: eval records every case as an error against an unreachable endpoint"
+# stdout only: the per-case progress lines go to stderr and would break the JSON.
+set +e
+OUT="$("$RIGOPS_LINK" eval run --cases "$REPO_ROOT/examples/eval/cases" \
+    --endpoint http://127.0.0.1:9/v1 --model none --dry-run --json 2>/dev/null)"
+RC=$?
+set -e
+[ "$RC" -eq 0 ] || fail "rigops eval run --dry-run exit $RC: $OUT"
+assert_json "$OUT" "rigops eval run --json"
+case "$OUT" in
+    *'"status": "error"'*) : ;;
+    *) fail "rigops eval run against a dead endpoint recorded no error: $OUT" ;;
+esac
+run "$RIGOPS_LINK" eval diff
+[ "$RC" -eq 2 ] || fail "rigops eval diff with no runs expected exit 2, got $RC: $OUT"
 
 echo "smoke: backlog lint/add on a scratch file"
 BACKLOG_MD="$SMOKE_HOME/backlog-scratch.md"
