@@ -1,6 +1,7 @@
 """rtk is a token-reduction proxy pinned by version: a silent upgrade changes
 the rewrite rules underneath every session, so drift from the pinned version
-is a defect rather than routine tool churn.
+is a defect rather than routine tool churn. Nothing is pinned by default, and a
+host that never pinned rtk has nothing to drift from.
 """
 
 from __future__ import annotations
@@ -10,11 +11,11 @@ from rigops import core
 AREA = "hooks"
 CHECK = "rtk"
 
-DEFAULT_VERSION = "0.42.4"
-
 
 def run(cfg):
-    expected = core.cfg_get(cfg, "doctor.rtk.version", DEFAULT_VERSION)
+    expected = core.cfg_get(cfg, "doctor.rtk.version")
+    if not expected:
+        return []
     out = core.run(["rtk", "--version"]).strip()
 
     if not out:

@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   baseline case that errored, or a passing case edited or deleted since. `list`
   prints the run history. A seeded demo suite ships under `examples/eval/`.
 
+### Fixed
+
+- doctor: `check_rtk` runs only when `doctor.rtk.version` pins a version. It
+  used to demand one specific rtk release on every host, so the install smoke
+  test, and CI with it, failed wherever rtk was not installed.
+
 ## [0.5.0] - 2026-09-09
 
 ### Added

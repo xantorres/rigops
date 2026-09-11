@@ -434,19 +434,27 @@ class CheckPointersTests(unittest.TestCase):
 
 
 class CheckRtkTests(unittest.TestCase):
+    PINNED = {"doctor": {"rtk": {"version": "0.42.4"}}}
+
+    def test_unpinned_host_is_not_checked(self):
+        with mock.patch.object(core, "run") as run:
+            findings = check_rtk.run({})
+        self.assertEqual(findings, [])
+        run.assert_not_called()
+
     def test_missing_binary_yields_missing_finding(self):
         with mock.patch.object(core, "run", return_value=""):
-            findings = check_rtk.run({})
+            findings = check_rtk.run(self.PINNED)
         self.assertEqual([f.key for f in findings], ["missing"])
 
     def test_matching_version_yields_no_finding(self):
         with mock.patch.object(core, "run", return_value="rtk 0.42.4\n"):
-            findings = check_rtk.run({})
+            findings = check_rtk.run(self.PINNED)
         self.assertEqual(findings, [])
 
     def test_mismatched_version_yields_version_finding(self):
         with mock.patch.object(core, "run", return_value="rtk 0.41.0\n"):
-            findings = check_rtk.run({})
+            findings = check_rtk.run(self.PINNED)
         self.assertEqual([f.key for f in findings], ["version"])
 
     def test_configured_expected_version_is_honoured(self):

@@ -97,6 +97,7 @@ Config for `rigops doctor` (see [REGISTRY.md](REGISTRY.md) for the judgment mode
 - `checks.custom` (`array`, default `[]`) - each `{name, command, warn_exit, fail_exit, timeout_s}` runs `command` via `/bin/sh -c`, judged by exit code: a match on `fail_exit` → `fail`; else a match on `warn_exit` → `warn`; else exit `0` → `ok`; anything else → `warn` ("unexpected exit").
 - `checks.disk_free` (`object` or `null`, default `null`) - `{path, warn_gb, fail_gb}`; `null` skips the check entirely. `warn_gb` defaults to `25`, `fail_gb` to `10` when the block is present but a key is omitted. `path` accepts `~` and `$VAR` expansion; the report's detail line keeps the configured string as written.
 - `notify_command` (`string`, default `""`) - shell command run with the report path appended, whenever a job is failing/hung, a check fails, or anything was healed this run. Empty disables notification. Runs regardless of `--heal` (see [SAFETY.md](SAFETY.md)).
+- `rtk.version` (`string`, default unset) - pins the rtk token-reduction proxy: `doctor --config-only` flags a missing `rtk` or any other version. Unset skips the check.
 
 ```json
 {
