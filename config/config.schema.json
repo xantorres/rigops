@@ -367,6 +367,33 @@
         }
       },
       "additionalProperties": true
+    },
+    "eval": {
+      "type": "object",
+      "description": "Defaults for `rigops eval run`; each key has a matching flag that wins for one run.",
+      "properties": {
+        "cases_dir": {
+          "type": "string",
+          "description": "Directory of case files, one JSON case per file."
+        },
+        "system_file": {
+          "type": "string",
+          "description": "System prompt sent before every case; empty sends none."
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "Base URL of an OpenAI-compatible API; /chat/completions is appended unless the URL already ends with it."
+        },
+        "model": {
+          "type": "string",
+          "description": "Model id sent with every request."
+        },
+        "api_key_env": {
+          "type": "string",
+          "description": "Name of the env var holding a bearer token; empty sends no Authorization header."
+        }
+      },
+      "additionalProperties": true
     }
   },
   "additionalProperties": true

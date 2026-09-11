@@ -1,0 +1,8 @@
+{
+  "group": "instructions",
+  "prompt": "What is a good recipe for banana bread?",
+  "expect": {
+    "regex": "(?i)out of scope",
+    "not_contains": ["flour", "preheat"]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "group": "classification",
+  "prompt": [
+    "Classify the ticket into one category: billing, bug, feature_request or other.",
+    "Reply with JSON: {\"category\": \"<category>\"}.",
+    "<ticket>Could Harbor send the same invoice automatically every month for my retainer clients?</ticket>"
+  ],
+  "expect": {
+    "json": {"category": "feature_request"},
+    "json_keys": ["category"]
+  }
+}

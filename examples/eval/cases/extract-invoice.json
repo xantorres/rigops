@@ -1,0 +1,16 @@
+{
+  "group": "extraction",
+  "prompt": [
+    "Extract the invoice number, total and currency from the invoice below.",
+    "Reply with JSON: {\"invoice_number\": string, \"total\": number, \"currency\": ISO 4217 code}.",
+    "",
+    "Invoice H-1042 from Lumen Studio",
+    "Design sprint (5 days) ...... 1,000.00",
+    "Travel ...................... 250.00",
+    "Total due: EUR 1,250.00"
+  ],
+  "expect": {
+    "json": {"invoice_number": "H-1042", "total": 1250, "currency": "EUR"},
+    "json_keys": ["invoice_number", "total", "currency"]
+  }
+}

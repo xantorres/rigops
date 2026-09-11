@@ -1,0 +1,13 @@
+{
+  "group": "extraction",
+  "note": "Net 30 from 2 March lands on 1 April; March has 31 days.",
+  "prompt": [
+    "When is this invoice due? Reply with JSON: {\"due_date\": \"YYYY-MM-DD\"}.",
+    "",
+    "Invoice H-1043, issued 2026-03-02. Payment terms: net 30."
+  ],
+  "expect": {
+    "json": {"due_date": "2026-04-01"},
+    "json_keys": ["due_date"]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "group": "instructions",
+  "note": "The not_regex patterns scan only the Top 3 section, up to the next heading.",
+  "prompt": [
+    "Write today's plan in markdown with exactly these headings: ## Top 3, ## Schedule, ## Defer.",
+    "Active tasks: send the March invoices; chase Lumen Studio for the overdue payment; reply to the accountant; fix the export template.",
+    "Done tasks: fix the export template.",
+    "Closed clients: Lumen Studio.",
+    "Never put a done task or a closed client under Top 3."
+  ],
+  "expect": {
+    "regex": ["(?m)^## Top 3", "(?m)^## Schedule", "(?m)^## Defer"],
+    "not_regex": [
+      "(?is)## Top 3(?:(?!\\n## ).)*export template",
+      "(?is)## Top 3(?:(?!\\n## ).)*lumen"
+    ]
+  }
+}

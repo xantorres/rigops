@@ -1,0 +1,13 @@
+{
+  "group": "classification",
+  "note": "A double charge is a billing problem, not a bug.",
+  "prompt": [
+    "Classify the ticket into one category: billing, bug, feature_request or other.",
+    "Reply with JSON: {\"category\": \"<category>\"}.",
+    "<ticket>I was charged twice for my March subscription. Please refund one of the charges.</ticket>"
+  ],
+  "expect": {
+    "json": {"category": "billing"},
+    "json_keys": ["category"]
+  }
+}

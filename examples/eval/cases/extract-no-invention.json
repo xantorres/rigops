@@ -1,0 +1,16 @@
+{
+  "group": "extraction",
+  "note": "The invoice never names a currency; a guessed one is a wrong answer.",
+  "prompt": [
+    "Extract the total and currency from the invoice below. Use null for anything the invoice does not state.",
+    "Reply with JSON: {\"total\": number, \"currency\": ISO 4217 code or null}.",
+    "",
+    "Invoice H-1044 from Lumen Studio",
+    "Logo refresh ...... 480.00",
+    "Total due: 480.00"
+  ],
+  "expect": {
+    "json": {"total": 480, "currency": null},
+    "json_keys": ["total", "currency"]
+  }
+}

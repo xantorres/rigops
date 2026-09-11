@@ -51,6 +51,13 @@ DEFAULTS = {
         "path": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
         "keychain_service": "",
     },
+    "eval": {
+        "cases_dir": "",
+        "system_file": "",
+        "endpoint": "",
+        "model": "",
+        "api_key_env": "",
+    },
 }
 
 
@@ -78,7 +85,7 @@ def load(path=None) -> dict:
         return copy.deepcopy(DEFAULTS)
     try:
         text = cfg_path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise SystemExit(f"error: cannot read config {cfg_path}: {exc}") from exc
     try:
         overlay = json.loads(text)

@@ -1,0 +1,11 @@
+{
+  "group": "instructions",
+  "prompt": [
+    "Write a short status update for a client using the headings ## Done, ## Next and ## Blockers, in that order.",
+    "Done: March invoices sent. Next: quarterly report. Blockers: none."
+  ],
+  "expect": {
+    "regex": "(?s)## Done.*## Next.*## Blockers",
+    "not_contains": "```"
+  }
+}

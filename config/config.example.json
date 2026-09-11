@@ -71,5 +71,12 @@
     "path": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
     "keychain_service": ""
   },
-  "render": {"source": "~/rig"}
+  "render": {"source": "~/rig"},
+  "eval": {
+    "cases_dir": "~/projects/myapp/eval/cases",
+    "system_file": "~/projects/myapp/prompts/system.md",
+    "endpoint": "http://127.0.0.1:1234/v1",
+    "model": "local-model",
+    "api_key_env": ""
+  }
 }

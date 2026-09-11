@@ -1,0 +1,12 @@
+{
+  "group": "classification",
+  "prompt": [
+    "Classify the ticket into one category: billing, bug, feature_request or other.",
+    "Reply with JSON: {\"category\": \"<category>\"}.",
+    "<ticket>Clicking Export PDF on an invoice does nothing in Firefox. It works in Chrome.</ticket>"
+  ],
+  "expect": {
+    "json": {"category": "bug"},
+    "json_keys": ["category"]
+  }
+}
