@@ -12,7 +12,7 @@ rigops ledger diff                          # judge: before vs. after
 
 Everything else in the repo - an eval gate for prompt and model changes, context-tax tracking, automation-fleet doctor, workspace hygiene - exists to support that loop.
 
-> **Status:** first public cut - v0.6.0, extracted from a working rig.
+> **Status:** first public cut - v0.7.0, extracted from a working rig.
 
 ## Positioning
 
