@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-16
+
 ### Added
 
+- doctor: `--staged` (with `--config-only`) judges the commit instead of the
+  tree. The checks read the staged content of every staged file through a
+  content overlay in `rigops.core`, and only findings about the files the
+  commit touches are reported. As a pre-commit hook the unscoped run failed
+  every commit while any unrelated edit sat in the working tree, and judged a
+  staged fix on the unstaged copy of the same file; the unscoped run still
+  answers the other question, whether the live configuration is sound.
 - eval: a `rigops.eval` package and `rigops eval` command that gates prompt
   and model changes on a versioned case suite, run against any
   OpenAI-compatible endpoint. A case is one JSON file: a prompt plus
@@ -21,11 +30,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   baseline case that errored, or a passing case edited or deleted since. `list`
   prints the run history. A seeded demo suite ships under `examples/eval/`.
 
+### Changed
+
+- doctor: `check_budget` measures the instruction file of the largest
+  repository in `<render.source>/registry/roots.json` too. A session pays for
+  one project file on top of everything the instruction tree authors, so the
+  ceiling used to guard a fraction of the surface and call it the whole.
+- doctor: the module line cap is a repository rule, judging every module under
+  the package root rather than only those inside a subpackage. The
+  sibling-import rule stays a package rule: the flat modules are the layer
+  `core` wraps. `check_imports.LINE_ALLOWANCES` records the two flat modules
+  that predate the cap at the size they were on the day it became a repository
+  rule -- they may shrink, never grow -- instead of leaving them advertising a
+  limit they are twice over.
+- doctor: a plugin id that is neither enabled nor installed is a finding
+  rather than a silent skip, so a retired plugin cannot keep being
+  recommended. The id pattern now requires a marketplace that starts with a
+  letter and rejects dist tags, scoped packages, email addresses and ssh
+  remotes, none of which are plugin ids and all of which share their shape.
+- doctor: a configured root that does not exist is reported rather than
+  disabling its check silently -- `doctor.plans.dir` and the pointer check's
+  `skill_roots`/`agent_roots`, matching what the source list already did. A
+  default root that is absent stays quiet: not every rig has the layout.
+- doctor: the pointer check no longer ignores the transcripts directory
+  wholesale. Only session transcripts are skipped, matched by shape (a
+  uuid-named `.jsonl` file or its sidecar directory), so a pointer into the
+  memory store beside them is verified like any other.
+
 ### Fixed
 
 - doctor: `check_rtk` runs only when `doctor.rtk.version` pins a version. It
   used to demand one specific rtk release on every host, so the install smoke
   test, and CI with it, failed wherever rtk was not installed.
+- render: an agent source with no tool class list renders no `tools:` line at
+  all. It used to render an empty one, which reads as "no tools" rather than
+  the "every tool" the omission means.
+
+### Removed
+
+- plugin: the skill-forcing gate hook (`skill-gate.sh`, its example config and
+  its table tests) no longer ships with the plugin, and neither does the
+  `RIGOPS_SKILL_GATES` variable. Which workflow a prompt must be routed
+  through is rig policy, so the engine belongs in the operator's own
+  `UserPromptSubmit` dispatcher, where the `rg -r`/`-rn`/`-rl` guard went in
+  0.5.0. `patterns/scope-gated-hooks.md` keeps the pattern itself.
 
 ## [0.5.0] - 2026-09-09
 

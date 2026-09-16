@@ -12,7 +12,7 @@ rigops ledger diff                          # judge: before vs. after
 
 Everything else in the repo - an eval gate for prompt and model changes, context-tax tracking, automation-fleet doctor, workspace hygiene - exists to support that loop.
 
-> **Status:** first public cut - v0.5.0, extracted from a working rig.
+> **Status:** first public cut - v0.6.0, extracted from a working rig.
 
 ## Positioning
 
@@ -126,7 +126,7 @@ delta: -10215 B (-10.3%)
 
 The registry (`registry.md`) is plain markdown: one entry per automated job, with its cadence, its evidence file, and how long it's allowed to run before it counts as hung. `rigops doctor` reads it and judges each job - stale against its declared cadence, hung against `max_runtime_h`, cooling down after a repeated heal so a flapping job doesn't get restarted into the ground. It's report-only by default; `--heal` opts into the kill/kickstart side effects, and `--supervisor none` skips `launchctl` entirely on hosts that don't run launchd.
 
-The same command also lints the config that drives the rig. `rigops doctor --config-only` runs a package of checks, one module per check, discovered by filename: every path, agent, skill, plugin id, MCP server, launchd label and model id named in the instruction files has to resolve against the filesystem, the enabled-plugin list and `launchctl`; the always-on instruction surface has to stay under a token ceiling; plan files have to match their own documented grammar. Prose cannot be type-checked, so a pointer to something deleted months ago is the defect that survives longest. Findings print as backlog lines with a stable id, and any finding exits nonzero, which is what makes the check usable from a pre-commit hook.
+The same command also lints the config that drives the rig. `rigops doctor --config-only` runs a package of checks, one module per check, discovered by filename: every path, agent, skill, plugin id, MCP server, launchd label and model id named in the instruction files has to resolve against the filesystem, the enabled-plugin list and `launchctl`; the always-on instruction surface has to stay under a token ceiling; plan files have to match their own documented grammar. Prose cannot be type-checked, so a pointer to something deleted months ago is the defect that survives longest. Findings print as backlog lines with a stable id, and any finding exits nonzero, which is what makes the check usable from a pre-commit hook. Add `--staged` there: the checks then read the staged content of the files the commit touches and report only findings about them, so an unrelated edit still sitting in the working tree can't fail someone else's commit.
 
 ```text
 rigops doctor report 2026-08-23T10:53:12Z
@@ -260,7 +260,7 @@ Note interventions as you make them: `rigops ledger note "<what you changed>"`.
 
 Two halves, one config.
 
-**Plugin half** - a Claude Code marketplace plugin: five commands (`/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:backlog`, `/rigops:week`), two skills (`ops-loop`, `fleet-triage`), two hooks (`skill-gate` and `ctx-nudge` on `UserPromptSubmit`), and a statusline. The `rg -r`/`-rn`/`-rl` guard that used to ship here now lives in the user's own `PreToolUse` dispatcher. Zero daemons. No agents - deliberately; which subagent handles a task is a decision that belongs to the rig, not to rigops.
+**Plugin half** - a Claude Code marketplace plugin: five commands (`/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:backlog`, `/rigops:week`), two skills (`ops-loop`, `fleet-triage`), one hook (`ctx-nudge` on `UserPromptSubmit`), and a statusline. The `rg -r`/`-rn`/`-rl` guard and the skill-forcing gate that used to ship here now live in the user's own dispatcher: which workflow a prompt must go through is rig policy, and two copies of one gate is one copy too many. Zero daemons. No agents - deliberately; which subagent handles a task is a decision that belongs to the rig, not to rigops.
 
 **Script half** - the `rigops` CLI (`eit`, `ledger`, `eval`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`, `version`), plus hardened launchd templates for the `doctor` and `ledger` jobs, and a cron template for Linux hosts (unverified).
 
