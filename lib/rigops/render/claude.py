@@ -44,8 +44,11 @@ def _render_agent(agent_file: Path, home: Path) -> bytes:
         "---",
         f"name: {fields.get('name', name)}",
         f"description: {fields.get('purpose', '')}",
-        f"tools: {_tools_line(fields)}",
     ]
+    # An absent tools line grants every tool, which no class list can express.
+    tools = _tools_line(fields)
+    if tools:
+        lines.append(f"tools: {tools}")
     tier = fields.get("tier", "inherit")
     if tier != "inherit":
         lines.append(f"model: {tier}")

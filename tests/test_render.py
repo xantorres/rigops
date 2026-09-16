@@ -76,6 +76,14 @@ tools: read
 Plain body.
 """
 
+ALL_TOOLS_AGENT_MD = """---
+name: broad
+purpose: an agent that keeps every tool
+tier: sonnet
+---
+Broad body.
+"""
+
 
 class RenderTestCase(unittest.TestCase):
     def setUp(self):
@@ -95,6 +103,7 @@ class RenderTestCase(unittest.TestCase):
         (self.source / "agents").mkdir()
         (self.source / "agents" / "demo.md").write_text(AGENT_MD)
         (self.source / "agents" / "plain.md").write_text(INHERIT_AGENT_MD)
+        (self.source / "agents" / "broad.md").write_text(ALL_TOOLS_AGENT_MD)
 
         skill_dir = self.source / "skills" / "myskill"
         skill_dir.mkdir(parents=True)
@@ -151,6 +160,12 @@ class ClaudeAgentTests(RenderTestCase):
         text = rendered.files[self.home / ".claude" / "agents" / "plain.md"].decode()
         self.assertNotIn("model:", text)
         self.assertNotIn("memory:", text)
+
+    def test_agent_without_tool_classes_omits_the_tools_line(self):
+        rendered = render.render_claude(self.source, self.home)
+        text = rendered.files[self.home / ".claude" / "agents" / "broad.md"].decode()
+        self.assertNotIn("tools:", text)
+        self.assertIn("model: sonnet", text)
 
 
 class SkillFileTests(RenderTestCase):
