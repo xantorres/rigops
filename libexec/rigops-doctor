@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import config as rigops_config  # noqa: E402
+from rigops import core as rigops_core  # noqa: E402
 from rigops import doctor as config_checks  # noqa: E402
 from rigops import fmt, launchd, state  # noqa: E402
 from rigops import judge as rigops_judge  # noqa: E402
@@ -30,6 +31,7 @@ CADENCE_MONTHLY_RE = re.compile(r"monthly", re.IGNORECASE)
 CADENCE_QUARTERLY_RE = re.compile(r"quarterly", re.IGNORECASE)
 CADENCE_ONDEMAND_RE = re.compile(r"on-demand|manual|deadline", re.IGNORECASE)
 HEALTH_TRAILING_NOTE_RE = re.compile(r"\s*\([^)]*\)\s*$")
+EVIDENCE_LINE_RE = re.compile(r":\d+$")
 
 
 def cadence_interval_hours(cadence: str):
@@ -305,8 +307,32 @@ def render_findings(findings: list) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _finding_paths(finding) -> set:
+    """The files a finding is about, absolute, for the staged filter to match on.
+
+    Checks that measure several files at once list them in ``extra``; everything
+    else carries one path as its evidence, with a line number the filter drops.
+    """
+    listed = finding.extra.get("paths")
+    if listed:
+        return {str(rigops_config.expand(p)) for p in listed}
+    return {str(rigops_config.expand(EVIDENCE_LINE_RE.sub("", finding.evidence)))}
+
+
 def report_config_checks(cfg: dict, args) -> int:
+    # --staged asserts "this commit is sound" rather than "the tree is quiet":
+    # the checks read the index of every staged file instead of the working tree
+    # copy, and a finding about a file this commit does not touch is somebody
+    # else's in-flight edit, which the unscoped fleet run still reports.
+    staged, staged_files = None, {}
+    if args.staged:
+        _, staged_files = rigops_core.staged_index()
+        staged = set(staged_files)
+    # Set either way: the overlay belongs to this run, not to the process.
+    rigops_core.set_overlay(staged_files)
     findings = config_checks.run_checks(cfg, only=set(args.check or []) or None)
+    if staged is not None:
+        findings = [f for f in findings if _finding_paths(f) & staged]
     if args.json:
         print(json.dumps(
             [{"id": f.id, "check": f.check, "area": f.area, "symptom": f.symptom,
@@ -343,6 +369,14 @@ def main(argv=None) -> int:
     ap.add_argument(
         "--no-config", action="store_true", help="skip the config checks",
     )
+    ap.add_argument(
+        "--staged", action="store_true",
+        help=(
+            "judge the git index of the files staged in the current repository "
+            "instead of the working tree, and report only findings about them; "
+            "for a pre-commit hook. Requires --config-only"
+        ),
+    )
     # choices, not a free string: an unrecognised name would otherwise build an
     # empty filter, run nothing and report a clean tree, so a typo in the name of
     # a check would read as "all clear".
@@ -351,6 +385,8 @@ def main(argv=None) -> int:
         help=f"limit config checks to NAME (repeatable); one of {', '.join(config_checks.names())}",
     )
     args = ap.parse_args(argv)
+    if args.staged and not args.config_only:
+        ap.error("--staged applies to the config checks only: add --config-only")
 
     cfg = rigops_config.load()
 

@@ -30,7 +30,6 @@ State directory (where `ledger.jsonl`, `ledger.md`, `interventions.jsonl`, `eval
 | `RIGOPS_STATE_DIR` | The CLI's state helper (every command that touches the ledger or logs) and `install.sh` | Overrides the state directory entirely. Same "externally managed" treatment for `--purge`. |
 | `RIGOPS_INSTALL_LABEL_PREFIX` | `install.sh` only | launchd label prefix for the `doctor`/`ledger` jobs it installs (default `com.rigops`). |
 | `RIGOPS_RUN_DEADLINE_S` | `rigops reap` only | Wall-clock budget in seconds for one reap run across every configured repo (default 3600). Scanning stops at the deadline; whatever's left is picked up next run. |
-| `RIGOPS_SKILL_GATES` | Plugin hook `skill-gate.sh` | Path to a skill-gate config JSON file (default `${XDG_CONFIG_HOME:-~/.config}/rigops/skill-gates.json`). No file at that path means the hook is a silent no-op. |
 
 `XDG_CONFIG_HOME` and `XDG_STATE_HOME` feed the two resolution formulas above but aren't `RIGOPS_`-prefixed themselves.
 
@@ -98,6 +97,10 @@ Config for `rigops doctor` (see [REGISTRY.md](REGISTRY.md) for the judgment mode
 - `checks.disk_free` (`object` or `null`, default `null`) - `{path, warn_gb, fail_gb}`; `null` skips the check entirely. `warn_gb` defaults to `25`, `fail_gb` to `10` when the block is present but a key is omitted. `path` accepts `~` and `$VAR` expansion; the report's detail line keeps the configured string as written.
 - `notify_command` (`string`, default `""`) - shell command run with the report path appended, whenever a job is failing/hung, a check fails, or anything was healed this run. Empty disables notification. Runs regardless of `--heal` (see [SAFETY.md](SAFETY.md)).
 - `rtk.version` (`string`, default unset) - pins the rtk token-reduction proxy: `doctor --config-only` flags a missing `rtk` or any other version. Unset skips the check.
+- `budget.always_on_tokens` (`int`, default `6000`) - ceiling for the instruction surface every session pays: the global instruction file, the rules with no `paths:` frontmatter, the largest per-project memory index, and the instruction file of the largest repository in `<render.source>/registry/roots.json`. A session loads one memory index and one project file, so the largest of each is the worst case. Tokens are bytes over four.
+- `plans.dir` (`string`, default `~/.claude/plans`) - the plans directory to lint. Set it and the check reports the directory itself when it is missing; left at the default, a rig that keeps no plans stays quiet.
+- `pointers.sources` / `pointers.skill_roots` / `pointers.agent_roots` (`array<string>`) - files to scan and roots to resolve skills and agents against. Same rule throughout: an entry you configured that no longer exists is a finding, a default that does not exist on this rig is not. `pointers.ignore_prefixes`, `pointers.ignore_segments`, `pointers.known_mcp`, `pointers.known_agents`, `pointers.known_skills` and `pointers.known_models` replace their defaults (an empty array is a deliberate override). Session transcripts under the transcripts root are skipped by shape, so the memory store beside them is still checked.
+- `imports.max_lines` (`int`, default `400`) - line cap for every module in the rigops package, whether or not it sits in a subpackage. The two flat modules that predate the cap carry a recorded allowance in the check itself: they may shrink, never grow, and that list is deliberately not configurable.
 
 ```json
 {

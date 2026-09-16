@@ -69,6 +69,65 @@ def run(argv, timeout: int = 10) -> str:
     return proc.stdout
 
 
+_OVERLAY: dict = {}
+
+
+def set_overlay(files) -> None:
+    """Serve this content instead of what is on disk, keyed by path.
+
+    The staged gate judges the index rather than the working tree, so the checks
+    read every file through ``read_text``/``read_bytes`` and none of them has to
+    know which of the two it was handed.
+    """
+    global _OVERLAY
+    _OVERLAY = {str(expand(path)): data for path, data in (files or {}).items()}
+
+
+def read_bytes(path) -> bytes:
+    """Contents of a file, from the overlay when it covers that path."""
+    resolved = expand(path)
+    data = _OVERLAY.get(str(resolved))
+    return resolved.read_bytes() if data is None else data
+
+
+def read_text(path) -> str:
+    return read_bytes(path).decode("utf-8", errors="replace")
+
+
+def size(path) -> int:
+    resolved = expand(path)
+    data = _OVERLAY.get(str(resolved))
+    return len(data) if data is not None else resolved.stat().st_size
+
+
+def git(cwd, *argv) -> str:
+    return run(["git", "-C", str(cwd), *argv])
+
+
+def staged_index(cwd=None):
+    """Return (repository root, {path: staged bytes}) for what a commit would add.
+
+    Deletions carry no content and are left out: the file is already gone from
+    the working tree the checks resolve their pointers against.
+    """
+    root = git(cwd or Path.cwd(), "rev-parse", "--show-toplevel").strip()
+    if not root:
+        return None, {}
+    names = git(root, "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR")
+    files = {}
+    for name in (n for n in names.split("\0") if n):
+        try:
+            blob = subprocess.run(
+                ["git", "-C", root, "show", f":{name}"],
+                capture_output=True, timeout=10, check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if blob.returncode == 0:
+            files[str(expand(Path(root) / name))] = blob.stdout
+    return expand(root), files
+
+
 def finding_id(check: str, key: str) -> str:
     return hashlib.sha1(f"{check}\x00{key}".encode()).hexdigest()[:8]
 
