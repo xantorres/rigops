@@ -167,6 +167,11 @@ def collect_turns(since, until, transcripts_dir=None) -> list[dict]:
                     for item in (message.get("content") or [])
                     if isinstance(item, dict) and item.get("type") == "tool_use"
                 ]
+                text_chars = sum(
+                    len(item.get("text") or "")
+                    for item in (message.get("content") or [])
+                    if isinstance(item, dict) and item.get("type") == "text"
+                )
                 entry = entries.get(key)
                 if entry is None:
                     entries[key] = {
@@ -176,11 +181,13 @@ def collect_turns(since, until, transcripts_dir=None) -> list[dict]:
                         "model": message.get("model") or "unknown",
                         "usage": usage,
                         "tools": tool_names,
+                        "text_chars": text_chars,
                     }
                 else:
                     entry["ts_raw"] = obj.get("timestamp") or entry["ts_raw"]
                     entry["usage"] = usage
                     entry["tools"].extend(tool_names)
+                    entry["text_chars"] += text_chars
 
         for entry in entries.values():
             ts_raw = entry["ts_raw"]
@@ -207,6 +214,7 @@ def collect_turns(since, until, transcripts_dir=None) -> list[dict]:
                     "cache_read": usage.get("cache_read_input_tokens") or 0,
                     "output": usage.get("output_tokens") or 0,
                     "tools": entry["tools"],
+                    "text_chars": entry["text_chars"],
                 }
             )
     return turns
@@ -227,7 +235,7 @@ def _flatten_tool_result_text(content) -> str:
 
 
 def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -> dict:
-    """Count permission denials, self-corrections, and tool errors from user-role
+    """Count permission denials, self-corrections, tool errors, and human prompts from user-role
     transcript rows. Mirrors collect_turns' file walk, rel-path derivation, and
     window filter but keeps "user" rows; subagent transcripts are excluded since
     subagent tool errors are not user friction.
@@ -238,6 +246,7 @@ def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -
     denials_headless = 0
     corrections = 0
     tool_errors = 0
+    prompts = 0
     skip_prefixes = ("<system-reminder", "<command-", "Caveat:", "[Request interrupted")
     for path in find_transcripts(root):
         if "/subagents/" in path:
@@ -280,6 +289,7 @@ def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -
                     items = content
                 else:
                     items = []
+                prompted = False
                 for item in items:
                     if not isinstance(item, dict):
                         continue
@@ -299,6 +309,9 @@ def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -
                             continue
                         if _first_nonblank_line(text).startswith(skip_prefixes):
                             continue
+                        if not prompted:
+                            prompts += 1
+                            prompted = True
                         if is_correction(text):
                             corrections += 1
                             break
@@ -307,6 +320,7 @@ def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -
         "denials_headless": denials_headless,
         "corrections": corrections,
         "tool_errors": tool_errors,
+        "prompts": prompts,
     }
 
 

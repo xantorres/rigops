@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- ledger: a `text/prompt` column, visible main-thread text characters per human
+  prompt, as the prose-verbosity lever. `out/turn` counts thinking and tool-call
+  arguments as well as text, so it moves with effort level and batching and no
+  longer says anything about verbosity on its own; its description now says so.
+
 - retrieval: a document may declare what it answers, as `answers: ...` in
   frontmatter, in an HTML comment or in a leading line comment. The value is
   indexed into its own column and ranks above a passing mention of the same

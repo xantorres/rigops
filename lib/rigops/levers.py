@@ -20,7 +20,8 @@ CHEAP_MODELS = ("sonnet", "haiku")
 BASE_MD_COLUMNS = [
     ("date", "date"), ("label", "label"), ("turns", "turns"), ("sessions", "sessions"),
     ("eit_per_turn", "EIT/turn 7d"), ("eit_per_turn_30d", "EIT/turn 30d"),
-    ("out_per_turn", "out/turn"), ("ctx_p50", "ctx p50"), ("over300k_pct", ">300k EIT %"),
+    ("out_per_turn", "out/turn"), ("text_per_prompt", "text/prompt"),
+    ("ctx_p50", "ctx p50"), ("over300k_pct", ">300k EIT %"),
     ("cache_hit_pct", "cache %"), ("turn1_p10", "turn-1 p10"), ("turn1_p50", "turn-1 p50"),
 ]
 TAIL_MD_COLUMNS = [
@@ -36,7 +37,9 @@ One row per ledger run (`rigops ledger`). Window = the 7 full days before the ro
 Columns map to levers: turn-1 and ctx p50 track context diet and discipline (p10 is the
 floor a bare harness plus a small first prompt costs, p50 is a typical session start);
 Agent/100 tracks delegation rate; cheap-model EIT % tracks cheap-model routing; out/turn
-tracks output verbosity; cache % tracks prompt-cache reuse; fixed tax tracks the
+counts every output token (thinking, tool-call arguments, text) per API response, so it
+moves with effort level and batching; text/prompt tracks prose verbosity as main-thread
+text characters per human prompt; cache % tracks prompt-cache reuse; fixed tax tracks the
 always-loaded config bytes named in `fixed_tax.paths`/`fixed_tax.globs`, the regrowth
 gauge for the per-session fixed context cost.
 Denials, denials hl, corrections, tier3 sess, and tool err/100 track interaction friction:
@@ -217,6 +220,9 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
         "eit_per_turn": round(total_eit / n) if n else None,
         "eit_per_turn_30d": round(eit30 / len(win30)) if win30 else None,
         "out_per_turn": round(sum(t["output"] for t in win) / n) if n else None,
+        "text_per_prompt": (
+            round(sum(t["text_chars"] for t in win_main) / fr["prompts"]) if fr["prompts"] else None
+        ),
         "ctx_p50": round(transcripts.percentile(ctxs, 0.5)) if ctxs else None,
         "ctx_mean": round(total_ctx / n) if n else None,
         "over300k_pct": round(over300k / total_eit * 100, 1) if total_eit else None,
@@ -349,6 +355,7 @@ def summary_line(row: dict, prev: dict | None, base: dict | None, watch_projects
     parts.append(f"EIT/turn {format_cell('eit_per_turn', e)}" + delta_suffix)
     parts.append(f"| ctx p50 {format_cell('ctx_p50', row.get('ctx_p50'))}")
     parts.append(f"| out/turn {format_cell('out_per_turn', row.get('out_per_turn'))}")
+    parts.append(f"| text/prompt {format_cell('text_per_prompt', row.get('text_per_prompt'))}")
     turn1_line = (
         f"| turn-1 p10/p50 {format_cell('turn1_p10', row.get('turn1_p10'))}"
         f"/{format_cell('turn1_p50', row.get('turn1_p50'))}"

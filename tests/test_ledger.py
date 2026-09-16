@@ -61,6 +61,8 @@ class BuildRowTests(EnvIsolatedTestCase):
             self.assertEqual(row["eit_per_turn"], 62845)
             self.assertEqual(row["ctx_p50"], 1700)
             self.assertEqual(row["out_per_turn"], 84)
+            # 60 main-thread text chars over 3 prompts; subagent text never reaches a human.
+            self.assertEqual(row["text_per_prompt"], 20)
             self.assertEqual(row["cache_hit_pct"], 0.2)
             self.assertEqual(row["over300k_pct"], 98.7)
             self.assertEqual(row["agent_per_100"], 33.33)
@@ -114,7 +116,7 @@ class LedgerCliTests(EnvIsolatedTestCase):
             env = self._env_for(tmp)
             result = _run_ledger(["--at", ROW_DATE.isoformat(), "--dry-run", "--json"], env)
             self.assertEqual(result.returncode, 0)
-            json.loads(result.stdout)  # valid row JSON
+            self.assertEqual(json.loads(result.stdout)["text_per_prompt"], 20)
             self.assertFalse((Path(tmp) / "state" / "ledger.jsonl").exists())
 
     def test_rerun_noop_then_force_replace_and_md_matches_jsonl(self):
