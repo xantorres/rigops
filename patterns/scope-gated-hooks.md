@@ -30,17 +30,13 @@ mentions a PR in passing doesn't look like a request about that PR. No config
 file present means the engine does nothing at all; it's opt-in per machine and
 per project, never a default that fires unpredictably.
 
-## How rigops implements it
+## How this rig implements it
 
-[../plugin/hooks/skill-gate.sh](../plugin/hooks/skill-gate.sh) is a
-`UserPromptSubmit` hook. Config resolution: the `RIGOPS_SKILL_GATES`
-environment variable if set, else
-`${XDG_CONFIG_HOME:-$HOME/.config}/rigops/skill-gates.json`, else the hook
-exits 0 silently.
-[../plugin/hooks/skill-gate.example.json](../plugin/hooks/skill-gate.example.json)
-ships as documentation only and is never auto-active at either default
-location, so installing the plugin alone changes nothing until an operator
-opts a specific gate in.
+A `UserPromptSubmit` hook reads a gates file - one gate per workflow, each
+declaring `skill`, `scope` (`cwd_substrings` and/or a `prompt_regex`
+fallback), `verb_regex`, `noun_regex`, an optional `pull_url_regex`, optional
+`windows`, and the `message` to inject. No gates file means a silent exit 0,
+so the engine is inert until an operator opts a gate in.
 
 Provenance scrubbing runs before the verb/noun test, via a `sed` substitution
 that uses a control byte as its delimiter rather than a printable character
@@ -55,37 +51,22 @@ entirely, rather than handing `sed` a broken script that could fail
 unpredictably.
 
 The verb/noun proximity windows are asymmetric by default -
-`windows.verb_first` defaults to 40 characters, `windows.noun_first` to 15 -
-for a reason the script's own comment states directly: "verb-first allows real
-distance (\"review PR 123\", \"thoughts on the pull request\"); noun-first
-only reads as a request when the verb follows immediately (\"PR 123,
-thoughts?\") -- a far trailing verb belongs to a different ask about a PR that
-was merely mentioned." A verb appearing well before the noun is almost always
-still talking about the same request; a noun that shows up first with the verb
-only appearing much later is more likely two separate thoughts in the same
-prompt. A pasted pull-request URL is treated as unambiguous on its own - the
-verb may then appear anywhere in the prompt, or a bare URL with nothing else
-can be the whole request.
+`windows.verb_first` 40 characters, `windows.noun_first` 15 - for a reason
+worth stating directly: verb-first allows real distance ("review PR 123",
+"thoughts on the pull request"); noun-first only reads as a request when the
+verb follows immediately ("PR 123, thoughts?"), because a far trailing verb
+belongs to a different ask about a PR that was merely mentioned. A pasted
+pull-request URL is treated as unambiguous on its own - the verb may then
+appear anywhere in the prompt, or a bare URL with nothing else can be the
+whole request. A marker file keyed by session and gate name keeps one gate
+from injecting its mandate twice in a session, and from swallowing another
+gate's.
 
-[../plugin/hooks/skill-gate.example.json](../plugin/hooks/skill-gate.example.json)
-is the shipped worked example: one gate scoped to a `cwd_substrings` match
-plus a `prompt_regex` fallback, verb and noun regexes covering both English
-and Spanish phrasings of "review this PR."
-
-[../tests/hooks/](../tests/hooks/) is the pattern's proof artifact - a
-table-test harness, not prose claims about behavior. `run.sh` runs every
-`*.test.sh` in the directory and aggregates a passed/failed count; running it
-against this checkout, `skill-gate.test.sh` alone passes 24 checks and fails
-0, covering real review requests (plain, re-review, noun-first, conversational
-phrasing, Spanish, pasted URLs), reported false positives that used to fire
-(provenance-scrubbed PR mentions, "checkout" not matching the verb "check",
-"prereview" not matching "review"), config-resolution edge cases (no config
-file, malformed JSON), and the two delimiter-collision cases above - an `@` in
-a provenance regex still fires cleanly, a literal control byte in one causes
-the gate to be skipped rather than erroring. The full hook suite (skill-gate,
-ctx-nudge, ctx-probe, statusline) totals 52 passed, 0 failed in this checkout.
-The `rg -r`/`-rn`/`-rl` guard now lives in the user's own `PreToolUse`
-dispatcher, not in this plugin.
+The engine does not ship with this plugin. It lives in the operator's own
+`UserPromptSubmit` dispatcher, next to the `rg -r`/`-rn`/`-rl` guard that
+left for the same reason: which workflow a prompt must go through is rig
+policy, and a gate with two implementations is a gate whose false triggers
+get fixed in one of them.
 
 ## Adopting it without rigops
 
