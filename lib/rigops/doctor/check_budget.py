@@ -1,19 +1,20 @@
 """The always-on instruction surface has a token ceiling.
 
 Measured: the global law file, the rules that carry no ``paths:`` frontmatter
-(path-scoped rules load only when a matching file is touched), and the memory
-index. Tokens are bytes over four, the same arithmetic used to size the surface
-in the audit.
+(path-scoped rules load only when a matching file is touched), the memory index,
+and the instruction file of the largest registered repository. Tokens are bytes
+over four, the same arithmetic used to size the surface in the audit.
 
-Not measured, because neither is discoverable from this tree: the per-project
-instruction file of whatever repository the session opens in, and the skill and
-agent listings the runtime assembles. This ceiling therefore guards the part of
-the surface that is authored here, and is a floor under the true session cost
-rather than the whole of it.
+A session loads one memory index and one project file, the ones belonging to the
+repository it opens in, so the largest of each is the worst case rather than an
+approximation of it. Still not measured, because the runtime assembles it rather
+than this tree: the skill and agent listings. The ceiling is therefore a floor
+under the true session cost, not the whole of it.
 """
 
 from __future__ import annotations
 
+import json
 import re
 
 from rigops import core
@@ -29,7 +30,7 @@ PATHS_RE = re.compile(r"^paths:", re.MULTILINE)
 def _is_always_on(path) -> bool:
     """A rule without ``paths:`` frontmatter loads in every session."""
     try:
-        head = path.read_text(errors="replace")[:2000]
+        head = core.read_text(path)[:2000]
     except OSError:
         return False
     match = FRONTMATTER_RE.match(head)
@@ -39,7 +40,7 @@ def _is_always_on(path) -> bool:
 def _size(path) -> int:
     """Size, or zero if the file went away between listing it and reading it."""
     try:
-        return path.stat().st_size
+        return core.size(path)
     except OSError:
         return 0
 
@@ -57,6 +58,22 @@ def _memory_index():
     return indexes[:1]
 
 
+def _registered_repos(cfg):
+    """The repositories the control plane knows about, from its own root list."""
+    source = core.expand(core.cfg_get(cfg, "render.source", str(core.HOME / "rig")))
+    try:
+        data = json.loads(core.read_text(source / "registry" / "roots.json"))
+    except (OSError, ValueError):
+        return []
+    return [core.expand(raw) for raw in data.get("pointer_repos", [])]
+
+
+def _project_instructions(cfg):
+    """The largest registered repository's own instruction file."""
+    files = [repo / "CLAUDE.md" for repo in _registered_repos(cfg)]
+    return sorted((f for f in files if f.is_file()), key=_size, reverse=True)[:1]
+
+
 def members(cfg):
     files = []
     law = core.CLAUDE_DIR / "CLAUDE.md"
@@ -66,6 +83,7 @@ def members(cfg):
         if _is_always_on(rule):
             files.append(rule)
     files.extend(_memory_index())
+    files.extend(_project_instructions(cfg))
     return files
 
 
@@ -73,7 +91,7 @@ def _total(files):
     total = 0
     for path in files:
         try:
-            total += len(path.read_bytes()) // 4
+            total += len(core.read_bytes(path)) // 4
         except OSError:
             continue
     return total
@@ -99,4 +117,5 @@ def run(cfg):
             "move rule text behind `paths:` frontmatter or into references, "
             "or raise the ceiling deliberately"
         ),
+        extra={"paths": [str(p) for p in files]},
     )]

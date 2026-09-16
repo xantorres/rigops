@@ -14,6 +14,7 @@ from rigops import core
 AREA = "plans"
 CHECK = "plans"
 
+DEFAULT_DIR = "~/.claude/plans"
 EXEMPT = {"README.md", "backlog.md"}
 FILENAME_RE = re.compile(r"^[a-z0-9][a-z0-9.-]*\.md$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -23,7 +24,7 @@ ARCHIVED_STATUSES = ("done", "superseded", "abandoned")
 
 def _frontmatter(path):
     try:
-        text = path.read_text(errors="replace")
+        text = core.read_text(path)
     except OSError:
         return {}
     match = re.match(r"\A---\r?\n(.*?)\r?\n---", text, re.DOTALL)
@@ -51,7 +52,14 @@ def _scalar(value):
 
 
 def _plans_dir(cfg):
-    return core.expand(core.cfg_get(cfg, "doctor.plans.dir", "~/.claude/plans"))
+    """The directory to lint, and whether an operator named it.
+
+    A configured root that does not exist is a defect: a typo in the setting
+    would otherwise disable the check silently. The default root is absent on any
+    rig that keeps no plans, which is not a defect at all.
+    """
+    configured = core.cfg_get(cfg, "doctor.plans.dir")
+    return core.expand(configured or DEFAULT_DIR), bool(configured)
 
 
 def _rel(path):
@@ -59,9 +67,16 @@ def _rel(path):
 
 
 def run(cfg):
-    root = _plans_dir(cfg)
+    root, configured = _plans_dir(cfg)
     if not root.is_dir():
-        return []
+        if not configured:
+            return []
+        return [core.Finding(
+            check=CHECK, area=AREA, key=f"dir:{root}",
+            symptom="configured plans directory does not exist, so no plan is linted",
+            evidence=f"doctor.plans.dir = {_rel(root)}",
+            fix="point doctor.plans.dir at the plans directory or drop the setting",
+        )]
     findings = []
     for path in sorted(root.glob("*.md")):
         if path.name in EXEMPT:

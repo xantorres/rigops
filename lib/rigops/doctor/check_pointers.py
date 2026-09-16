@@ -10,103 +10,35 @@ from __future__ import annotations
 
 import glob
 import json
-import re
 from pathlib import Path
 
 from rigops import core
 
+from .pointer_grammar import (
+    AGENT_RE,
+    BUILTIN_AGENTS,
+    DEFAULT_AGENT_ROOTS,
+    DEFAULT_IGNORE_PREFIXES,
+    DEFAULT_IGNORE_SEGMENTS,
+    DEFAULT_MODELS,
+    DEFAULT_SKILL_ROOTS,
+    DEFAULT_SOURCES,
+    DIST_TAGS,
+    LAUNCHD_RE,
+    MCP_RE,
+    MODEL_RE,
+    NOT_PLUGIN_NAMES,
+    PATH_RE,
+    PLUGIN_ID_RE,
+    PLUGIN_WORD_RE,
+    SETTINGS_PATH_KEYS,
+    SKILL_RE,
+    TRANSCRIPT_RE,
+)
+
 AREA = "docs"
 CHECK = "pointers"
 
-DEFAULT_SOURCES = [
-    "~/.claude/CLAUDE.md",
-    "~/.claude/rules/**/*.md",
-    "~/.claude/references/**/*.md",
-    "~/.claude/skills/**/SKILL.md",
-    "~/.claude/agents/*.md",
-    "~/.claude/settings.json",
-    "~/docs/CLAUDE.md",
-    "~/docs/AGENT-CHEATSHEET.md",
-    "~/projects/personal/*/CLAUDE.md",
-]
-
-DEFAULT_IGNORE_PREFIXES = [
-    "/tmp", "/private/tmp", "/var/folders", "~/Downloads",
-    "~/.claude/projects", "~/.claude/plugins/cache", "~/.claude/plugins/marketplaces",
-    "~/.claude/sessions", "~/.claude/backups", "~/.claude/shell-snapshots",
-]
-
-# Segments that mark a documentation placeholder rather than a real location.
-DEFAULT_IGNORE_SEGMENTS = [
-    "skill-name", "my-project", "path/to", "example", "foo", "bar", "repo-name",
-]
-
-# Skills and agents ship in several layouts (user directory, project directory,
-# cached plugin, marketplace checkout), so the roots are walked rather than
-# matched shape by shape: a layout this check has not seen would otherwise turn
-# every sound pointer to that skill into a finding.
-DEFAULT_SKILL_ROOTS = ["~/.claude/skills", "~/.claude/plugins", "~/docs/.claude/skills"]
-DEFAULT_AGENT_ROOTS = ["~/.claude/agents", "~/.claude/plugins"]
-
-DEFAULT_MODELS = [
-    "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001",
-    "claude-fable-5", "claude-fable-5-1",
-]
-
-# settings.json is the source of truth for plugin and permission state, so only
-# its executable pointers are checked; a disabled plugin listed there is a fact,
-# not a stale recommendation. The allow, deny and ask rules stay out for the same
-# reason: a rule naming a file that does not exist is the rule working.
-SETTINGS_PATH_KEYS = ("hooks", "statusLine", "env", "mcpServers", "modelSettings")
-
-BUILTIN_AGENTS = {
-    "general-purpose", "explore", "plan", "claude",
-    "statusline-setup", "output-style-setup",
-}
-
-# Absolute paths live outside the home directory too, and the tools this rig
-# names most often (the package manager prefix, the system binaries) all do. The
-# lookbehind keeps the match from starting inside a longer token, so a relative
-# path such as `.config/bin/run.sh` is not read as `/bin/run.sh`.
-PATH_ROOTS = "opt|usr|etc|srv|var|tmp|private|bin|sbin|Applications|Library|Volumes"
-
-
-def _home_root() -> str:
-    """The directory homes are made in, as a regex branch.
-
-    Read off this rig rather than written down: the name differs by platform,
-    and a home directly under the filesystem root has no such directory, in
-    which case the branch is dropped instead of matching everything.
-    """
-    parent = str(core.HOME.parent)
-    return "" if parent == "/" else f"|{re.escape(parent)}/[A-Za-z0-9._-]+"
-
-
-PATH_RE = re.compile(
-    rf"(?<![\w./~-])(?:~{_home_root()}|/(?:{PATH_ROOTS}))/[^\s`'\"()\[\],;:|<>]*"
-)
-# Only the "<name> agent" order is trusted: "agent <name>" also matches ordinary
-# prose such as "the agent auto-invokes", which is not a pointer at all.
-AGENT_RE = [
-    re.compile(r"[`*]{1,2}([a-z][a-z0-9:_-]{2,})[`*]{1,2}\s+(?:sub)?agent\b"),
-    re.compile(r"subagent_type[\"']?\s*[:=]\s*[\"'`]([a-z][a-z0-9:_-]{2,})"),
-]
-SKILL_RE = [
-    re.compile(r"\bskills?\s+[`*]{1,2}([a-z][a-z0-9:_-]{2,})[`*]{1,2}"),
-    re.compile(r"[`*]{1,2}([a-z][a-z0-9:_-]{2,})[`*]{1,2}\s+skill\b"),
-    re.compile(r"Skill\(\s*[\"']([a-z][a-z0-9:_-]+)"),
-]
-PLUGIN_ID_RE = re.compile(r"\b([a-z0-9][a-z0-9-]*)@([a-z0-9][a-z0-9-]*)\b")
-PLUGIN_WORD_RE = re.compile(r"[`*]{1,2}([a-z0-9][a-z0-9-]{2,})[`*]{1,2}\s+plugin\b")
-MCP_RE = [
-    re.compile(r"[`*]{1,2}([A-Za-z0-9][A-Za-z0-9_-]{2,})[`*]{1,2}\s+MCP\b"),
-    re.compile(r"\bMCP\s+server\s+[`*]{1,2}([A-Za-z0-9][A-Za-z0-9_-]{2,})[`*]{1,2}"),
-]
-# Two segments is a label: `local.rigops-doctor` is the shape this fleet's own
-# default prefix produces, and requiring a third missed all of them. The
-# lookbehind keeps a filename such as `settings.local.json` out of the match.
-LAUNCHD_RE = re.compile(r"(?<![\w.-])((?:com|local)\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)\b")
-MODEL_RE = re.compile(r"\bclaude-(?:opus|sonnet|haiku|fable|instant|[0-9])[a-z0-9.-]*\b")
 
 _UNSET = object()
 
@@ -142,16 +74,37 @@ def _sources(cfg):
 
 def _json(path, default):
     try:
-        return json.loads(core.expand(path).read_text())
+        return json.loads(core.read_text(path))
     except (OSError, ValueError):
         return default
 
 
 def _roots(cfg, key, default):
+    """Return the roots that exist, plus a finding per configured root that is gone.
+
+    Same rule as the source list: a root an operator named is a claim about this
+    rig, while a default root is simply absent on a rig with no such layout.
+    """
+    dirs, missing = [], []
     for pattern in _cfg(cfg, key, default):
         base = core.expand(pattern)
         if base.is_dir():
-            yield base
+            dirs.append(base)
+        elif pattern not in default:
+            missing.append(_finding(
+                "root", str(base), f"doctor.pointers.{key}",
+                "point the root at a directory that exists or drop the entry",
+            ))
+    return dirs, missing
+
+
+def _root_findings(cfg):
+    out = []
+    for key, default in (
+        ("skill_roots", DEFAULT_SKILL_ROOTS), ("agent_roots", DEFAULT_AGENT_ROOTS),
+    ):
+        out.extend(_roots(cfg, key, default)[1])
+    return out
 
 
 def _mcp_names(cfg):
@@ -173,11 +126,11 @@ def _known(cfg):
     settings = _json("~/.claude/settings.json", {})
     installed = _json("~/.claude/plugins/installed_plugins.json", {}).get("plugins", {})
     agents = set(BUILTIN_AGENTS)
-    for base in _roots(cfg, "agent_roots", DEFAULT_AGENT_ROOTS):
+    for base in _roots(cfg, "agent_roots", DEFAULT_AGENT_ROOTS)[0]:
         agents |= {p.stem.lower() for p in base.rglob("*.md") if p.parent.name == "agents"}
     agents |= {a.lower() for a in _cfg(cfg, "known_agents", [])}
     skills = set()
-    for base in _roots(cfg, "skill_roots", DEFAULT_SKILL_ROOTS):
+    for base in _roots(cfg, "skill_roots", DEFAULT_SKILL_ROOTS)[0]:
         skills |= {p.parent.name.lower() for p in base.rglob("SKILL.md")}
     skills |= {s.lower() for s in _cfg(cfg, "known_skills", [])}
     labels = set()
@@ -214,6 +167,8 @@ def _path_ok(raw, known, truncated=False):
         return True
     resolved = str(core.expand(path))
     if any(resolved == pre or resolved.startswith(pre + "/") for pre in known["ignore"]):
+        return True
+    if TRANSCRIPT_RE.search(resolved):
         return True
     if any(ch in path for ch in "*?["):
         head = resolved.split("*")[0].split("[")[0].split("?")[0]
@@ -296,9 +251,12 @@ def _scan_text(path, text, known, numbered=True):
                                         area="skills"))
         for name, market in PLUGIN_ID_RE.findall(line):
             full = f"{name}@{market}"
-            if full not in known["plugins"] and full not in known["installed"]:
+            if market in DIST_TAGS or name in NOT_PLUGIN_NAMES:
                 continue
-            if not known["plugins"].get(full, False):
+            if full not in known["plugins"] and full not in known["installed"]:
+                out.append(_finding("plugin", full, where,
+                                    "install it, or stop naming a plugin this rig lacks"))
+            elif not known["plugins"].get(full, False):
                 out.append(_finding("plugin", full, where,
                                     "enable it in settings.json or stop recommending it"))
         for name in PLUGIN_WORD_RE.findall(line):
@@ -349,10 +307,11 @@ def _settings_text(path):
 def run(cfg):
     known = _known(cfg)
     paths, findings = _sources(cfg)
+    findings.extend(_root_findings(cfg))
     for path in paths:
         is_settings = path.name == "settings.json"
         try:
-            text = _settings_text(path) if is_settings else path.read_text(errors="replace")
+            text = _settings_text(path) if is_settings else core.read_text(path)
         except OSError:
             continue
         findings.extend(_scan_text(path, text, known, numbered=not is_settings))

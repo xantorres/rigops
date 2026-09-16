@@ -471,6 +471,209 @@ class CheckRenderTests(unittest.TestCase):
             self.assertEqual(check_render.run(cfg), [])
 
 
+class OverlayTests(unittest.TestCase):
+    """Content handed to the checks instead of what is on disk."""
+
+    def tearDown(self):
+        core.set_overlay({})
+
+    def test_read_text_prefers_the_overlay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "file.md"
+            path.write_text("on disk\n")
+            core.set_overlay({path: b"staged\n"})
+            self.assertEqual(core.read_text(path), "staged\n")
+            self.assertEqual(core.size(path), len("staged\n"))
+
+    def test_read_text_falls_back_to_disk(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "file.md"
+            path.write_text("on disk\n")
+            core.set_overlay({Path(tmp) / "other.md": b"staged\n"})
+            self.assertEqual(core.read_text(path), "on disk\n")
+
+
+class StagedIndexTests(unittest.TestCase):
+    def _repo(self, tmp):
+        root = Path(tmp) / "repo"
+        root.mkdir()
+        core.git(root, "init", "-q", "-b", "main")
+        core.git(root, "config", "user.email", "t@example.com")
+        core.git(root, "config", "user.name", "t")
+        return root
+
+    def test_only_staged_content_is_returned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo(tmp)
+            (root / "staged.md").write_text("indexed\n")
+            (root / "dirty.md").write_text("never staged\n")
+            core.git(root, "add", "staged.md")
+            (root / "staged.md").write_text("working tree\n")
+            found_root, files = core.staged_index(root)
+        self.assertEqual(found_root, core.expand(root))
+        self.assertEqual(files, {str(core.expand(root / "staged.md")): b"indexed\n"})
+
+    def test_outside_a_repository_there_is_nothing_staged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            found_root, files = core.staged_index(Path(tmp))
+        self.assertIsNone(found_root)
+        self.assertEqual(files, {})
+
+
+class CheckPlansRootTests(unittest.TestCase):
+    """A configured root that is gone is a defect; a default one that is gone is not."""
+
+    def test_configured_plans_dir_that_is_gone_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            absent = Path(tmp) / "absent"
+            findings = check_plans.run({"doctor": {"plans": {"dir": str(absent)}}})
+        self.assertEqual([f.key for f in findings], [f"dir:{core.expand(absent)}"])
+
+    def test_default_plans_dir_that_is_gone_is_silent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            absent = str(Path(tmp) / "absent")
+            with mock.patch.object(check_plans, "DEFAULT_DIR", absent):
+                findings = check_plans.run({})
+        self.assertEqual(findings, [])
+
+
+class CheckPointersRootTests(unittest.TestCase):
+    def test_configured_skill_root_that_is_gone_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            absent = Path(tmp) / "absent-skills"
+            cfg = {"doctor": {"pointers": {"sources": [], "skill_roots": [str(absent)]}}}
+            findings = check_pointers.run(cfg)
+        self.assertEqual(
+            [f.key for f in findings],
+            [f"root:{core.expand(absent)}:doctor.pointers.skill_roots"],
+        )
+
+    def test_default_roots_that_are_gone_are_silent(self):
+        findings = check_pointers.run({"doctor": {"pointers": {"sources": []}}})
+        self.assertEqual([f for f in findings if f.key.startswith("root:")], [])
+
+
+class CheckPointersMemoryTests(unittest.TestCase):
+    """The fact store is checked; only the session transcripts under it are ignored."""
+
+    SESSION = "~/.claude/projects/-doctor-test/0f0e0d0c-0b0a-4009-8008-070605040302"
+    NOTE = "~/.claude/projects/-doctor-test/memory/absent-note.md"
+
+    def test_transcripts_are_ignored_and_a_memory_pointer_is_checked(self):
+        text = (
+            f"transcript {self.SESSION}.jsonl and {self.SESSION}/subagents/a.jsonl "
+            f"but the note {self.NOTE} is a pointer\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.md"
+            source.write_text(text)
+            findings = check_pointers.run({"doctor": {"pointers": {"sources": [str(source)]}}})
+            label = core.expand(source)
+        self.assertEqual(
+            [f.key for f in findings if f.key.startswith("path:")],
+            [f"path:{self.NOTE}:{label}"],
+        )
+
+
+class CheckPointersPluginIdTests(unittest.TestCase):
+    def _plugin_findings(self, text):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.md"
+            source.write_text(text)
+            cfg = {"doctor": {"pointers": {"sources": [str(source)], "ignore_prefixes": []}}}
+            findings = check_pointers.run(cfg)
+        return [f for f in findings if f.key.startswith("plugin:")]
+
+    def test_unknown_plugin_id_is_reported(self):
+        findings = self._plugin_findings("install `ghost-tool@ghost-market` before the run\n")
+        self.assertEqual([f.key.split(":")[1] for f in findings], ["ghost-tool@ghost-market"])
+
+    def test_version_specifiers_and_ssh_hosts_are_not_plugin_ids(self):
+        text = (
+            "pin node@20, pnpm@9.1.0 and vite@latest, clone "
+            "git@github-host:acme/repo.git, write to dev@example.com\n"
+        )
+        self.assertEqual(self._plugin_findings(text), [])
+
+
+class CheckImportsPolicyTests(unittest.TestCase):
+    """The line cap is a repository rule; the sibling rule stays a package rule."""
+
+    def test_flat_module_over_the_cap_is_flagged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "flat.py").write_text("x = 1\n" * 410)
+            with mock.patch.object(check_imports, "_package_root", return_value=root):
+                findings = check_imports.run({})
+        self.assertEqual([f.key for f in findings], ["size:rigops/flat.py"])
+
+    def test_flat_module_may_import_a_sibling(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "flat.py").write_text("from rigops import janitor\n")
+            with mock.patch.object(check_imports, "_package_root", return_value=root):
+                findings = check_imports.run({})
+        self.assertEqual(findings, [])
+
+    def test_module_with_a_recorded_allowance_is_flagged_only_when_it_grows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            module = root / "legacy.py"
+            with mock.patch.object(check_imports, "_package_root", return_value=root), \
+                 mock.patch.object(check_imports, "LINE_ALLOWANCES", {"rigops/legacy.py": 500}):
+                module.write_text("x = 1\n" * 500)
+                self.assertEqual(check_imports.run({}), [])
+                module.write_text("x = 1\n" * 501)
+                findings = check_imports.run({})
+        self.assertEqual([f.key for f in findings], ["size:rigops/legacy.py"])
+
+
+class CheckBudgetProjectFileTests(unittest.TestCase):
+    """The per-project instruction file a session also pays counts toward the ceiling."""
+
+    def _rig(self, tmp, repos):
+        source = Path(tmp) / "rig"
+        (source / "registry").mkdir(parents=True)
+        (source / "registry" / "roots.json").write_text(
+            json.dumps({"pointer_repos": [str(r) for r in repos]})
+        )
+        return source
+
+    def _repo(self, tmp, name, size):
+        repo = Path(tmp) / name
+        repo.mkdir()
+        (repo / "CLAUDE.md").write_text("x" * size)
+        return repo
+
+    def test_largest_registered_repo_instruction_file_is_measured(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            claude_dir = Path(tmp) / "claude"
+            (claude_dir / "rules").mkdir(parents=True)
+            small = self._repo(tmp, "repo-small", 40)
+            big = self._repo(tmp, "repo-big", 400)
+            cfg = {
+                "render": {"source": str(self._rig(tmp, [small, big]))},
+                "doctor": {"budget": {"always_on_tokens": 10}},
+            }
+            with mock.patch.object(core, "CLAUDE_DIR", claude_dir):
+                members = check_budget.members(cfg)
+                findings = check_budget.run(cfg)
+        self.assertIn(core.expand(big / "CLAUDE.md"), members)
+        self.assertNotIn(core.expand(small / "CLAUDE.md"), members)
+        self.assertEqual([f.key for f in findings], ["always_on"])
+        self.assertIn(str(core.expand(big / "CLAUDE.md")), findings[0].extra["paths"])
+
+    def test_without_a_root_registry_only_this_tree_is_measured(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            claude_dir = Path(tmp) / "claude"
+            (claude_dir / "rules").mkdir(parents=True)
+            (claude_dir / "rules" / "rule.md").write_text("x" * 40)
+            cfg = {"render": {"source": str(Path(tmp) / "absent-rig")}}
+            with mock.patch.object(core, "CLAUDE_DIR", claude_dir):
+                members = check_budget.members(cfg)
+        self.assertEqual(members, [claude_dir / "rules" / "rule.md"])
+
+
 class RunChecksTests(unittest.TestCase):
     def test_a_check_that_raises_becomes_a_finding_and_the_others_still_run(self):
         def explode(_cfg):
