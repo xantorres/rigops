@@ -32,7 +32,7 @@ def encode_project(path) -> str:
 
 
 @functools.lru_cache(maxsize=512)
-def _glob_to_re(pattern: str) -> "re.Pattern":
+def _glob_to_re(pattern: str) -> re.Pattern:
     out = []
     i = 0
     while i < len(pattern):
@@ -129,7 +129,7 @@ class Registry:
     _anchors: list = field(default=None, repr=False, compare=False)
 
     @classmethod
-    def load(cls, path=None) -> "Registry":
+    def load(cls, path=None) -> Registry:
         target = _expand(path or os.environ.get("RIGOPS_ROOTS") or DEFAULT_REGISTRY)
         data = json.loads(target.read_text()) if target.is_file() else {}
         roots = []
@@ -189,7 +189,7 @@ class Registry:
         self._anchors = sorted(pairs, key=lambda pair: len(str(pair[1])), reverse=True)
         return self._anchors
 
-    def place(self, path) -> "Placement":
+    def place(self, path) -> Placement:
         """Placement for one file path, or None when no root owns it."""
         target = Path(path)
         for root, base in self.anchors():
@@ -270,7 +270,7 @@ class Registry:
 
     # ---- query side ----------------------------------------------------
 
-    def profile(self, cwd) -> "Profile":
+    def profile(self, cwd) -> Profile:
         """What the caller in `cwd` may prefetch, or None when nothing maps."""
         target = Path(os.path.abspath(os.path.expanduser(str(cwd))))
         best = None

@@ -299,11 +299,18 @@ def render_report(ts: str, jobs: list, checks: list, heal_log: list, supervisor:
     return "\n".join(lines) + "\n"
 
 
+def _failing(findings: list) -> list:
+    return [f for f in findings if f.severity != "warn"]
+
+
 def render_findings(findings: list) -> str:
-    if not findings:
-        return "config checks: 0 findings\n"
-    lines = [f"config checks: {len(findings)} findings"]
-    lines.extend(f.line() for f in findings)
+    failing = _failing(findings)
+    warnings = [f for f in findings if f.severity == "warn"]
+    lines = [f"config checks: {len(failing)} findings"]
+    lines.extend(f.line() for f in failing)
+    if warnings:
+        lines.append(f"warnings: {len(warnings)} (reported, never fail the run)")
+        lines.extend(f.line() for f in warnings)
     return "\n".join(lines) + "\n"
 
 
@@ -335,13 +342,13 @@ def report_config_checks(cfg: dict, args) -> int:
         findings = [f for f in findings if _finding_paths(f) & staged]
     if args.json:
         print(json.dumps(
-            [{"id": f.id, "check": f.check, "area": f.area, "symptom": f.symptom,
-              "evidence": f.evidence, "fix": f.fix} for f in findings],
+            [{"id": f.id, "check": f.check, "area": f.area, "severity": f.severity,
+              "symptom": f.symptom, "evidence": f.evidence, "fix": f.fix} for f in findings],
             indent=2,
         ))
     else:
         print(render_findings(findings), end="")
-    return 1 if findings else 0
+    return 1 if _failing(findings) else 0
 
 
 def main(argv=None) -> int:
@@ -364,7 +371,7 @@ def main(argv=None) -> int:
     ap.add_argument("--registry", help="registry file path (default: config doctor.registry)")
     ap.add_argument(
         "--config-only", action="store_true",
-        help="run only the config checks (pointers, budget, plans, imports, render, rtk) and skip the fleet",
+        help="run only the config checks (pointers, budget, plans, imports, render, rtk, levers) and skip the fleet",
     )
     ap.add_argument(
         "--no-config", action="store_true", help="skip the config checks",
@@ -483,8 +490,8 @@ def main(argv=None) -> int:
             "ts": ts, "supervisor": args.supervisor, "jobs": jobs, "checks": checks,
             "healed": heal_log, "fail_count": fail_count, "stale_count": stale_count,
             "findings": [
-                {"id": f.id, "check": f.check, "area": f.area, "symptom": f.symptom,
-                 "evidence": f.evidence, "fix": f.fix}
+                {"id": f.id, "check": f.check, "area": f.area, "severity": f.severity,
+                 "symptom": f.symptom, "evidence": f.evidence, "fix": f.fix}
                 for f in findings
             ],
         }
@@ -499,8 +506,9 @@ def main(argv=None) -> int:
 
     # --heal is the unattended supervisor path, and its own registry row judges it
     # by this exit code: a config finding there would make the watchdog report
-    # itself as failing. Everywhere else a finding is a build failure.
-    return 1 if findings and not args.heal else 0
+    # itself as failing. Everywhere else a failing finding is a build failure;
+    # a warning is reported and never is.
+    return 1 if _failing(findings) and not args.heal else 0
 
 
 if __name__ == "__main__":

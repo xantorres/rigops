@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import time
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -15,6 +16,7 @@ from rigops import core, doctor  # noqa: E402
 from rigops.doctor import (  # noqa: E402
     check_budget,
     check_imports,
+    check_levers,
     check_plans,
     check_pointers,
     check_render,
@@ -672,6 +674,175 @@ class CheckBudgetProjectFileTests(unittest.TestCase):
             with mock.patch.object(core, "CLAUDE_DIR", claude_dir):
                 members = check_budget.members(cfg)
         self.assertEqual(members, [claude_dir / "rules" / "rule.md"])
+
+
+class CheckLeversTests(unittest.TestCase):
+    LEDGER = Path("/state/ledger.jsonl")
+    RULES = {
+        "denials_headless": {"max": 0},
+        "out_per_turn": {"rise_pct": 15},
+        "cache_hit_pct": {"drop_pct": 3},
+    }
+
+    def _rows(self, **series):
+        """One weekly row per position, the last one dated 2026-09-14."""
+        count = len(next(iter(series.values())))
+        rows = []
+        for i in range(count):
+            day = date(2026, 9, 14) - timedelta(days=7 * (count - 1 - i))
+            rows.append({"date": day.isoformat(), **{k: v[i] for k, v in series.items()}})
+        return rows
+
+    def _judge(self, rows, notes=(), rules=None, today=date(2026, 9, 16)):
+        return check_levers.judge(rows, list(notes), rules or self.RULES, today, self.LEDGER)
+
+    def test_headless_denial_above_zero_fires(self):
+        rows = self._rows(denials_headless=[0, 0, 10], out_per_turn=[1000] * 3,
+                          cache_hit_pct=[97.0] * 3)
+        findings = self._judge(rows)
+        self.assertEqual([f.key for f in findings], ["denials_headless:max"])
+        self.assertIn("10", findings[0].symptom)
+
+    def test_output_rise_past_the_band_fires(self):
+        rows = self._rows(denials_headless=[0] * 5, out_per_turn=[1056, 958, 1015, 1109, 1315],
+                          cache_hit_pct=[97.0] * 5)
+        findings = self._judge(rows)
+        self.assertEqual([f.key for f in findings], ["out_per_turn:rise_pct"])
+        self.assertIn("27%", findings[0].symptom)
+
+    def test_weekly_fluctuation_inside_the_bands_is_quiet(self):
+        rows = self._rows(
+            denials_headless=[0] * 8,
+            out_per_turn=[1047, 1131, 1117, 1078, 1056, 958, 1015, 1109],
+            cache_hit_pct=[96.2, 97.1, 95.8, 97.1, 97.0, 96.7, 97.1, 96.2],
+        )
+        self.assertEqual(self._judge(rows), [])
+
+    def test_accepted_level_is_quiet_and_becomes_the_baseline(self):
+        rows = self._rows(denials_headless=[0] * 6, cache_hit_pct=[97.0] * 6,
+                          out_per_turn=[1000, 1000, 1000, 1400, 1400, 1420])
+        accepted = {"date": rows[3]["date"], "text": "longer reviews", "accept": ["out_per_turn"]}
+        self.assertEqual([f.key for f in self._judge(rows)], ["out_per_turn:rise_pct"])
+        self.assertEqual(self._judge(rows[:4], [accepted], today=date(2026, 9, 1)), [])
+        self.assertEqual(self._judge(rows, [accepted]), [])
+
+    def test_acceptance_leaves_later_weeks_judged(self):
+        rows = self._rows(denials_headless=[0, 10, 4], out_per_turn=[1000] * 3,
+                          cache_hit_pct=[97.0] * 3)
+        accepted = {"date": rows[1]["date"], "text": "known deny", "accept": ["denials_headless"]}
+        self.assertEqual(self._judge(rows[:2], [accepted], today=date(2026, 9, 8)), [])
+        self.assertEqual([f.key for f in self._judge(rows, [accepted])], ["denials_headless:max"])
+
+    def test_a_note_without_accept_silences_nothing(self):
+        rows = self._rows(denials_headless=[0, 10], out_per_turn=[1000] * 2,
+                          cache_hit_pct=[97.0] * 2)
+        note = {"date": rows[1]["date"], "text": "denials_headless is fine"}
+        self.assertEqual([f.key for f in self._judge(rows, [note])], ["denials_headless:max"])
+
+    def test_lever_below_floor_fires(self):
+        rows = self._rows(cache_hit_pct=[95.0, 95.0, 40.0])
+        rules = {"cache_hit_pct": {"min": 50}}
+        findings = self._judge(rows, rules=rules)
+        self.assertEqual([f.key for f in findings], ["cache_hit_pct:min"])
+        self.assertIn("40", findings[0].symptom)
+
+    def test_lever_at_or_above_floor_is_quiet(self):
+        rows = self._rows(cache_hit_pct=[95.0, 95.0, 50.0])
+        rules = {"cache_hit_pct": {"min": 50}}
+        self.assertEqual(self._judge(rows, rules=rules), [])
+
+    def test_min_not_judged_on_or_before_accept_note_date(self):
+        rows = self._rows(cache_hit_pct=[95.0, 40.0, 30.0])
+        rules = {"cache_hit_pct": {"min": 50}}
+        accepted = {"date": rows[1]["date"], "text": "low cache accepted",
+                    "accept": ["cache_hit_pct"]}
+        self.assertEqual(
+            self._judge(rows[:2], [accepted], rules=rules, today=date(2026, 9, 8)), []
+        )
+        self.assertEqual(
+            [f.key for f in self._judge(rows, [accepted], rules=rules)], ["cache_hit_pct:min"]
+        )
+
+    def test_single_row_judges_limits_but_not_bands(self):
+        rows = self._rows(denials_headless=[3], out_per_turn=[9999], cache_hit_pct=[1.0])
+        self.assertEqual([f.key for f in self._judge(rows)], ["denials_headless:max"])
+
+    def test_overlapping_rows_count_as_one_week(self):
+        rows = [
+            {"date": "2026-09-01", "out_per_turn": 1000},
+            {"date": "2026-09-06", "out_per_turn": 5000},
+            {"date": "2026-09-08", "out_per_turn": 1000},
+            {"date": "2026-09-15", "out_per_turn": 1100},
+        ]
+        rules = {"out_per_turn": {"rise_pct": 15}}
+        self.assertEqual([r["date"] for r in check_levers.weekly(rows)],
+                         ["2026-09-01", "2026-09-08", "2026-09-15"])
+        self.assertEqual(self._judge(rows, rules=rules), [])
+
+    def test_missing_value_on_the_latest_row_is_not_judged(self):
+        rows = self._rows(denials_headless=[5, None], out_per_turn=[1000, None],
+                          cache_hit_pct=[97.0, None])
+        self.assertEqual(self._judge(rows), [])
+
+    def test_stale_ledger_is_reported(self):
+        rows = self._rows(denials_headless=[0], out_per_turn=[1000], cache_hit_pct=[97.0])
+        findings = self._judge(rows, today=date(2026, 10, 1))
+        self.assertEqual([f.key for f in findings], ["stale"])
+
+    def test_unknown_lever_and_bad_rule_are_reported(self):
+        rows = self._rows(out_per_turn=[1000])
+        rules = {"out_per_trun": {"rise_pct": 15}, "out_per_turn": {"rise": 15}}
+        keys = sorted(f.key for f in self._judge(rows, rules=rules))
+        self.assertEqual(keys, ["out_per_trun:column", "out_per_turn:rule"])
+
+    def test_every_finding_is_a_warning_about_the_ledger(self):
+        rows = self._rows(denials_headless=[0, 0, 9], out_per_turn=[1000, 1000, 2000],
+                          cache_hit_pct=[97.0, 97.0, 50.0])
+        findings = self._judge(rows, today=date(2026, 12, 1))
+        self.assertEqual(len(findings), 4)
+        self.assertEqual({f.severity for f in findings}, {"warn"})
+        self.assertEqual({tuple(f.extra["paths"]) for f in findings}, {(str(self.LEDGER),)})
+
+    def _run(self, tmp, ledger_text=None, notes_text=None, rules=None):
+        state = Path(tmp)
+        if ledger_text is not None:
+            (state / "ledger.jsonl").write_text(ledger_text)
+        if notes_text is not None:
+            (state / "interventions.jsonl").write_text(notes_text)
+        cfg = {"doctor": {"levers": {"rules": self.RULES if rules is None else rules}}}
+        with mock.patch.dict(os.environ, {"RIGOPS_STATE_DIR": str(state)}):
+            return check_levers.run(cfg, today=date(2026, 9, 16))
+
+    def test_no_rules_configured_reads_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(self._run(tmp, rules={}), [])
+
+    def test_missing_ledger_is_a_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = self._run(tmp)
+        self.assertEqual([(f.key, f.severity) for f in findings], [("unreadable", "warn")])
+        self.assertIn("does not exist", findings[0].symptom)
+
+    def test_malformed_ledger_is_a_warning_not_a_crash(self):
+        for text in ('{"date": "2026-09-14"}\n{"date": "2026-09-1', '[1, 2]\n', '{"turns": 3}\n'):
+            with self.subTest(text=text), tempfile.TemporaryDirectory() as tmp:
+                findings = self._run(tmp, ledger_text=text)
+                self.assertEqual([f.key for f in findings], ["unreadable"])
+
+    def test_run_reads_acceptance_from_the_intervention_notes(self):
+        row = json.dumps({"date": "2026-09-14", "denials_headless": 10,
+                          "out_per_turn": 1000, "cache_hit_pct": 97.0})
+        note = json.dumps({"date": "2026-09-16", "text": "known", "accept": ["denials_headless"]})
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual([f.key for f in self._run(tmp, row + "\n")], ["denials_headless:max"])
+            self.assertEqual(self._run(tmp, row + "\n", note + "\n"), [])
+
+    def test_unreadable_notes_are_reported_and_levers_still_judged(self):
+        row = json.dumps({"date": "2026-09-14", "denials_headless": 10})
+        with tempfile.TemporaryDirectory() as tmp:
+            findings = self._run(tmp, row + "\n", "not json\n",
+                                 rules={"denials_headless": {"max": 0}})
+        self.assertEqual(sorted(f.key for f in findings), ["denials_headless:max", "notes"])
 
 
 class RunChecksTests(unittest.TestCase):

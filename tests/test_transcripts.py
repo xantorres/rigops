@@ -62,6 +62,7 @@ class DedupeTests(EnvIsolatedTestCase):
             self.assertEqual(len(matches), 1)
             turn = matches[0]
             self.assertEqual(turn["tools"], ["Read", "Write"])
+            self.assertEqual(turn["text_chars"], 20)
             self.assertEqual(turn["output"], 250)
             self.assertEqual(turn["ts"], transcripts.parse_ts("2026-08-11T12:00:05Z"))
 
@@ -199,6 +200,7 @@ class CollectFrictionWindowTests(unittest.TestCase):
         self.assertEqual(fr["denials_headless"], 1)
         self.assertEqual(fr["corrections"], 2)
         self.assertEqual(fr["tool_errors"], 3)
+        self.assertEqual(fr["prompts"], 3)
 
     def test_no_headless_projects_configured_yields_zero_headless_denials(self):
         since = transcripts.parse_ts("2026-08-11T00:00:00Z")

@@ -559,6 +559,41 @@ class CheckFailReportingTests(EnvIsolatedTestCase):
         self.assertEqual(code, 0)
 
 
+class WarningSeverityTests(unittest.TestCase):
+    """A warning is reported alongside failures but never decides the exit code."""
+
+    def _finding(self, severity):
+        return doctor.rigops_core.Finding(
+            check="levers", area="metrics", symptom=f"{severity} symptom", evidence="e",
+            fix="f", key=severity, severity=severity,
+        )
+
+    def _run(self, findings, argv):
+        buf = io.StringIO()
+        with mock.patch.object(doctor.rigops_config, "load", return_value={}), \
+             mock.patch.object(doctor.config_checks, "run_checks", return_value=findings), \
+             contextlib.redirect_stdout(buf):
+            code = doctor.main(argv)
+        return code, buf.getvalue()
+
+    def test_warning_alone_is_reported_and_exits_zero(self):
+        code, out = self._run([self._finding("warn")], ["--config-only"])
+        self.assertEqual(code, 0)
+        self.assertIn("config checks: 0 findings", out)
+        self.assertIn("warnings: 1", out)
+        self.assertIn("warn symptom", out)
+
+    def test_failure_beside_a_warning_still_fails(self):
+        code, out = self._run([self._finding("warn"), self._finding("fail")], ["--config-only"])
+        self.assertEqual(code, 1)
+        self.assertIn("config checks: 1 findings", out)
+
+    def test_json_carries_the_severity(self):
+        code, out = self._run([self._finding("warn")], ["--config-only", "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual([f["severity"] for f in json.loads(out)], ["warn"])
+
+
 class ConfigOnlyStagedTests(unittest.TestCase):
     """--staged asserts the commit is sound, not that the whole tree is quiet."""
 

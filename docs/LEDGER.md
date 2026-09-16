@@ -29,14 +29,16 @@ EIT = input + 1.25 * cache_creation + 0.1 * cache_read
 | `sessions` | Sessions whose *first* turn fell in the window. |
 | `EIT/turn 7d` | Total window EIT divided by window turns. |
 | `EIT/turn 30d` | Same ratio over a trailing 30-day window - a smoother trend line than the noisier 7-day figure. |
-| `out/turn` | Output tokens divided by turns. |
+| `out/turn` | Output tokens divided by turns. Counts thinking and tool-call arguments as well as text, so it moves with effort level and batching. |
+| `text/prompt` | Visible main-thread text characters divided by human prompts. The prose-verbosity lever. |
 | `ctx p50` | Median context size (`input + cache_creation + cache_read`) across window turns. |
 | `>300k EIT %` | Share of window EIT that came from turns whose context exceeded 300k tokens. |
 | `cache %` | `cache_read` divided by total context, window-wide - prompt-cache reuse rate. |
 | `turn-1 p10` | 10th-percentile context size of each session's *first* turn, this window. The floor a bare harness plus a small first prompt costs. |
 | `turn-1 p50` | Median of the same - a typical session start. |
 | `Agent/100` | `Agent` tool calls per 100 main-thread turns (subagent transcripts excluded from both sides of the ratio). Delegation rate. |
-| `cheap-model EIT %` | Share of window EIT attributed to `sonnet`/`haiku`-family models. |
+| `cheap-model EIT %` | Share of window EIT attributed to `sonnet`/`haiku`-family models, over all window turns - moves with the main session's model choice. |
+| `subagent cheap %` | Same share, restricted to turns whose transcript path contains `/subagents/` - the routing lever, isolated from the main session's model. |
 | `fixed tax` | `fixed_tax.paths`/`fixed_tax.globs` byte total at write time - see [CONFIG.md](CONFIG.md#fixed_tax). |
 | `denials` | Permission-denial tool-result rows across the window's user turns. |
 | `denials hl` | Same, restricted to transcript paths matching a `friction.headless_projects` substring - see [CONFIG.md](CONFIG.md#friction). |
@@ -65,8 +67,9 @@ A row already existing for that date is a no-op ("row exists, nothing appended")
 ### `rigops ledger note "<text>"`
 
 - `--at YYYY-MM-DD` - note date, default today.
+- `--accept LEVER` - repeatable. Records that the lever's current level is deliberate, so `rigops doctor` stops warning about it: rows on or before the note's date are not judged for that lever. The name must match a `doctor.levers.rules` entry (see [CONFIG.md](CONFIG.md#doctor)); anything else is refused, since a misspelt acceptance would silence nothing.
 
-Appends `{ts, date, text}` to `interventions.jsonl` (`ts` is a UTC, second-precision timestamp independent of `--at`'s date).
+Appends `{ts, date, text}` to `interventions.jsonl` (`ts` is a UTC, second-precision timestamp independent of `--at`'s date), plus `accept` when given. `rigops ledger diff` lists accepted levers beside the note.
 
 ### `rigops ledger diff`
 
@@ -106,8 +109,12 @@ A row's `sources` object (`rtk`, `ccusage`, and any `sources.custom` entries) is
 One row per ledger run (`rigops ledger`). Window = the 7 full days before the row date.
 Columns map to levers: turn-1 and ctx p50 track context diet and discipline (p10 is the
 floor a bare harness plus a small first prompt costs, p50 is a typical session start);
-Agent/100 tracks delegation rate; cheap-model EIT % tracks cheap-model routing; out/turn
-tracks output verbosity; cache % tracks prompt-cache reuse; fixed tax tracks the
+Agent/100 tracks delegation rate; cheap-model EIT % is the overall cheap-model share
+(moves with the main session's model), while subagent cheap % is the same share over
+subagent turns only, the routing lever; out/turn counts every output token (thinking,
+tool-call arguments, text) per API response, so it moves with effort level and batching;
+text/prompt tracks prose verbosity as main-thread
+text characters per human prompt; cache % tracks prompt-cache reuse; fixed tax tracks the
 always-loaded config bytes named in `fixed_tax.paths`/`fixed_tax.globs`, the regrowth
 gauge for the per-session fixed context cost.
 Machine form of the same rows: `ledger.jsonl`. Re-run with `--show` to print this table.
