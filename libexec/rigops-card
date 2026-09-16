@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""SessionStart card: wires the roots registry and config into the pure
+`rigops.context.card` builder, then prints or hands back its lines."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+
+from rigops import config as rigops_config  # noqa: E402
+from rigops.context import card as card_mod  # noqa: E402
+from rigops.retrieval import roots as roots_mod  # noqa: E402
+
+
+def _build(args, cwd) -> dict:
+    cfg = rigops_config.load()
+    registry = roots_mod.load(args.registry)
+    return card_mod.build(registry, cfg, cwd)
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="rigops-card", description="SessionStart context card.")
+    ap.add_argument("--cwd")
+    ap.add_argument("--hook", action="store_true", help="read SessionStart JSON on stdin")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--registry", help="roots registry (default: ~/rig/registry/roots.json)")
+    args = ap.parse_args(argv)
+
+    if args.hook:
+        try:
+            payload = json.load(sys.stdin)
+            cwd = payload.get("cwd") or os.getcwd()
+            result = _build(args, cwd)
+            print("\n".join(result["lines"]))
+        except Exception as exc:  # noqa: BLE001 - a hook must never fail the session
+            print(f"error: {exc}", file=sys.stderr)
+        return 0
+
+    result = _build(args, args.cwd or os.getcwd())
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print("\n".join(result["lines"]))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
