@@ -46,6 +46,16 @@ def state_dir() -> Path:
     return _state.state_dir()
 
 
+def local_state_path(name: str) -> Path:
+    """XDG state path for `name`, outside `~/.claude` even when RIGOPS_STATE_DIR
+    points inside it: retrieval's log and doctor's gate record both need state
+    that never lands under a directory a shared-state override might sync."""
+    base = os.environ.get("XDG_STATE_HOME") or "~/.local/state"
+    path = Path(os.path.expanduser(str(Path(base) / "rigops" / name)))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def percentile(sorted_vals, p) -> float:
     return _transcripts.percentile(sorted_vals, p)
 

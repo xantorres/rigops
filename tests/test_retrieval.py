@@ -13,6 +13,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
+from rigops import core  # noqa: E402
 from rigops.doctor import check_realms  # noqa: E402
 from rigops.retrieval import chunk, index, log, probe, roots, search  # noqa: E402
 
@@ -665,6 +666,34 @@ class ProbeRunTests(unittest.TestCase):
         negative = outcome["negatives"][0]
         self.assertFalse(negative["pass"])
         self.assertTrue(negative["leaked"])
+
+
+class StatePathTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_lands_under_xdg_state_home_rigops(self):
+        with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(self.tmp)}):
+            path = roots.state_path("widget/thing.json")
+        self.assertEqual(path, self.tmp / "rigops" / "widget" / "thing.json")
+        self.assertTrue(path.parent.is_dir())
+
+    def test_delegates_to_core_local_state_path(self):
+        with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(self.tmp)}):
+            self.assertEqual(roots.state_path("a.json"), core.local_state_path("a.json"))
+
+    def test_ignores_rigops_state_dir_even_when_set(self):
+        other = self.tmp / "elsewhere"
+        with mock.patch.dict(os.environ, {
+            "XDG_STATE_HOME": str(self.tmp / "xdg"), "RIGOPS_STATE_DIR": str(other),
+        }):
+            path = roots.state_path("a.json")
+        self.assertTrue(str(path).startswith(str(self.tmp / "xdg")))
+        self.assertFalse(other.exists())
 
 
 class LogTests(unittest.TestCase):

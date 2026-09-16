@@ -359,11 +359,7 @@ def load(path=None) -> Registry:
 
 
 def state_path(name: str) -> Path:
-    """State lives outside `~/.claude` even when RIGOPS_STATE_DIR points inside it."""
-    base = os.environ.get("XDG_STATE_HOME") or "~/.local/state"
-    path = _expand(Path(base) / "rigops" / name)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return path
+    return core.local_state_path(name)
 
 
 __all__ = ["Registry", "Root", "Profile", "Placement", "load", "encode_project",
