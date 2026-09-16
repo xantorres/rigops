@@ -577,6 +577,59 @@ class CheckPointersMemoryTests(unittest.TestCase):
         )
 
 
+class CheckPointersMemoryNoteTests(unittest.TestCase):
+    """A memory note is held to the path rule alone, under this rig's own roots."""
+
+    NAMES = (
+        "dispatch the `doctor-test-ghost` agent, run skill `doctor-test-ghost`, "
+        "install `ghost-tool@ghost-market`, query the `doctor-test-ghost` MCP, "
+        "load local.doctor-test-ghost\n"
+    )
+    LABELS = "PID\tStatus\tLabel\n-\t0\tlocal.doctor-test-present\n"
+
+    def _run(self, text, memory=True, **pointer_overrides):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp) / ".claude" / "projects" / "-doctor-test" / "memory"
+            parent = parent if memory else Path(tmp)
+            parent.mkdir(parents=True, exist_ok=True)
+            source = parent / "note.md"
+            source.write_text(text)
+            pointers = {"sources": [str(source)], "ignore_prefixes": []}
+            pointers.update(pointer_overrides)
+            with mock.patch.object(core, "run", return_value=self.LABELS):
+                return check_pointers.run({"doctor": {"pointers": pointers}})
+
+    def test_only_paths_under_a_memory_root_are_judged(self):
+        with tempfile.TemporaryDirectory(dir=str(Path.home())) as home_tmp:
+            root = Path(home_tmp) / "rig-root"
+            root.mkdir()
+            (root / "present.md").write_text("x")
+            text = (
+                f"gone {root}/absent.md, kept {root}/present.md, another host's "
+                f"{home_tmp}/elsewhere/absent.conf and /etc/doctor-test-absent.conf\n"
+            )
+            findings = self._run(text, memory_roots=[str(root)])
+        self.assertEqual(
+            [f.key.split(":")[1] for f in findings if f.key.startswith("path:")],
+            [f"{root}/absent.md"],
+        )
+
+    def test_default_roots_are_the_rig_trees(self):
+        self.assertIn("~/.claude/projects/*/memory/*.md", check_pointers.DEFAULT_SOURCES)
+        findings = self._run(
+            "retired ~/.claude/doctor-test-absent/gone.sh, a host's ~/doctor-test-absent/gone.sh\n"
+        )
+        self.assertEqual(
+            [f.key.split(":")[1] for f in findings if f.key.startswith("path:")],
+            ["~/.claude/doctor-test-absent/gone.sh"],
+        )
+
+    def test_names_in_a_memory_note_are_history(self):
+        self.assertEqual(self._run(self.NAMES), [])
+        kinds = {f.key.split(":")[0] for f in self._run(self.NAMES, memory=False)}
+        self.assertEqual(kinds, {"agent", "skill", "plugin", "mcp", "launchd"})
+
+
 class CheckPointersPluginIdTests(unittest.TestCase):
     def _plugin_findings(self, text):
         with tempfile.TemporaryDirectory() as tmp:
