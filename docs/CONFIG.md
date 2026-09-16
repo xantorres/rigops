@@ -74,7 +74,7 @@ Scopes the ledger's interaction-friction columns (`denials`, `denials_headless`,
 
 ## `context`
 
-Config for the plugin's `ctx-nudge` hook and the statusline.
+Config for the plugin's `ctx-nudge` hook, the statusline, `rigops card` (the `doctor` section below documents the gates record it reads) and `rigops nudge`.
 
 - `nudge_tiers` (`array<int>`, minimum 3 items, default `[250000, 350000, 500000]`) - ascending token thresholds: low / heavy / critical.
 - `rearm_tokens` (`int`, default `50000`) - token climb past the lowest tier required to re-fire the nudge after it's already fired once in a session.
@@ -85,6 +85,26 @@ When the `rigops` CLI isn't reachable, `plugin/hooks/ctx-nudge.sh` falls back to
 {"context": {"nudge_tiers": [250000, 350000, 500000], "rearm_tokens": 50000}}
 ```
 
+- `prompt_nudge` (`bool`, default `true`) - when `false`, `plugin/hooks/ctx-nudge.sh` skips `rigops nudge --hook` entirely; the context-size check above still runs.
+- `nudges_path` (`string`, default: `nudges.json` beside the roots registry file) - the nudge declarations `rigops nudge` matches a prompt against: `{"version": 1, "budget": 400, "repeat_after": 20, "nudges": [{"name": str, "pattern": <ERE>, "flags": "i"|"", "say": str, "realms": [str]?}]}`. A pattern that fails to compile, or an entry missing `name`/`pattern`/`say`, is skipped with a warning on stderr; a missing file means no nudges (the prefetch below still runs). `budget` (token ceiling for the matched `say` lines) and `repeat_after` (prompts before a nudge that already fired in this session can fire again) both fall back to the numbers shown if the file omits them; `--budget` on the command line wins over both.
+- `card.max_tokens` (`int`, default `250`) - token ceiling for the whole `rigops card` SessionStart summary; scope-note lines are dropped from the end (never the header, the stale line or the budget line) until it fits.
+- `card.doctor_max_age_h` (`int`, default `2`) - a doctor gate record (see the `doctor` section below) older than this adds a "last recorded `<N>`h ago" item to the card's `stale:` line.
+- `preload.law` (`string`, default `~/.claude/CLAUDE.md`) - the always-loaded instruction file `rigops card` counts toward its preload estimate.
+- `preload.fixed_tokens` (`int`, default `0`) - a flat addition to that estimate for surfaces the card cannot read itself (skill listing, agent descriptions, plugin session-start text).
+- `preload.budget_tokens` (`int` or `{realm: int}`, default unset) - ceiling for the preload estimate; unset means `rigops card` never prints a `budget:` line. A map is looked up by the cwd's realm; a realm missing from the map is treated the same as unset, for that realm.
+
+```json
+{
+  "context": {
+    "prompt_nudge": true,
+    "nudges_path": "~/rig/registry/nudges.json",
+    "card": {"max_tokens": 250, "doctor_max_age_h": 2},
+    "preload": {"law": "~/.claude/CLAUDE.md", "fixed_tokens": 0,
+                "budget_tokens": {"work": 6000, "personal": 4000}}
+  }
+}
+```
+
 ## `doctor`
 
 Config for `rigops doctor` (see [REGISTRY.md](REGISTRY.md) for the judgment model this drives).
@@ -93,9 +113,10 @@ Config for `rigops doctor` (see [REGISTRY.md](REGISTRY.md) for the judgment mode
 - `label_prefix` (`array<string>`, default `["local."]`) - launchd label prefixes tried, in order, to guess a registry item's label when it has no explicit `plist:`. A guess only counts when it's both currently loaded in launchd *and* starts with one of these prefixes.
 - `kill_grace_s` (`number`, default `5`) - seconds between SIGTERM and SIGKILL for a hung job.
 - `heal_cooldown_h` (`number`, default `12`) - hours a repeat auto-heal of the same job id is suppressed after healing it once; the action becomes `notify` instead of `kickstart` while cooling down.
-- `checks.custom` (`array`, default `[]`) - each `{name, command, warn_exit, fail_exit, timeout_s}` runs `command` via `/bin/sh -c`, judged by exit code: a match on `fail_exit` → `fail`; else a match on `warn_exit` → `warn`; else exit `0` → `ok`; anything else → `warn` ("unexpected exit").
+- `checks.custom` (`array`, default `[]`) - each `{name, command, warn_exit, fail_exit, timeout_s, realm}` runs `command` via `/bin/sh -c`, judged by exit code: a match on `fail_exit` → `fail`; else a match on `warn_exit` → `warn`; else exit `0` → `ok`; anything else → `warn` ("unexpected exit"). On a non-`ok` result, `detail` is the first non-empty line of the command's stdout (truncated to 200 chars), falling back to the exit-code text above when stdout has none. `realm` (`string`, optional) tags the check as belonging to one realm: `rigops card` shows a realm-tagged check's `detail` only from a cwd in that same realm, and shows an untagged check's name and status everywhere but never its free-text detail (it might name another realm's things).
 - `checks.disk_free` (`object` or `null`, default `null`) - `{path, warn_gb, fail_gb}`; `null` skips the check entirely. `warn_gb` defaults to `25`, `fail_gb` to `10` when the block is present but a key is omitted. `path` accepts `~` and `$VAR` expansion; the report's detail line keeps the configured string as written.
 - `notify_command` (`string`, default `""`) - shell command run with the report path appended, whenever a job is failing/hung, a check fails, or anything was healed this run. Empty disables notification. Runs regardless of `--heal` (see [SAFETY.md](SAFETY.md)).
+- Gates record (not configurable) - every fleet run (not `--list`, not `--config-only`) writes the non-`ok` jobs, checks and config-finding groups to `${XDG_STATE_HOME:-~/.local/state}/rigops/doctor/gates.json` - this one path ignores `RIGOPS_STATE_DIR`, so it stays off a shared or synced state directory even when one is configured: `{"version": 1, "ts": "<UTC Z>", "gates": [{"kind": "job"|"check"|"config", "name": str, "status": str, "realm": str|null, "detail": str}]}`. Written even when every gate is `ok` (`gates: []`), so its `ts` alone proves the doctor ran; `rigops card` reads it for the `stale:` line on its SessionStart summary.
 - `rtk.version` (`string`, default unset) - pins the rtk token-reduction proxy: `doctor --config-only` flags a missing `rtk` or any other version. Unset skips the check.
 - `budget.always_on_tokens` (`int`, default `6000`) - ceiling for the instruction surface every session pays: the global instruction file, the rules with no `paths:` frontmatter, the largest per-project memory index, and the instruction file of the largest repository in `<render.source>/registry/roots.json`. A session loads one memory index and one project file, so the largest of each is the worst case. Tokens are bytes over four.
 - `plans.dir` (`string`, default `~/.claude/plans`) - the plans directory to lint. Set it and the check reports the directory itself when it is missing; left at the default, a rig that keeps no plans stays quiet.
