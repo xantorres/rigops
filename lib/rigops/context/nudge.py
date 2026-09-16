@@ -1,0 +1,193 @@
+"""UserPromptSubmit nudges: a declared regex fires a short reminder, scoped by
+the cwd's realm and rate-limited per session so a long conversation is not
+reminded of the same thing on every turn.
+
+The registry, the retrieval index and the retrieval log all belong to the
+caller (`libexec/rigops-nudge`); this module only ever reaches `rigops.core`,
+so it takes a `registry_path` (for the default nudges-file location) and a
+`cwd_realm` (already resolved by the caller) rather than a registry object.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import sys
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from rigops import core
+
+from . import util
+
+DEFAULT_BUDGET = 400
+DEFAULT_REPEAT_AFTER = 20
+MIN_PREFETCH_BUDGET = 40
+PRUNE_MAX_AGE_DAYS = 7
+REPLAY_MARKERS = ("<task-notification>", "[SYSTEM NOTIFICATION", "<system-reminder>")
+
+
+def is_replay(prompt: str) -> bool:
+    """Agent output replayed back through the same channel is not the user asking."""
+    text = prompt or ""
+    return any(marker in text for marker in REPLAY_MARKERS)
+
+
+def declarations_path(cfg, registry_path) -> Path:
+    configured = core.cfg_get(cfg, "context.nudges_path")
+    if configured:
+        return core.expand(configured)
+    return core.expand(Path(registry_path).parent / "nudges.json")
+
+
+def load_declarations(cfg, registry_path):
+    """(nudges, budget, repeat_after); a missing file means no nudges, not an error."""
+    path = declarations_path(cfg, registry_path)
+    if not path.is_file():
+        return [], DEFAULT_BUDGET, DEFAULT_REPEAT_AFTER
+    try:
+        data = json.loads(core.read_text(path))
+    except (OSError, ValueError) as exc:
+        print(f"warning: nudges file {path} unreadable: {exc}", file=sys.stderr)
+        return [], DEFAULT_BUDGET, DEFAULT_REPEAT_AFTER
+
+    budget = data.get("budget", DEFAULT_BUDGET)
+    repeat_after = data.get("repeat_after", DEFAULT_REPEAT_AFTER)
+    nudges = []
+    for entry in data.get("nudges", []) or []:
+        name, pattern, say = entry.get("name"), entry.get("pattern"), entry.get("say")
+        if not (name and pattern and say):
+            print(f"warning: nudge entry missing name/pattern/say: {entry}", file=sys.stderr)
+            continue
+        flags = re.IGNORECASE if "i" in (entry.get("flags") or "") else 0
+        try:
+            compiled = re.compile(pattern, flags)
+        except re.error as exc:
+            print(f"warning: nudge {name!r} pattern does not compile: {exc}", file=sys.stderr)
+            continue
+        nudges.append({"name": name, "regex": compiled, "say": say, "realms": entry.get("realms")})
+    return nudges, budget, repeat_after
+
+
+def match(nudges: list, prompt: str, cwd_realm) -> list:
+    """Regex + realm matches, declaration order, deduped by `say` text."""
+    text = prompt or ""
+    hits, seen_say = [], set()
+    for entry in nudges:
+        realms = entry.get("realms")
+        if realms and cwd_realm not in realms:
+            continue
+        if not entry["regex"].search(text):
+            continue
+        if entry["say"] in seen_say:
+            continue
+        seen_say.add(entry["say"])
+        hits.append(entry)
+    return hits
+
+
+_SESSION_ID_RE = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def _sanitize_session_id(session_id: str) -> str:
+    return _SESSION_ID_RE.sub("_", session_id)
+
+
+def _session_state_path(session_id: str) -> Path:
+    return core.local_state_path(f"nudge/{_sanitize_session_id(session_id)}.json")
+
+
+def _prune_session_states(state_dir: Path, max_age_days: int = PRUNE_MAX_AGE_DAYS) -> None:
+    """A session that has not prompted in a week never will again; the same
+    mtime-age sweep `ctx-nudge.sh` runs over its own state directory."""
+    cutoff = time.time() - max_age_days * 86400
+    try:
+        entries = list(state_dir.iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        try:
+            if entry.is_file() and entry.stat().st_mtime < cutoff:
+                entry.unlink()
+        except OSError:
+            continue
+
+
+def apply_repeat_suppression(session_id, matched: list, repeat_after: int):
+    """(firing, suppressed_names); without a session id every match fires and
+    nothing is persisted -- there is no session to rate-limit against."""
+    if not session_id:
+        return matched, []
+
+    path = _session_state_path(session_id)
+    try:
+        state = json.loads(core.read_text(path)) if path.is_file() else {}
+    except (OSError, ValueError):
+        state = {}
+    prompts = int(state.get("prompts", 0)) + 1
+    fired_at = dict(state.get("fired") or {})
+
+    firing, suppressed = [], []
+    for entry in matched:
+        last = fired_at.get(entry["name"])
+        if last is None or prompts - last >= repeat_after:
+            firing.append(entry)
+            fired_at[entry["name"]] = prompts
+        else:
+            suppressed.append(entry["name"])
+
+    path.write_text(json.dumps({"prompts": prompts, "fired": fired_at}))
+    _prune_session_states(path.parent)
+    return firing, suppressed
+
+
+def select_within_budget(firing: list, budget: int):
+    """Declaration order; the first nudge always survives even if it alone is
+    over budget, matching how `retrieval.search` never rejects its first hit."""
+    kept, total = [], 0
+    for entry in firing:
+        cost = util.tokens(entry["say"])
+        if kept and total + cost > budget:
+            break
+        kept.append(entry)
+        total += cost
+    return kept, total
+
+
+def render_output(say_lines: list, claims_text: str, budget: int) -> str:
+    parts = [line for line in (*say_lines, claims_text) if line]
+    if not parts:
+        return ""
+    text = "\n".join(parts)
+    limit = budget * 4
+    return text if len(text) <= limit else text[:limit]
+
+
+@dataclass
+class Plan:
+    say: list = field(default_factory=list)
+    fired: list = field(default_factory=list)
+    suppressed: list = field(default_factory=list)
+    tokens: int = 0
+    budget: int = DEFAULT_BUDGET
+
+    @property
+    def remaining(self) -> int:
+        return self.budget - self.tokens
+
+
+def plan(cfg, registry_path, prompt: str, cwd_realm, session_id, budget_override=None) -> Plan:
+    nudges, file_budget, repeat_after = load_declarations(cfg, registry_path)
+    budget = budget_override if budget_override is not None else file_budget
+    matched = match(nudges, prompt, cwd_realm)
+    firing, suppressed = apply_repeat_suppression(session_id, matched, repeat_after)
+    kept, nudge_tokens = select_within_budget(firing, budget)
+    return Plan(
+        say=[entry["say"] for entry in kept], fired=[entry["name"] for entry in kept],
+        suppressed=suppressed, tokens=nudge_tokens, budget=budget,
+    )
+
+
+__all__ = ["is_replay", "load_declarations", "match", "apply_repeat_suppression",
+           "select_within_budget", "render_output", "plan", "Plan"]

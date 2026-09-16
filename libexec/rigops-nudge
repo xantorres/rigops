@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""UserPromptSubmit nudge: wires the roots registry, the retrieval search and
+the retrieval log into the pure `rigops.context.nudge` planner."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+
+from rigops import config as rigops_config  # noqa: E402
+from rigops.context import nudge as nudge_mod  # noqa: E402
+from rigops.context import util as ctx_util  # noqa: E402
+from rigops.retrieval import log as log_mod  # noqa: E402
+from rigops.retrieval import roots as roots_mod  # noqa: E402
+from rigops.retrieval import search as search_mod  # noqa: E402
+
+
+def _run(args, prompt, cwd, session_id) -> dict:
+    started = time.time()
+    cfg = rigops_config.load()
+    registry = roots_mod.load(args.registry)
+    profile = registry.profile(cwd)
+    cwd_realm = profile.realm if profile else None
+
+    result_plan = nudge_mod.plan(cfg, registry.path, prompt, cwd_realm, session_id, args.budget)
+
+    claims_text, hits, prefetch_tokens, silent_reason = "", [], 0, ""
+    if profile is None:
+        silent_reason = "cwd not mapped to a realm"
+    elif result_plan.remaining < nudge_mod.MIN_PREFETCH_BUDGET:
+        silent_reason = "remaining budget under 40 tokens"
+    else:
+        prefetch_started = time.time()
+        result = search_mod.query(registry, prompt, cwd=cwd, prefetch=True, top=3,
+                                   budget=result_plan.remaining)
+        prefetch_ms = int((time.time() - prefetch_started) * 1000)
+        if not args.no_log:
+            log_mod.record(result, mode="prefetch", session_id=session_id, extra={
+                "via": "nudge", "nudges": result_plan.fired, "session_id": session_id,
+                "ms": prefetch_ms,
+            })
+        if result.hits:
+            claims_text = search_mod.render(result, "claims")
+        hits = [hit.as_dict() for hit in result.hits]
+        prefetch_tokens = result.tokens
+        silent_reason = result.silent_reason
+
+    output = nudge_mod.render_output(result_plan.say, claims_text, result_plan.budget)
+    return {
+        "output": output, "silent": not output, "tokens": ctx_util.tokens(output),
+        "nudges": result_plan.fired, "suppressed": result_plan.suppressed,
+        "prefetch": {"hits": hits, "tokens": prefetch_tokens, "silent_reason": silent_reason},
+        "ms": int((time.time() - started) * 1000), "realm": cwd_realm,
+    }
+
+
+def _print(payload, as_json) -> None:
+    if as_json:
+        print(json.dumps({k: v for k, v in payload.items() if k != "output"}, indent=2))
+        return
+    if payload["output"]:
+        print(payload["output"])
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="rigops-nudge", description="UserPromptSubmit nudge.")
+    ap.add_argument("--cwd")
+    ap.add_argument("--hook", action="store_true", help="read UserPromptSubmit JSON on stdin")
+    ap.add_argument("--budget", type=int)
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--no-log", action="store_true")
+    ap.add_argument("--registry", help="roots registry (default: ~/rig/registry/roots.json)")
+    ap.add_argument("text", nargs="*")
+    args = ap.parse_args(argv)
+
+    if args.hook:
+        try:
+            payload = json.load(sys.stdin)
+            prompt = payload.get("prompt", "")
+            if nudge_mod.is_replay(prompt):
+                return 0
+            cwd = payload.get("cwd") or os.getcwd()
+            session_id = payload.get("session_id") or ""
+            _print(_run(args, prompt, cwd, session_id), args.json)
+        except Exception as exc:  # noqa: BLE001 - a hook must never fail the session
+            print(f"error: {exc}", file=sys.stderr)
+        return 0
+
+    prompt = " ".join(args.text)
+    if nudge_mod.is_replay(prompt):
+        return 0
+    _print(_run(args, prompt, args.cwd or os.getcwd(), ""), args.json)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
