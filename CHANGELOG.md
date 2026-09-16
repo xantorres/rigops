@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- doctor: a `levers` config check that reads `ledger.jsonl` and warns when a
+  lever configured under `doctor.levers.rules` breaks its limit (`max`) or moves
+  past a band around the median of earlier weekly rows (`rise_pct`, `drop_pct`).
+  Findings carry a new `warn` severity: printed under `warnings`, never a
+  nonzero exit, so a regression in last week's sessions cannot block a commit.
+  A missing, stale or malformed ledger is a warning, never a crash.
+- ledger: `rigops ledger note --accept LEVER` records a deliberate change, so
+  doctor stops warning about that lever's current level.
+
 - ledger: a `text/prompt` column, visible main-thread text characters per human
   prompt, as the prose-verbosity lever. `out/turn` counts thinking and tool-call
   arguments as well as text, so it moves with effort level and batching and no

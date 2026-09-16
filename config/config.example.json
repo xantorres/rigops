@@ -28,7 +28,15 @@
       "disk_free": null
     },
     "notify_command": "",
-    "rtk": {"version": "0.42.4"}
+    "rtk": {"version": "0.42.4"},
+    "levers": {
+      "max_age_days": 10,
+      "rules": {
+        "denials_headless": {"max": 0},
+        "out_per_turn": {"rise_pct": 15},
+        "cache_hit_pct": {"drop_pct": 3}
+      }
+    }
   },
   "reaper": {
     "roots": ["~/projects"],

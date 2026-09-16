@@ -66,8 +66,9 @@ A row already existing for that date is a no-op ("row exists, nothing appended")
 ### `rigops ledger note "<text>"`
 
 - `--at YYYY-MM-DD` - note date, default today.
+- `--accept LEVER` - repeatable. Records that the lever's current level is deliberate, so `rigops doctor` stops warning about it: rows on or before the note's date are not judged for that lever. The name must match a `doctor.levers.rules` entry (see [CONFIG.md](CONFIG.md#doctor)); anything else is refused, since a misspelt acceptance would silence nothing.
 
-Appends `{ts, date, text}` to `interventions.jsonl` (`ts` is a UTC, second-precision timestamp independent of `--at`'s date).
+Appends `{ts, date, text}` to `interventions.jsonl` (`ts` is a UTC, second-precision timestamp independent of `--at`'s date), plus `accept` when given. `rigops ledger diff` lists accepted levers beside the note.
 
 ### `rigops ledger diff`
 

@@ -106,9 +106,27 @@ def cmd_note(args) -> int:
 
     ts = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
     entry = {"ts": ts, "date": at.isoformat(), "text": text}
+    if args.accept:
+        # A misspelt lever would record an acceptance that silences nothing.
+        rules = rigops_config.get(rigops_config.load(), "doctor.levers.rules") or {}
+        rules = rules if isinstance(rules, dict) else {}
+        unknown = sorted(set(args.accept) - set(rules))
+        if unknown:
+            known = ", ".join(sorted(rules)) or "none"
+            print(
+                f"error: no doctor.levers.rules entry for {', '.join(unknown)} (configured: {known})",
+                file=sys.stderr,
+            )
+            return 2
+        entry["accept"] = sorted(set(args.accept))
     state.append_jsonl(state.state_dir() / "interventions.jsonl", entry)
-    print(f"noted {at.isoformat()}: {text}")
+    print(f"noted {at.isoformat()}: {text}{_accept_suffix(entry)}")
     return 0
+
+
+def _accept_suffix(entry: dict) -> str:
+    accepted = entry.get("accept")
+    return f" (accepts {', '.join(accepted)})" if isinstance(accepted, list) and accepted else ""
 
 
 def _interventions_between(baseline_date: str, latest_date: str) -> list:
@@ -175,7 +193,7 @@ def cmd_diff(args) -> int:
     print("Interventions in this window:")
     if interventions:
         for entry in interventions:
-            print(f"{entry.get('date')}  {entry.get('text')}")
+            print(f"{entry.get('date')}  {entry.get('text')}{_accept_suffix(entry)}")
     else:
         print("none recorded")
     return 0
@@ -202,6 +220,10 @@ def main() -> int:
     note_p = sub.add_parser("note", help="append a free-text intervention note")
     note_p.add_argument("text", help="note text")
     note_p.add_argument("--at", help="note date YYYY-MM-DD (default today)")
+    note_p.add_argument(
+        "--accept", action="append", metavar="LEVER",
+        help="accept the current level of a doctor.levers.rules lever as deliberate (repeatable)",
+    )
 
     diff_p = sub.add_parser("diff", help="week-over-week deltas with interventions between rows")
     diff_p.add_argument("--since", help="baseline = latest row on/before this date YYYY-MM-DD")

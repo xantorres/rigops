@@ -138,7 +138,7 @@ class Finding:
 
     ``key`` is what makes the id stable across runs: it must identify the defect
     itself, never the run that found it, so a line can be deduplicated against an
-    existing backlog entry.
+    existing backlog entry. A ``warn`` finding is reported but never fails the run.
     """
 
     check: str
@@ -147,6 +147,7 @@ class Finding:
     evidence: str
     fix: str
     key: str = ""
+    severity: str = "fail"
     extra: dict = field(default_factory=dict, compare=False)
 
     @property

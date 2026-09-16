@@ -360,6 +360,27 @@ class LedgerNoteTests(EnvIsolatedTestCase):
                 self.assertEqual(result.returncode, 2)
             self.assertFalse((Path(tmp) / "state" / "interventions.jsonl").exists())
 
+    def test_note_accept_records_the_lever(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._env_for(tmp)
+            rules = {"doctor": {"levers": {"rules": {"out_per_turn": {"rise_pct": 15}}}}}
+            (Path(tmp) / "config.json").write_text(json.dumps(rules))
+            result = _run_ledger(
+                ["note", "longer review replies", "--accept", "out_per_turn"], env,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("accepts out_per_turn", result.stdout)
+            entries = state.read_jsonl(Path(tmp) / "state" / "interventions.jsonl")
+            self.assertEqual(entries[0]["accept"], ["out_per_turn"])
+
+    def test_note_accept_refuses_a_lever_with_no_rule(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._env_for(tmp)
+            result = _run_ledger(["note", "typo", "--accept", "out_per_trun"], env)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("out_per_trun", result.stderr)
+            self.assertFalse((Path(tmp) / "state" / "interventions.jsonl").exists())
+
     def test_top_level_at_before_note_no_longer_shadows(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = self._env_for(tmp)
