@@ -11,6 +11,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- card: `rigops card` prints a short session-start card for the working
+  directory: the realm and prefetch scopes in force, one line per scope from the
+  registry's `scope_notes`, a stale line only when a gate the doctor recorded has
+  tripped and is visible to that realm, and a budget line only when the estimated
+  preload exceeds `context.preload.budget_tokens`. `--hook` reads the
+  SessionStart payload and never fails the session.
+- nudge: `rigops nudge` injects prompt-time context under one token budget:
+  the `say` line of every pattern in a `nudges.json` beside the registry that
+  matches the prompt (at most once per `repeat_after` prompts in a session),
+  then the realm-scoped prefetch with whatever budget remains. Silent when
+  nothing matches. The plugin's `ctx-nudge.sh` calls it on every prompt.
+- doctor: a fleet run records the gates it found tripped (jobs, custom checks,
+  config findings) in `doctor/gates.json` under the local state directory,
+  custom checks may carry a `realm`, and a failing check's first stdout line
+  becomes its detail.
+
+### Changed
+
+- retrieval: prefetch returns a row only when it clears `min_score` (default now
+  -14), matches at least `min_terms` distinct prompt words (2), and matches at
+  least `min_head_terms` of them in its title, section, answers or path (1).
+  Rows under `memory/archive/` are left to explicit search. Replaying real
+  coding prompts, the prefetch had fired on nine turns in ten with fewer than
+  half its rows relevant.
+
 - doctor: a `levers` config check that reads `ledger.jsonl` and warns when a
   lever configured under `doctor.levers.rules` breaks its limit (`max`) or moves
   past a band around the median of earlier weekly rows (`rise_pct`, `drop_pct`).
