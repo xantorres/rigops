@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+"""One entry point for the section index: build, update, query, explain, score."""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+
+from rigops import retrieval  # noqa: E402,F401  (package doc is the contract)
+from rigops.retrieval import index as index_mod  # noqa: E402
+from rigops.retrieval import log as log_mod  # noqa: E402
+from rigops.retrieval import probe as probe_mod  # noqa: E402
+from rigops.retrieval import roots as roots_mod  # noqa: E402
+from rigops.retrieval import search as search_mod  # noqa: E402
+
+FORMATS = ("compact", "snippet", "paths", "claims", "json")
+
+
+def _registry(args):
+    return roots_mod.load(getattr(args, "registry", None))
+
+
+def _log(args, result, mode, extra=None):
+    if getattr(args, "no_log", False):
+        return
+    try:
+        log_mod.record(result, mode=mode, extra=extra)
+    except OSError as exc:
+        print(f"warning: retrieval log not written: {exc}", file=sys.stderr)
+
+
+def cmd_build(args) -> int:
+    registry = _registry(args)
+    out = index_mod.build(registry, args.db, progress=lambda line: print(line))
+    print(f"built {out['sections']} sections from {out['files']} files "
+          f"in {out['seconds']}s, {out['mb']}MB at {out['db']}")
+    for realm, count in sorted(out["realms"].items()):
+        print(f"  {realm:9s} {count}")
+    return 0
+
+
+def cmd_update(args) -> int:
+    registry = _registry(args)
+    out = index_mod.update(registry, args.db)
+    if "files" in out:
+        print(f"rebuilt (schema change): {out['sections']} sections from {out['files']} files")
+        return 0
+    print(f"index update: +{out['added']} new, ~{out['changed']} changed, "
+          f"-{out['removed']} removed in {out['seconds']}s")
+    return 0
+
+
+def cmd_search(args) -> int:
+    registry = _registry(args)
+    scopes = tuple(s for value in (args.scope or []) for s in value.split(","))
+    result = search_mod.query(
+        registry, " ".join(args.query), cwd=args.cwd, scopes=scopes, top=args.top,
+        budget=args.budget, max_len=args.max_len, db_path=args.db,
+    )
+    _log(args, result, "search")
+    if args.format == "json":
+        print(json.dumps({
+            "query": result.query, "realms": list(result.realms), "scopes": list(result.scopes),
+            "repo": result.repo, "latency_ms": result.latency_ms, "tokens": result.tokens,
+            "silent_reason": result.silent_reason,
+            "hits": [hit.as_dict() for hit in result.hits],
+        }, indent=2))
+        return 0
+    if not result.hits:
+        hint = (" (pass --scope all to search every realm)"
+                if "no root maps" in result.silent_reason else "")
+        print(f"no match: {result.silent_reason or result.query!r}{hint}")
+        return 0
+    print(search_mod.render(result, args.format))
+    return 0
+
+
+def cmd_prefetch(args) -> int:
+    registry = _registry(args)
+    result = search_mod.query(
+        registry, " ".join(args.text), cwd=args.cwd, top=args.top,
+        budget=args.budget, prefetch=True, max_len=args.max_len, db_path=args.db,
+    )
+    _log(args, result, "prefetch")
+    if args.format == "json":
+        print(json.dumps({
+            "realms": list(result.realms), "scopes": list(result.scopes),
+            "silent_reason": result.silent_reason, "tokens": result.tokens,
+            "hits": [hit.as_dict() for hit in result.hits],
+        }, indent=2))
+        return 0
+    if result.hits:
+        print(search_mod.render(result, "claims"))
+    return 0
+
+
+def cmd_roots(args) -> int:
+    registry = _registry(args)
+    profile = registry.profile(args.cwd or Path.cwd())
+    payload = {
+        "registry": str(registry.path),
+        "cwd": str(args.cwd or Path.cwd()),
+        "profile": None if profile is None else {
+            "realm": profile.realm, "scopes": list(profile.scopes),
+            "repo": profile.repo, "root": profile.root,
+        },
+        "anchors": [
+            {"path": str(base), "realm": root.realm, "scope": root.scope,
+             "repo": base.name if root.repo else ""}
+            for root, base in registry.anchors()
+        ],
+        "memory": [
+            {"path": str(path), "realm": realm, "repo": repo}
+            for path, realm, repo in registry.memory_dirs()
+        ],
+        "unmapped_memory": [str(path) for path in registry.unmapped_memory_dirs()],
+        "problems": [
+            {"key": key, "symptom": symptom, "evidence": evidence, "fix": fix}
+            for key, symptom, evidence, fix in
+            list(registry.problems()) + list(index_mod.problems(registry, args.db))
+        ],
+        "index": index_mod.stats(args.db, registry),
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return 0
+    if profile is None:
+        print(f"cwd {payload['cwd']}: no root maps it, prefetch stays silent")
+    else:
+        print(f"cwd {payload['cwd']}: realm {profile.realm}, scopes {','.join(profile.scopes)}"
+              + (f", repo {profile.repo}" if profile.repo else ""))
+    for anchor in payload["anchors"]:
+        print(f"  {anchor['realm']:9s} {anchor['scope']:7s} {anchor['path']}")
+    for entry in payload["memory"]:
+        print(f"  {entry['realm']:9s} memory  {entry['path']}")
+    for path in payload["unmapped_memory"]:
+        print(f"  unmapped  memory  {path}")
+    for problem in payload["problems"]:
+        print(f"  PROBLEM {problem['symptom']}")
+    if payload["index"]:
+        rows, built = payload["index"].get("rows"), payload["index"].get("built_at")
+        print(f"  index rows {rows} built {built}")
+    return 1 if payload["problems"] else 0
+
+
+def cmd_stats(args) -> int:
+    registry = _registry(args)
+    payload = log_mod.summary(registry, args.days)
+    payload["index"] = index_mod.stats(args.db, registry)
+    if args.write:
+        payload["written_to"] = str(log_mod.write_summary(payload))
+    print(json.dumps(payload, indent=2) if args.json
+          else "\n".join(f"{key}: {value}" for key, value in payload.items()))
+    return 0
+
+
+def cmd_probe(args) -> int:
+    registry = _registry(args)
+    spec = probe_mod.load(args.file)
+    logger = None if args.no_log else (
+        lambda result, mode, extra: log_mod.record(result, mode=mode, extra=extra)
+    )
+    outcome = probe_mod.run(registry, spec, top=args.top, logger=logger, db_path=args.db)
+    if args.write:
+        summary = {"kind": "probe", "pass": outcome["pass"], "probes": outcome["probes"],
+                   "by_realm": outcome["by_realm"],
+                   "negatives": [{"id": n["id"], "pass": n["pass"]} for n in outcome["negatives"]]}
+        log_mod.write_summary(summary)
+    print(json.dumps(outcome, indent=2) if args.json else probe_mod.report(outcome))
+    return 0 if outcome["pass"] else 1
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="rigops-retrieval")
+    ap.add_argument("--registry", help="roots registry (default: ~/rig/registry/roots.json)")
+    ap.add_argument("--db", help="index database (default: the registry's)")
+    sub = ap.add_subparsers(dest="command", required=True)
+
+    sub.add_parser("build", help="rebuild the whole index").set_defaults(func=cmd_build)
+    sub.add_parser("update", help="re-index what changed").set_defaults(func=cmd_update)
+
+    search = sub.add_parser("search", help="ranked sections for an explicit query")
+    search.add_argument("query", nargs="+")
+    search.add_argument("--scope", action="append",
+                        help="vault|brain|memory|plans|repo|rig|all (repeatable)")
+    search.add_argument("--top", type=int, default=10)
+    search.add_argument("--budget", type=int, help="token ceiling for the returned text")
+    search.add_argument("--format", default="compact", choices=FORMATS)
+    search.add_argument("--max-len", type=int, default=180)
+    search.add_argument("--cwd")
+    search.add_argument("--no-log", action="store_true")
+    search.set_defaults(func=cmd_search)
+
+    pre = sub.add_parser(
+        "prefetch", help="claims for a prompt, scoped by cwd, silent on a weak match")
+    pre.add_argument("text", nargs="+")
+    pre.add_argument("--top", type=int, default=3)
+    pre.add_argument("--budget", type=int, default=400)
+    pre.add_argument("--format", default="claims", choices=("claims", "json"))
+    pre.add_argument("--max-len", type=int, default=160)
+    pre.add_argument("--cwd")
+    pre.add_argument("--no-log", action="store_true")
+    pre.set_defaults(func=cmd_prefetch)
+
+    roots = sub.add_parser("roots", help="what this cwd may read, and what is indexed")
+    roots.add_argument("--cwd")
+    roots.add_argument("--json", action="store_true")
+    roots.set_defaults(func=cmd_roots)
+
+    stats = sub.add_parser("stats", help="latency, fallback rate, prefetch silence")
+    stats.add_argument("--days", type=int, default=7)
+    stats.add_argument("--json", action="store_true")
+    stats.add_argument("--write", action="store_true", help="append the summary to state")
+    stats.set_defaults(func=cmd_stats)
+
+    probe = sub.add_parser("probe", help="score the labelled probe suite")
+    probe.add_argument("--file")
+    probe.add_argument("--top", type=int, default=3)
+    probe.add_argument("--json", action="store_true")
+    probe.add_argument("--write", action="store_true")
+    probe.add_argument("--no-log", action="store_true")
+    probe.set_defaults(func=cmd_probe)
+
+    args = ap.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

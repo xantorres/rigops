@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- retrieval: a `rigops.retrieval` package and `rigops retrieval` command. One
+  section-granular FTS5 index over every tree a roots registry claims, each row
+  tagged at index time with the realm that owns it, its store, its repository,
+  its heading, its start line and its `verified` date. `search` ranks sections
+  under a token budget and a scope filter; `prefetch` derives realm and scopes
+  from the working directory, never widens, and stays silent below a score
+  threshold; `roots` explains what a directory may read; `probe` scores a
+  labelled question suite as precision at 3 per realm, with negative probes
+  asserting that no row crosses a realm; `stats` reports query latency, returned
+  tokens, prefetch silence and how often a query is followed by a raw scan of an
+  already indexed tree. Every query appends a row to `retrieval.jsonl` under the
+  state directory. `build` and `update` walk only the subtrees an include
+  pattern can match, so a large repository contributing two files costs two
+  files' worth of work.
+- doctor: `check_realms` reports a registry that defines a root with no realm, a
+  working directory granted a scope its realm cannot produce, or a root that
+  matches nothing on disk, and an index that is missing, stale or holds a realm
+  or scope the registry does not define.
+
 - eval: a `rigops.eval` package and `rigops eval` command that gates prompt
   and model changes on a versioned case suite, run against any
   OpenAI-compatible endpoint. A case is one JSON file: a prompt plus

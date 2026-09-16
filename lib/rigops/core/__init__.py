@@ -50,6 +50,14 @@ def percentile(sorted_vals, p) -> float:
     return _transcripts.percentile(sorted_vals, p)
 
 
+def find_transcripts(transcripts_dir=None) -> list:
+    return _transcripts.find_transcripts(transcripts_dir)
+
+
+def parse_ts(value):
+    return _transcripts.parse_ts(value)
+
+
 def run(argv, timeout: int = 10) -> str:
     """Run a command and return stdout, or an empty string on any failure."""
     try:
