@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -50,7 +51,8 @@ class CardUnmappedTests(unittest.TestCase):
             elsewhere = tmp / "elsewhere"
             elsewhere.mkdir()
             registry = _registry(tmp, {"roots": []})
-            result = card.build(registry, {}, elsewhere)
+            with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(tmp / "xdg")}):
+                result = card.build(registry, {}, elsewhere)
         self.assertEqual(len(result["lines"]), 1)
         line = result["lines"][0]
         self.assertIn("is unmapped", line)
@@ -235,7 +237,21 @@ class CardStaleLineTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(xdg)}):
                 result = card.build(registry, {}, cwd)
         stale = next(line for line in result["lines"] if line.startswith("stale:"))
-        self.assertIn("jobs: 2 failing, 1 stale", stale)
+        self.assertIn("jobs: 2 failing", stale)
+        self.assertNotIn("stale)", stale.replace("(rigops doctor --report)", ""))
+
+    def test_only_overdue_jobs_leave_no_stale_line(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            registry, cwd = _mapped(tmp)
+            xdg = tmp / "xdg"
+            fresh = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            self._write_gates(xdg, [
+                {"kind": "job", "name": "c", "status": "stale", "realm": None, "detail": ""},
+            ], ts=fresh)
+            with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(xdg)}):
+                result = card.build(registry, {}, cwd)
+        self.assertFalse(any(line.startswith("stale:") for line in result["lines"]))
 
     def test_config_gate_renders_name_and_status_only(self):
         with tempfile.TemporaryDirectory() as tmp_s:

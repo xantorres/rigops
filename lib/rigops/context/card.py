@@ -172,7 +172,9 @@ def _budget_line(components: list, budget_tokens) -> str:
     total = sum(c["tokens"] for c in components)
     if budget_tokens is None or total <= budget_tokens:
         return ""
-    largest = max(components, key=lambda c: c["tokens"])
+    # The fixed share is not a file anyone can trim from here, so name the largest file instead.
+    files = [c for c in components if c.get("label") != "fixed"] or components
+    largest = max(files, key=lambda c: c["tokens"])
     return (f"budget: preload ~{total} tok over {budget_tokens} "
             f"(largest: {largest['label']} {largest['tokens']})")
 
@@ -225,12 +227,10 @@ def _stale_line(record, visible: list, cfg) -> str:
     if age_h is not None and age_h > max_age_h:
         items.append(f"doctor gates last recorded {round(age_h)}h ago")
 
-    jobs = [g for g in visible if g.get("kind") == "job"]
-    if jobs:
-        # Hung and failing are both "broken now"; only stale is merely overdue.
-        failing = sum(1 for g in jobs if g.get("status") in ("failing", "hung"))
-        stale_n = sum(1 for g in jobs if g.get("status") == "stale")
-        items.append(f"jobs: {failing} failing, {stale_n} stale")
+    # An overdue job is a trend the doctor never pages on, so only a broken one trips the card.
+    failing = sum(1 for g in visible if g.get("kind") == "job" and g.get("status") in ("failing", "hung"))
+    if failing:
+        items.append(f"jobs: {failing} failing")
 
     for gate in visible:
         if gate.get("kind") == "check":
