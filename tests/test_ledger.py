@@ -67,6 +67,9 @@ class BuildRowTests(EnvIsolatedTestCase):
             self.assertEqual(row["over300k_pct"], 98.7)
             self.assertEqual(row["agent_per_100"], 33.33)
             self.assertEqual(row["cheap_model_eit_pct"], 0.7)
+            # subagents/sub-a.jsonl has a sonnet turn (cheap) and an opus turn;
+            # this share is over those two turns only, not the whole window.
+            self.assertEqual(row["subagent_cheap_eit_pct"], 0.1)
             self.assertEqual(row["turn1_p10"], 710)
             self.assertEqual(row["turn1_p50"], 1150)
             self.assertEqual(row["turn1_beta"], 600)
@@ -81,6 +84,34 @@ class BuildRowTests(EnvIsolatedTestCase):
             explicit_size = (FIXTURE_FIXED_TAX / "explicit.md").stat().st_size
             plain_size = (FIXTURE_FIXED_TAX / "globbed" / "plain.md").stat().st_size
             self.assertEqual(row["fixed_tax_b"], explicit_size + plain_size)
+
+    def test_subagent_cheap_eit_pct_none_without_subagent_turns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._isolate_env(tmp)
+            transcripts_dir = Path(tmp) / "transcripts"
+            session_dir = transcripts_dir / "proj-solo"
+            session_dir.mkdir(parents=True)
+            (session_dir / "session-solo.jsonl").write_text(
+                json.dumps({
+                    "type": "assistant", "timestamp": "2026-08-11T12:00:00Z",
+                    "sessionId": "sess-solo",
+                    "message": {
+                        "id": "msg-solo", "model": "claude-sonnet-5-20260101",
+                        "usage": {
+                            "input_tokens": 1000, "cache_creation_input_tokens": 0,
+                            "cache_read_input_tokens": 0, "output_tokens": 10,
+                        },
+                        "content": [],
+                    },
+                }) + "\n"
+            )
+            cfg = {
+                "transcripts_dir": str(transcripts_dir),
+                "ledger": {"watch_projects": {}},
+                "fixed_tax": {"paths": [], "globs": []},
+            }
+            row = levers.build_row(ROW_DATE, "", cfg=cfg, transcripts_dir=transcripts_dir)
+            self.assertIsNone(row["subagent_cheap_eit_pct"])
 
     def test_empty_watch_projects_skips_per_project_columns(self):
         with tempfile.TemporaryDirectory() as tmp:

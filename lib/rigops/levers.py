@@ -26,6 +26,7 @@ BASE_MD_COLUMNS = [
 ]
 TAIL_MD_COLUMNS = [
     ("agent_per_100", "Agent/100"), ("cheap_model_eit_pct", "cheap-model EIT %"),
+    ("subagent_cheap_eit_pct", "subagent cheap %"),
     ("fixed_tax_b", "fixed tax"), ("denials", "denials"), ("denials_headless", "denials hl"),
     ("corrections", "corrections"), ("tier3_breaches", "tier3 sess"),
     ("tool_err_per_100", "tool err/100"),
@@ -36,9 +37,11 @@ MD_HEADER = """# Token ledger
 One row per ledger run (`rigops ledger`). Window = the 7 full days before the row date.
 Columns map to levers: turn-1 and ctx p50 track context diet and discipline (p10 is the
 floor a bare harness plus a small first prompt costs, p50 is a typical session start);
-Agent/100 tracks delegation rate; cheap-model EIT % tracks cheap-model routing; out/turn
-counts every output token (thinking, tool-call arguments, text) per API response, so it
-moves with effort level and batching; text/prompt tracks prose verbosity as main-thread
+Agent/100 tracks delegation rate; cheap-model EIT % is the overall cheap-model share
+(moves with the main session's model), while subagent cheap % is the same share over
+subagent turns only, the routing lever; out/turn counts every output token (thinking,
+tool-call arguments, text) per API response, so it moves with effort level and
+batching; text/prompt tracks prose verbosity as main-thread
 text characters per human prompt; cache % tracks prompt-cache reuse; fixed tax tracks the
 always-loaded config bytes named in `fixed_tax.paths`/`fixed_tax.globs`, the regrowth
 gauge for the per-session fixed context cost.
@@ -205,9 +208,15 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
     over300k = sum(e for e, c in zip(eits, (transcripts.ctx(t) for t in win)) if c > 300_000)
     agent_calls = sum(1 for t in win_main for name in t["tools"] if name == "Agent")
     eit_by_family: dict[str, float] = defaultdict(float)
+    sub_eit_by_family: dict[str, float] = defaultdict(float)
     for t, e in zip(win, eits):
-        eit_by_family[model_family(t["model"])] += e
+        fam = model_family(t["model"])
+        eit_by_family[fam] += e
+        if "/subagents/" in t.get("path", ""):
+            sub_eit_by_family[fam] += e
     cheap_eit = sum(v for k, v in eit_by_family.items() if k in CHEAP_MODELS)
+    sub_total_eit = sum(sub_eit_by_family.values())
+    sub_cheap_eit = sum(v for k, v in sub_eit_by_family.items() if k in CHEAP_MODELS)
     eit30 = sum(transcripts.eit(t) for t in win30)
 
     row = {
@@ -231,6 +240,9 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
         "turn1_p50": round(median(turn1_all)) if turn1_all else None,
         "agent_per_100": round(agent_calls / len(win_main) * 100, 2) if win_main else None,
         "cheap_model_eit_pct": round(cheap_eit / total_eit * 100, 1) if total_eit else None,
+        "subagent_cheap_eit_pct": (
+            round(sub_cheap_eit / sub_total_eit * 100, 1) if sub_total_eit else None
+        ),
         "eit_pct_by_model": (
             {k: round(v / total_eit * 100, 1) for k, v in sorted(eit_by_family.items())}
             if total_eit else {}
