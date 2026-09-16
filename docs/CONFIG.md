@@ -276,6 +276,22 @@ Defaults for `rigops eval run` (see [EVAL.md](EVAL.md)). Each key has a matching
 }
 ```
 
+## `prefetch` (roots registry, not `config.json`)
+
+Not a `config.json` key: it is a top-level `prefetch` object inside the retrieval roots registry (default `~/rig/registry/roots.json`, see `rigops retrieval roots`), read by `lib/rigops/retrieval/search.py` for prompt-time prefetch calls only - an explicit `rigops retrieval search` never reads it.
+
+- `min_score` (`number`, default `-14.0`) - bm25 ceiling (more negative is a better match; `rank > min_score` is dropped) a row must clear before the term gate below is even checked.
+- `min_terms` (`int`, default `2`) - a row also needs at least this many distinct prompt content words matching it somewhere, not just the one word that got it selected.
+- `min_head_terms` (`int`, default `1`) - and at least this many of those matches must land in its `title`, `section`, `answers` or `pathwords` columns, not only in the body prose.
+- `max_rows` (`int`, default `3`) - caps `top` for a prefetch call regardless of what the caller asked for.
+- `budget` (`int`, default `400`) - token ceiling for a prefetch call, used when the caller passes none.
+
+The two gate keys exist because a bare score cutoff let through rows that shared one weak word with the prompt and nothing else; a prefetch row now has to clear a real term-coverage bar before it is ever silently added to the prompt.
+
+```json
+{"prefetch": {"min_score": -14.0, "min_terms": 2, "min_head_terms": 1, "max_rows": 3, "budget": 400}}
+```
+
 ## See also
 
 - [INSTALL.md](INSTALL.md) - what scaffolds the config file, and when.
