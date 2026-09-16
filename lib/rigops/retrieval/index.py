@@ -21,9 +21,9 @@ from . import roots as roots_mod
 
 PATH_SPLIT_RE = re.compile(r"[^A-Za-z0-9]+")
 
-SCHEMA = 3
+SCHEMA = 4
 COLUMNS = ("path", "mtime", "content", "realm", "scope", "repo", "title", "section",
-           "line", "verified", "pathwords")
+           "line", "verified", "pathwords", "answers")
 CREATE_SQL = """
 CREATE VIRTUAL TABLE docs USING fts5(
     path UNINDEXED,
@@ -37,6 +37,7 @@ CREATE VIRTUAL TABLE docs USING fts5(
     line UNINDEXED,
     verified UNINDEXED,
     pathwords,
+    answers,
     tokenize='porter unicode61 remove_diacritics 2'
 )
 """
@@ -147,6 +148,7 @@ def rows_for(registry, path, placement, max_bytes, max_chars):
         return []
     realm = registry.realm_for_text(placement, text)
     title = chunk.title_of(text, path.stem)
+    answers = chunk.answers_of(text)
     # Half of what a reader asks is where a thing lives, and that answer is in the
     # path, the store and the realm, none of which appear in the prose.
     words = " ".join(w for w in PATH_SPLIT_RE.split(str(path)) if len(w) > 1)
@@ -155,7 +157,7 @@ def rows_for(registry, path, placement, max_bytes, max_chars):
     for section in chunk.split(text, max_chars):
         rows.append((
             str(path), mtime, section.text, realm, placement.scope, placement.repo,
-            title, section.heading, section.line, section.verified, pathwords,
+            title, section.heading, section.line, section.verified, pathwords, answers,
         ))
     return rows
 

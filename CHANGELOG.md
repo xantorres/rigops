@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- retrieval: a document may declare what it answers, as `answers: ...` in
+  frontmatter, in an HTML comment or in a leading line comment. The value is
+  indexed into its own column and ranks above a passing mention of the same
+  words, so a question phrased in a reader's vocabulary reaches the document
+  written in the author's. A document that declares nothing is unchanged.
+
 - retrieval: a `rigops.retrieval` package and `rigops retrieval` command. One
   section-granular FTS5 index over every tree a roots registry claims, each row
   tagged at index time with the realm that owns it, its store, its repository,

@@ -14,6 +14,13 @@ from dataclasses import dataclass
 
 H1_RE = re.compile(r"^#\s+(.+?)\s*$", re.M)
 DATE_RE = re.compile(r"(?:verified|distilled|last_updated|updated)\s*:\s*\"?(\d{4}-\d{2}-\d{2})")
+ANSWERS_RE = re.compile(
+    r"^\s*(?:<!--\s*answers:\s*(?P<html>.*?)\s*-->"
+    r"|(?:#|//)\s*answers:\s*(?P<comment>.*?)\s*$"
+    r"|answers:\s*(?P<yaml>.*?)\s*$)",
+    re.M,
+)
+ANSWERS_MAX_LINES = 40
 DEFAULT_MAX_CHARS = 12000
 
 
@@ -46,6 +53,22 @@ def title_of(text: str, fallback: str = "") -> str:
 def _date_in(text: str, default: str = "") -> str:
     match = DATE_RE.search(text)
     return match.group(1) if match else default
+
+
+def _unquote(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
+
+
+def answers_of(text: str, max_lines: int = ANSWERS_MAX_LINES) -> str:
+    """What the document declares it answers, first of the three syntaxes to match."""
+    head = "\n".join(text.splitlines()[:max_lines])
+    match = ANSWERS_RE.search(head)
+    if not match:
+        return ""
+    return _unquote(match.group(match.lastgroup) or "")
 
 
 def _blocks(lines, start_line, marker):
@@ -113,4 +136,4 @@ def split(text: str, max_chars: int = DEFAULT_MAX_CHARS) -> list:
     return sections
 
 
-__all__ = ["Section", "split", "title_of", "DEFAULT_MAX_CHARS"]
+__all__ = ["Section", "split", "title_of", "answers_of", "DEFAULT_MAX_CHARS"]

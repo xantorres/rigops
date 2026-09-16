@@ -81,6 +81,27 @@ class ChunkSplitTests(unittest.TestCase):
         self.assertEqual(sections[1].text, "cccc")
 
 
+class ChunkAnswersOfTests(unittest.TestCase):
+    def test_yaml_frontmatter_syntax_and_quoted_value_is_unquoted(self):
+        text = ('---\nanswers: "document code drift mismatch"\n---\n'
+                '## Heading\nbody\n')
+        self.assertEqual(chunk.answers_of(text), "document code drift mismatch")
+
+    def test_html_comment_syntax(self):
+        text = "## Heading\n<!-- answers: document code drift mismatch -->\nbody\n"
+        self.assertEqual(chunk.answers_of(text), "document code drift mismatch")
+
+    def test_hash_and_slash_line_comment_syntax(self):
+        hash_text = "# answers: document code drift mismatch\nimport os\n"
+        slash_text = "// answers: document code drift mismatch\nconst x = 1;\n"
+        self.assertEqual(chunk.answers_of(hash_text), "document code drift mismatch")
+        self.assertEqual(chunk.answers_of(slash_text), "document code drift mismatch")
+
+    def test_absent_returns_empty_string(self):
+        text = "## Heading\nno declared line of any syntax here\n"
+        self.assertEqual(chunk.answers_of(text), "")
+
+
 class RegistryPlaceTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -511,6 +532,66 @@ class IndexUpdateTests(unittest.TestCase):
         out = index.update(self.registry, self.db_path)
         self.assertIn("files", out)
         self.assertEqual(out["files"], 2)
+
+
+class IndexAnswersColumnTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_answers_value_reaches_every_section_row(self):
+        write_tree(self.tmp, {
+            "root/doc.md":
+                "---\nanswers: document code drift mismatch\n---\n"
+                "## First\nfirst body\n## Second\nsecond body\n",
+        })
+        registry = make_registry(self.tmp, {
+            "roots": [{"path": str(self.tmp / "root"), "realm": "personal", "scope": "vault"}],
+        })
+        path = self.tmp / "root" / "doc.md"
+        rows = index.rows_for(registry, path, registry.place(path), 10_000_000,
+                              chunk.DEFAULT_MAX_CHARS)
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(all(row[-1] == "document code drift mismatch" for row in rows))
+
+
+class SearchAnswersColumnRankingTests(unittest.TestCase):
+    """The point of the whole change: a declared answers: line outranks the same
+    words sitting in ordinary prose, for a query that uses only those words."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.home = self.tmp / "home"
+        write_tree(self.home, {
+            "root/declared.md":
+                "---\nanswers: document code drift mismatch\n---\n"
+                "## Doc A\nbody about something else entirely, unrelated prose here\n",
+            "root/plain.md":
+                "## Doc B\nbody mentions document code drift mismatch as regular "
+                "prose without any declared field\n",
+        })
+        self.db_path = self.tmp / "index.sqlite"
+        self.registry = make_registry(self.tmp, {
+            "realms": ["personal"], "scopes": ["vault"],
+            "index": {"db": str(self.db_path)},
+            "roots": [{"path": str(self.home / "root"), "realm": "personal", "scope": "vault",
+                       "cwd_scopes": ["vault"]}],
+        })
+        index.build(self.registry, self.db_path)
+        self.cwd = self.home / "root"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_declared_answers_outranks_the_same_words_in_prose(self):
+        result = search.query(self.registry, "document code drift mismatch",
+                              cwd=self.cwd, top=10, db_path=self.db_path)
+        self.assertGreaterEqual(len(result.hits), 2)
+        self.assertTrue(result.hits[0].short_path.endswith("declared.md"))
 
 
 class ProbeRunTests(unittest.TestCase):

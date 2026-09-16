@@ -21,7 +21,7 @@ HOME = str(Path.home())
 # Weights chosen by sweeping the probe suite: the path and the store name carry
 # more of "where does X live" than the prose does, and a title outranks a body
 # line without drowning it.
-RANK_SQL = "bm25(docs, 0,0,1.0,0,0,0,2.0,2.0,0,0,8.0)"
+RANK_SQL = "bm25(docs, 0,0,1.0,0,0,0,2.0,2.0,0,0,8.0,6.0)"
 SELECT_SQL = f"""
 SELECT path, line, section, title, realm, scope, repo, verified,
        snippet(docs, 2, '[', ']', '…', 18) AS snip, {RANK_SQL} AS rank
