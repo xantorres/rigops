@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -556,6 +557,81 @@ class CheckFailReportingTests(EnvIsolatedTestCase):
         self.assertEqual(payload["fail_count"], 0)
         self.assertEqual(payload["checks"][0]["status"], "fail")
         self.assertEqual(code, 0)
+
+
+class ConfigOnlyStagedTests(unittest.TestCase):
+    """--staged asserts the commit is sound, not that the whole tree is quiet."""
+
+    GOOD = "---\nstatus: active\ndate: 2026-01-01\ntopic: something\n---\n\nbody\n"
+    BROKEN = "prose with no frontmatter block\n"
+
+    def _repo(self, tmp):
+        root = Path(tmp) / "plans"
+        root.mkdir()
+        for argv in (
+            ("init", "-q", "-b", "main"),
+            ("config", "user.email", "t@example.com"),
+            ("config", "user.name", "t"),
+        ):
+            subprocess.run(
+                ["git", "-C", str(root), *argv], check=True, capture_output=True,
+            )
+        return root
+
+    def _git(self, root, *argv):
+        subprocess.run(["git", "-C", str(root), *argv], check=True, capture_output=True)
+
+    def _run(self, root, argv):
+        cfg = {"doctor": {"plans": {"dir": str(root)}}}
+        buf = io.StringIO()
+        cwd = os.getcwd()
+        os.chdir(root)
+        try:
+            with mock.patch.object(doctor.rigops_config, "load", return_value=cfg), \
+                 contextlib.redirect_stdout(buf):
+                code = doctor.main(argv)
+        finally:
+            os.chdir(cwd)
+        return code, buf.getvalue()
+
+    def test_unstaged_breakage_elsewhere_does_not_block_the_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo(tmp)
+            (root / "in-flight.md").write_text(self.BROKEN)
+            code, out = self._run(root, ["--config-only", "--staged", "--check", "plans"])
+        self.assertEqual(code, 0)
+        self.assertIn("0 findings", out)
+
+    def test_staged_fix_is_judged_on_the_index_not_the_working_tree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo(tmp)
+            plan = root / "plan.md"
+            plan.write_text(self.BROKEN)
+            self._git(root, "add", "plan.md")
+            self._git(root, "commit", "-q", "-m", "broken plan", "--no-verify")
+            plan.write_text(self.GOOD)
+            self._git(root, "add", "plan.md")
+            plan.write_text(self.BROKEN)
+            staged_code, staged_out = self._run(
+                root, ["--config-only", "--staged", "--check", "plans"],
+            )
+            live_code, _ = self._run(root, ["--config-only", "--check", "plans"])
+        self.assertEqual((staged_code, live_code), (0, 1))
+        self.assertIn("0 findings", staged_out)
+
+    def test_staged_defect_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._repo(tmp)
+            (root / "plan.md").write_text(self.BROKEN)
+            self._git(root, "add", "plan.md")
+            code, out = self._run(root, ["--config-only", "--staged", "--check", "plans"])
+        self.assertEqual(code, 1)
+        self.assertIn("missing frontmatter", out)
+
+    def test_staged_outside_config_only_is_refused(self):
+        with self.assertRaises(SystemExit):
+            with contextlib.redirect_stderr(io.StringIO()):
+                doctor.main(["--report", "--staged"])
 
 
 if __name__ == "__main__":
