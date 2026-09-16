@@ -739,6 +739,30 @@ class CheckLeversTests(unittest.TestCase):
         note = {"date": rows[1]["date"], "text": "denials_headless is fine"}
         self.assertEqual([f.key for f in self._judge(rows, [note])], ["denials_headless:max"])
 
+    def test_lever_below_floor_fires(self):
+        rows = self._rows(cache_hit_pct=[95.0, 95.0, 40.0])
+        rules = {"cache_hit_pct": {"min": 50}}
+        findings = self._judge(rows, rules=rules)
+        self.assertEqual([f.key for f in findings], ["cache_hit_pct:min"])
+        self.assertIn("40", findings[0].symptom)
+
+    def test_lever_at_or_above_floor_is_quiet(self):
+        rows = self._rows(cache_hit_pct=[95.0, 95.0, 50.0])
+        rules = {"cache_hit_pct": {"min": 50}}
+        self.assertEqual(self._judge(rows, rules=rules), [])
+
+    def test_min_not_judged_on_or_before_accept_note_date(self):
+        rows = self._rows(cache_hit_pct=[95.0, 40.0, 30.0])
+        rules = {"cache_hit_pct": {"min": 50}}
+        accepted = {"date": rows[1]["date"], "text": "low cache accepted",
+                    "accept": ["cache_hit_pct"]}
+        self.assertEqual(
+            self._judge(rows[:2], [accepted], rules=rules, today=date(2026, 9, 8)), []
+        )
+        self.assertEqual(
+            [f.key for f in self._judge(rows, [accepted], rules=rules)], ["cache_hit_pct:min"]
+        )
+
     def test_single_row_judges_limits_but_not_bands(self):
         rows = self._rows(denials_headless=[3], out_per_turn=[9999], cache_hit_pct=[1.0])
         self.assertEqual([f.key for f in self._judge(rows)], ["denials_headless:max"])

@@ -8,6 +8,7 @@ first time it got in the way.
 Rules live under ``doctor.levers.rules``, one per ledger column:
 
 - ``max``: the latest row must not exceed it (a lever whose right value is zero).
+- ``min``: the latest row must not fall below it (a floor).
 - ``rise_pct`` / ``drop_pct``: the latest row must not move further than this, in
   the worse direction, from the median of the weekly rows before it.
 
@@ -33,7 +34,7 @@ WINDOW_DAYS = 7
 BASELINE_ROWS = 4
 MIN_BASELINE_ROWS = 2
 DEFAULT_MAX_AGE_DAYS = 10
-RULE_KEYS = ("max", "rise_pct", "drop_pct")
+RULE_KEYS = ("max", "min", "rise_pct", "drop_pct")
 
 
 def _number(value) -> bool:
@@ -118,6 +119,13 @@ def _judge_lever(lever, rule, series, accepted, ledger) -> list:
             f"{lever}:max",
             f"{lever} is {_show(value)} on the {latest['date']} ledger row, above its limit of "
             f"{_show(rule['max'])}",
+            f"{_tilde(ledger)} row {latest['date']}", fix, ledger,
+        ))
+    if "min" in rule and value < rule["min"]:
+        found.append(_warning(
+            f"{lever}:min",
+            f"{lever} is {_show(value)} on the {latest['date']} ledger row, below its floor of "
+            f"{_show(rule['min'])}",
             f"{_tilde(ledger)} row {latest['date']}", fix, ledger,
         ))
     earlier = series[:-1]
