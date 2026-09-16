@@ -1,20 +1,14 @@
 #!/usr/bin/env bash
-# Nudges toward a fresh chat once context grows large. Fires once per
-# rearm-step token climb per session; a big drop (e.g. post-/compact)
-# re-arms it. Tiers/rearm-step come from `rigops config get context.*` when
-# the rigops CLI is on PATH or at $HOME/.local/bin/rigops; otherwise
-# hardcoded fallbacks. Always silent, always exit 0.
+# Two jobs on the same UserPromptSubmit input: a prompt-scoped nudge (every
+# call, no exit-early condition of its own), then a context-size nudge once
+# per rearm-step token climb per session (a big drop, e.g. post-/compact,
+# re-arms it). Tiers/rearm-step/prompt_nudge come from one `rigops config get
+# context` when the rigops CLI is on PATH or at $HOME/.local/bin/rigops;
+# otherwise hardcoded fallbacks. Always silent on failure, always exit 0.
 INPUT=$(cat 2>/dev/null || true)
 command -v jq >/dev/null 2>&1 || exit 0
 TP=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null || true)
 SID=$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null || true)
-[ -n "$TP" ] && [ -n "$SID" ] || exit 0
-SID=${SID//[^A-Za-z0-9_-]/_}
-
-DIR="${XDG_STATE_HOME:-$HOME/.local/state}/rigops/ctx-nudge"
-mkdir -p "$DIR" 2>/dev/null || true
-find "$DIR" -type f -mtime +7 -delete 2>/dev/null || true
-STATE="$DIR/$SID"
 
 RIGOPS_BIN=""
 if command -v rigops >/dev/null 2>&1; then
@@ -27,18 +21,33 @@ TIER1=250000
 TIER2=350000
 TIER3=500000
 REARM=50000
+PROMPT_NUDGE=""
 
 if [ -n "$RIGOPS_BIN" ]; then
-  TIERS_JSON=$("$RIGOPS_BIN" config get context.nudge_tiers 2>/dev/null || true)
-  REARM_RAW=$("$RIGOPS_BIN" config get context.rearm_tokens 2>/dev/null || true)
-  T1=$(printf '%s' "$TIERS_JSON" | jq -r '.[0] // empty' 2>/dev/null || true)
-  T2=$(printf '%s' "$TIERS_JSON" | jq -r '.[1] // empty' 2>/dev/null || true)
-  T3=$(printf '%s' "$TIERS_JSON" | jq -r '.[2] // empty' 2>/dev/null || true)
+  CONTEXT_JSON=$("$RIGOPS_BIN" config get context 2>/dev/null || true)
+  T1=$(printf '%s' "$CONTEXT_JSON" | jq -r '.nudge_tiers[0] // empty' 2>/dev/null || true)
+  T2=$(printf '%s' "$CONTEXT_JSON" | jq -r '.nudge_tiers[1] // empty' 2>/dev/null || true)
+  T3=$(printf '%s' "$CONTEXT_JSON" | jq -r '.nudge_tiers[2] // empty' 2>/dev/null || true)
   if [[ "$T1" =~ ^[0-9]+$ ]] && [[ "$T2" =~ ^[0-9]+$ ]] && [[ "$T3" =~ ^[0-9]+$ ]]; then
     TIER1="$T1"; TIER2="$T2"; TIER3="$T3"
   fi
+  REARM_RAW=$(printf '%s' "$CONTEXT_JSON" | jq -r '.rearm_tokens // empty' 2>/dev/null || true)
   [[ "$REARM_RAW" =~ ^[0-9]+$ ]] && REARM="$REARM_RAW"
+  PROMPT_NUDGE=$(printf '%s' "$CONTEXT_JSON" | jq -r '.prompt_nudge // empty' 2>/dev/null || true)
 fi
+
+if [ -n "$RIGOPS_BIN" ] && [ "$PROMPT_NUDGE" != "false" ]; then
+  printf '%s' "$INPUT" | "$RIGOPS_BIN" nudge --hook 2>/dev/null
+fi
+
+# Everything above is the prompt nudge; everything below is context-size only.
+[ -n "$TP" ] && [ -n "$SID" ] || exit 0
+SID=${SID//[^A-Za-z0-9_-]/_}
+
+DIR="${XDG_STATE_HOME:-$HOME/.local/state}/rigops/ctx-nudge"
+mkdir -p "$DIR" 2>/dev/null || true
+find "$DIR" -type f -mtime +7 -delete 2>/dev/null || true
+STATE="$DIR/$SID"
 
 CTX=$(bash "$(dirname "$0")/ctx-probe.sh" "$TP" 2>/dev/null || true)
 [[ "$CTX" =~ ^[0-9]+$ ]] || CTX=""

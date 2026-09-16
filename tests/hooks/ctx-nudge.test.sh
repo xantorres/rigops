@@ -71,5 +71,60 @@ else
   FAIL=$((FAIL + 1)); printf 'FAIL  %s (state file still present: %s)\n' 'drop below 250k re-arms' "$STATE_FILE"
 fi
 
+# --- prompt nudge: a fake `rigops` on PATH ---------------------------------
+# A separate harness, since this one needs `rigops` resolvable -- the
+# opposite of the tier harness above, which scrubs it out on purpose. The
+# transcript stays well under tier 1 so the size logic prints nothing here;
+# whatever the hook prints is provably the prompt-nudge stage's output.
+NUDGE_WORK="$(mktemp -d)"
+FAKE_BIN="$NUDGE_WORK/bin"
+mkdir -p "$FAKE_BIN" "$NUDGE_WORK/home" "$NUDGE_WORK/state"
+cat >"$FAKE_BIN/rigops" <<'RIGOPS_EOF'
+#!/usr/bin/env bash
+case "$1" in
+  config)
+    [ "$2" = "get" ] && [ "$3" = "context" ] || exit 1
+    printf '{"nudge_tiers":[250000,350000,500000],"rearm_tokens":50000}'
+    exit 0
+    ;;
+  nudge)
+    cat >/dev/null
+    [ -n "${FAKE_NUDGE_SAYS:-}" ] && printf '%s\n' "$FAKE_NUDGE_SAYS"
+    exit 0
+    ;;
+esac
+exit 1
+RIGOPS_EOF
+chmod +x "$FAKE_BIN/rigops"
+
+NUDGE_TRANSCRIPT="$NUDGE_WORK/session.jsonl"
+printf '{"type": "assistant", "message": {"usage": {"input_tokens": 1000, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}}}\n' >"$NUDGE_TRANSCRIPT"
+
+run_nudge_hook() { # reads FAKE_NUDGE_SAYS from the caller's environment
+  jq -n --arg tp "$NUDGE_TRANSCRIPT" --arg sid "sess-nudge-integration" \
+        --arg prompt "open a pr" --arg cwd "$NUDGE_WORK" \
+        '{transcript_path:$tp, session_id:$sid, prompt:$prompt, cwd:$cwd}' \
+    | env -i PATH="$FAKE_BIN:$JQ_DIR:/usr/bin:/bin" HOME="$NUDGE_WORK/home" \
+             XDG_STATE_HOME="$NUDGE_WORK/state" FAKE_NUDGE_SAYS="${FAKE_NUDGE_SAYS:-}" \
+             bash "$HOOK"
+}
+
+FAKE_NUDGE_SAYS="[nudge] careful with that PR" out="$(run_nudge_hook)"
+if [ "$out" = "[nudge] careful with that PR" ]; then
+  PASS=$((PASS + 1)); printf 'ok    %s\n' 'fake rigops nudge line is printed'
+else
+  FAIL=$((FAIL + 1)); printf 'FAIL  %s (got: %s)\n' 'fake rigops nudge line is printed' "$out"
+fi
+
+FAKE_NUDGE_SAYS="" out="$(run_nudge_hook)"
+if [ -z "$out" ]; then
+  PASS=$((PASS + 1)); printf 'ok    %s\n' 'fake rigops nudge prints nothing: hook prints nothing'
+else
+  FAIL=$((FAIL + 1)); printf 'FAIL  %s (expected empty, got: %s)\n' \
+    'fake rigops nudge prints nothing: hook prints nothing' "$out"
+fi
+
+rm -rf "$NUDGE_WORK"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
