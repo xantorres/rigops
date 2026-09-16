@@ -96,7 +96,7 @@ class BuildRowTests(EnvIsolatedTestCase):
                     "type": "assistant", "timestamp": "2026-08-11T12:00:00Z",
                     "sessionId": "sess-solo",
                     "message": {
-                        "id": "msg-solo", "model": "claude-sonnet-5-20260101",
+                        "id": "msg-solo", "model": "fixture-model",
                         "usage": {
                             "input_tokens": 1000, "cache_creation_input_tokens": 0,
                             "cache_read_input_tokens": 0, "output_tokens": 10,
