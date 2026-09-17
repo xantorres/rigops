@@ -228,7 +228,8 @@ def _stale_line(record, visible: list, cfg) -> str:
         items.append(f"doctor gates last recorded {round(age_h)}h ago")
 
     # An overdue job is a trend the doctor never pages on, so only a broken one trips the card.
-    failing = sum(1 for g in visible if g.get("kind") == "job" and g.get("status") in ("failing", "hung"))
+    failing = sum(1 for g in visible
+                  if g.get("kind") == "job" and g.get("status") in ("failing", "hung"))
     if failing:
         items.append(f"jobs: {failing} failing")
 

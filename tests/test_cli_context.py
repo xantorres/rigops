@@ -13,6 +13,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CARD_SCRIPT = REPO_ROOT / "libexec" / "rigops-card"
@@ -43,6 +44,20 @@ def _run(script: Path, args: list, env: dict, stdin: str = "") -> subprocess.Com
         [sys.executable, str(script), *args], input=stdin,
         env=env, capture_output=True, text=True, check=False, timeout=30,
     )
+
+
+# The host's own doctor record and nudge state must never leak into these tests.
+_STATE_HOME = tempfile.TemporaryDirectory()
+_STATE_ENV = mock.patch.dict(os.environ, {"XDG_STATE_HOME": _STATE_HOME.name})
+
+
+def setUpModule():
+    _STATE_ENV.start()
+
+
+def tearDownModule():
+    _STATE_ENV.stop()
+    _STATE_HOME.cleanup()
 
 
 class CardHookModeTests(unittest.TestCase):

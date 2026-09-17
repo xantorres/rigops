@@ -9,6 +9,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
@@ -20,6 +21,20 @@ def _write_nudges(tmp: Path, data: dict, name: str = "nudges.json") -> Path:
     path = tmp / name
     path.write_text(json.dumps(data))
     return path
+
+
+# The host's own doctor record and nudge state must never leak into these tests.
+_STATE_HOME = tempfile.TemporaryDirectory()
+_STATE_ENV = mock.patch.dict(os.environ, {"XDG_STATE_HOME": _STATE_HOME.name})
+
+
+def setUpModule():
+    _STATE_ENV.start()
+
+
+def tearDownModule():
+    _STATE_ENV.stop()
+    _STATE_HOME.cleanup()
 
 
 class IsReplayTests(unittest.TestCase):

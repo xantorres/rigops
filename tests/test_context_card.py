@@ -44,6 +44,20 @@ def _mapped(tmp: Path, *, scopes=("repo",), scope_notes=None, realm="work",
     return _registry(tmp, raw), cwd
 
 
+# The host's own doctor record and nudge state must never leak into these tests.
+_STATE_HOME = tempfile.TemporaryDirectory()
+_STATE_ENV = mock.patch.dict(os.environ, {"XDG_STATE_HOME": _STATE_HOME.name})
+
+
+def setUpModule():
+    _STATE_ENV.start()
+
+
+def tearDownModule():
+    _STATE_ENV.stop()
+    _STATE_HOME.cleanup()
+
+
 class CardUnmappedTests(unittest.TestCase):
     def test_header_names_the_cwd_and_stops_after_it(self):
         with tempfile.TemporaryDirectory() as tmp_s:
