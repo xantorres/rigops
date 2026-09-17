@@ -278,7 +278,7 @@ def query(registry, text, cwd=None, scopes=None, top=10, budget=None,
             repo=row["repo"] or "", verified=row["verified"] or "",
             snippet=clean(row["snip"], max_len), rank=float(row["rank"]),
         )
-        cost = max(1, len(hit.claim()) // 4)
+        cost = max(1, len(hit.claim().encode()) // 4)
         if budget and hits and tokens + cost > budget:
             break
         seen.add(row["path"])

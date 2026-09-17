@@ -457,6 +457,17 @@ class IndexSearchIsolationTests(unittest.TestCase):
         self.assertGreater(len(baseline.hits), len(capped.hits))
         self.assertGreaterEqual(len(capped.hits), 1)
 
+    def test_claim_cost_counts_utf8_bytes_over_four(self):
+        write_tree(self.home, {
+            "personal/prices.md": "## Prices\npersonal caching " + "€" * 60 + " prices\n",
+        })
+        index.build(self.registry)
+        result = search.query(self.registry, "caching", cwd=self.cwd_personal, top=10,
+                              db_path=self.db_path)
+        self.assertTrue(any("€" in hit.claim() for hit in result.hits))
+        self.assertEqual(result.tokens,
+                         sum(max(1, len(hit.claim().encode()) // 4) for hit in result.hits))
+
     def test_prefetch_below_min_score_returns_nothing(self):
         self.registry.raw["prefetch"] = {"min_score": -999, "max_rows": 3, "budget": 400}
         result = search.query(self.registry, "caching", cwd=self.cwd_personal, prefetch=True,
