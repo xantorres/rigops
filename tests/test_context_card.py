@@ -181,6 +181,17 @@ class CardStaleLineTests(unittest.TestCase):
         self.assertFalse(any(line.startswith("stale:") for line in result["lines"]))
         self.assertEqual(result["gates"], [])
 
+    def test_unwritable_state_dir_still_returns_a_card(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            registry, cwd = _mapped(tmp)
+            blocker = tmp / "xdg"
+            blocker.write_text("not a directory")
+            with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(blocker)}):
+                result = card.build(registry, {}, cwd)
+        self.assertTrue(result["lines"])
+        self.assertFalse(any(line.startswith("stale:") for line in result["lines"]))
+
     def test_fresh_ts_and_no_gates_means_no_stale_line(self):
         with tempfile.TemporaryDirectory() as tmp_s:
             tmp = Path(tmp_s)

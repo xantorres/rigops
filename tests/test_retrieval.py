@@ -794,7 +794,8 @@ class StatePathTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(self.tmp)}):
             path = roots.state_path("widget/thing.json")
         self.assertEqual(path, self.tmp / "rigops" / "widget" / "thing.json")
-        self.assertTrue(path.parent.is_dir())
+        # Resolution only: a reader must not inherit a writer's mkdir failure.
+        self.assertFalse(path.parent.is_dir())
 
     def test_delegates_to_core_local_state_path(self):
         with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(self.tmp)}):

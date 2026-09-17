@@ -156,8 +156,7 @@ def _prune_session_states(state_dir: Path, max_age_days: int = PRUNE_MAX_AGE_DAY
 
 
 def _load_session(session_id: str) -> dict:
-    """An unwritable or unreadable state dir costs the rate limit, never the
-    nudge -- `core.local_state_path` mkdirs on the way and can itself raise."""
+    """An unreadable session file costs the rate limit, never the nudge."""
     try:
         path = _session_state_path(session_id)
         data = json.loads(core.read_text(path)) if path.is_file() else {}
@@ -170,6 +169,7 @@ def _save_session(session_id: str, state: dict) -> None:
     """An unwritable state dir costs the rate limit, never the nudge."""
     try:
         path = _session_state_path(session_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(state))
     except OSError:
         return
