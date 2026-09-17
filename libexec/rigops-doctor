@@ -526,8 +526,11 @@ def main(argv=None) -> int:
     # Written every run, gates or none: an empty list still proves the doctor ran,
     # which is what a card reading it needs to tell "clean" from "never checked".
     gates = _job_gate_entries(jobs) + _check_gate_entries(checks) + _config_gate_entries(findings)
-    _save_json(rigops_core.local_state_path("doctor/gates.json"),
-               {"version": 1, "ts": ts, "gates": gates})
+    try:
+        _save_json(rigops_core.local_state_path("doctor/gates.json"),
+                   {"version": 1, "ts": ts, "gates": gates})
+    except OSError as exc:
+        print(f"warning: gates record not written: {exc}", file=sys.stderr)
 
     if args.json:
         payload = {

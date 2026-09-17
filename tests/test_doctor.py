@@ -535,6 +535,21 @@ class GatesRecordTests(EnvIsolatedTestCase):
              "realm": None, "detail": "1 findings"},
         ])
 
+    def test_unwritable_state_dir_warns_instead_of_failing_the_run(self):
+        registry_path = _write_registry(self.tmp, OK_ITEM)
+        # XDG_STATE_HOME as a plain file: local_state_path's own mkdir raises OSError.
+        Path(os.environ["XDG_STATE_HOME"]).write_text("not a directory")
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, None, 0)),
+        ):
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                code, out = _run_doctor(["--registry", str(registry_path)])
+        self.assertEqual(code, 0)
+        self.assertIn("OK", out)
+        self.assertIn("warning:", err.getvalue())
+
 
 class EventsJsonlTests(EnvIsolatedTestCase):
     def test_event_appended_per_run(self):
