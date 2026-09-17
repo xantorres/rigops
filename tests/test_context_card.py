@@ -317,6 +317,22 @@ class CardStaleLineTests(unittest.TestCase):
         self.assertLessEqual(len(stale), 60 * 4)
         self.assertTrue(stale.endswith("…"))
 
+    def test_stale_line_truncation_counts_utf8_bytes(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            registry, cwd = _mapped(tmp)
+            xdg = tmp / "xdg"
+            gates = [
+                {"kind": "check", "name": f"€-{i}", "status": "warn", "realm": None}
+                for i in range(40)
+            ]
+            self._write_gates(xdg, gates)
+            with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(xdg)}):
+                result = card.build(registry, {}, cwd)
+        stale = next(line for line in result["lines"] if line.startswith("stale:"))
+        self.assertLessEqual(len(stale.encode()) // 4, 60)
+        self.assertTrue(stale.endswith("…"))
+
 
 class CardBudgetLineTests(unittest.TestCase):
     def _cfg(self, law_path, budget_tokens=None):
@@ -555,6 +571,18 @@ class CardCapTests(unittest.TestCase):
         self.assertEqual(result["lines"][0].split(" · ")[0], "rig card")
         self.assertEqual(result["lines"][1], card.SEARCH_LINE)
         self.assertFalse(any(line.startswith("- alpha") for line in result["lines"]))
+
+    def test_cap_counts_utf8_bytes_not_characters(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            registry, cwd = _mapped(tmp, scopes=("alpha",), scope_notes={"alpha": "€" * 40})
+            with mock.patch.object(card.core, "CLAUDE_DIR", tmp / "claude"):
+                bare = card.build(registry, self._cfg(tmp, max_tokens=1), cwd)
+                cap = len("\n".join(bare["lines"]).encode()) // 4 + 20
+                result = card.build(registry, self._cfg(tmp, max_tokens=cap), cwd)
+        text = "\n".join(result["lines"])
+        self.assertLessEqual(len(text.encode()) // 4, cap)
+        self.assertEqual(result["tokens"], len(text.encode()) // 4)
 
 
 if __name__ == "__main__":

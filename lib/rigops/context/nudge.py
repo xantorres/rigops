@@ -164,8 +164,7 @@ def render_output(say_lines: list, claims_text: str, budget: int) -> str:
     if not parts:
         return ""
     text = "\n".join(parts)
-    limit = budget * 4
-    return text if len(text) <= limit else text[:limit]
+    return text if util.tokens(text) <= budget else util.clip(text, budget)
 
 
 @dataclass

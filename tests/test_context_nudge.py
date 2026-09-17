@@ -261,6 +261,12 @@ class SelectWithinBudgetTests(unittest.TestCase):
         kept, _ = nudge.select_within_budget(entries, 400)
         self.assertEqual(kept, entries)
 
+    def test_cost_is_utf8_bytes_over_four_not_characters(self):
+        entries = [{"name": "a", "say": "€" * 40}, {"name": "b", "say": "€" * 40}]
+        kept, tokens = nudge.select_within_budget(entries, 45)
+        self.assertEqual([e["name"] for e in kept], ["a"])
+        self.assertEqual(tokens, 30)
+
 
 class RenderOutputTests(unittest.TestCase):
     def test_say_lines_then_claims_block(self):
@@ -276,6 +282,10 @@ class RenderOutputTests(unittest.TestCase):
     def test_final_output_is_truncated_to_budget_times_four_chars(self):
         out = nudge.render_output(["x" * 500], "", 10)
         self.assertEqual(len(out), 40)
+
+    def test_truncation_counts_utf8_bytes_and_never_splits_a_character(self):
+        out = nudge.render_output(["€" * 500], "", 10)
+        self.assertEqual(out, "€" * 13)
 
 
 class PlanIntegrationTests(unittest.TestCase):

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 
 def tokens(text: str) -> int:
-    return len(text or "") // 4
+    return len((text or "").encode()) // 4
 
 
-__all__ = ["tokens"]
+def clip(text: str, max_tokens: int) -> str:
+    """The longest prefix within `max_tokens`, never cutting a character in two."""
+    return (text or "").encode()[:max_tokens * 4].decode("utf-8", "ignore")
+
+
+__all__ = ["tokens", "clip"]

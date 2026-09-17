@@ -153,8 +153,7 @@ def _preload_components(cfg, cwd: Path) -> list:
             head = "\n".join(core.read_text(memory_index).splitlines()[:200])
         except OSError:
             head = ""
-        out.append({"label": "memory", "path": _short(memory_index),
-                    "tokens": len(head.encode("utf-8")) // 4})
+        out.append({"label": "memory", "path": _short(memory_index), "tokens": util.tokens(head)})
 
     fixed_tokens = int(core.cfg_get(cfg, "context.preload.fixed_tokens", 0) or 0)
     out.append({"label": "fixed", "path": None, "tokens": fixed_tokens})
@@ -214,8 +213,9 @@ def _render_check_gate(gate: dict) -> str:
 
 
 def _truncate_tokens(text: str, max_tokens: int) -> str:
-    limit = max_tokens * 4
-    return text if len(text) <= limit else text[:limit].rstrip() + "…"
+    if util.tokens(text) <= max_tokens:
+        return text
+    return util.clip(text, max_tokens).rstrip() + "…"
 
 
 def _stale_line(record, visible: list, cfg) -> str:
