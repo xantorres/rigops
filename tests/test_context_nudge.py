@@ -318,6 +318,17 @@ class PlanIntegrationTests(unittest.TestCase):
         third = nudge.plan({}, self.tmp / "roots.json", "open a pr", "work", "sess-x")
         self.assertEqual(third.fired, ["pr"])
 
+    def test_nudge_cut_for_budget_is_not_recorded_and_fires_next_prompt(self):
+        _write_nudges(self.tmp, {"budget": 15, "repeat_after": 20, "nudges": [
+            {"name": "first", "pattern": "pr", "say": "x" * 40},
+            {"name": "second", "pattern": "pr", "say": "y" * 40},
+        ]})
+        shown = nudge.plan({}, self.tmp / "roots.json", "open a pr", "work", "sess-cut")
+        self.assertEqual(shown.fired, ["first"])
+        again = nudge.plan({}, self.tmp / "roots.json", "open a pr", "work", "sess-cut")
+        self.assertEqual(again.fired, ["second"])
+        self.assertEqual(again.suppressed, ["first"])
+
     def test_json_shape_helper_tokens_matches_util(self):
         result = nudge.plan({}, self.tmp / "roots.json", "hi", "work", None)
         self.assertEqual(util.tokens("\n".join(result.say)), result.tokens)

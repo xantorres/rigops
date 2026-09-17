@@ -114,9 +114,10 @@ def _prune_session_states(state_dir: Path, max_age_days: int = PRUNE_MAX_AGE_DAY
             continue
 
 
-def apply_repeat_suppression(session_id, matched: list, repeat_after: int):
+def apply_repeat_suppression(session_id, matched: list, repeat_after: int, budget=None):
     """(firing, suppressed_names); without a session id every match fires and
-    nothing is persisted -- there is no session to rate-limit against."""
+    nothing is persisted -- there is no session to rate-limit against. A budget
+    trims `firing` before it is recorded, so a nudge cut for space stays due."""
     if not session_id:
         return matched, []
 
@@ -133,9 +134,12 @@ def apply_repeat_suppression(session_id, matched: list, repeat_after: int):
         last = fired_at.get(entry["name"])
         if last is None or prompts - last >= repeat_after:
             firing.append(entry)
-            fired_at[entry["name"]] = prompts
         else:
             suppressed.append(entry["name"])
+    if budget is not None:
+        firing, _ = select_within_budget(firing, budget)
+    for entry in firing:
+        fired_at[entry["name"]] = prompts
 
     path.write_text(json.dumps({"prompts": prompts, "fired": fired_at}))
     _prune_session_states(path.parent)
@@ -181,7 +185,7 @@ def plan(cfg, registry_path, prompt: str, cwd_realm, session_id, budget_override
     nudges, file_budget, repeat_after = load_declarations(cfg, registry_path)
     budget = budget_override if budget_override is not None else file_budget
     matched = match(nudges, prompt, cwd_realm)
-    firing, suppressed = apply_repeat_suppression(session_id, matched, repeat_after)
+    firing, suppressed = apply_repeat_suppression(session_id, matched, repeat_after, budget)
     kept, nudge_tokens = select_within_budget(firing, budget)
     return Plan(
         say=[entry["say"] for entry in kept], fired=[entry["name"] for entry in kept],
