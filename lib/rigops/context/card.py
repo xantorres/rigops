@@ -179,13 +179,17 @@ def _budget_line(components: list, budget_tokens) -> str:
 
 
 def _read_gates() -> dict:
+    """None for anything but the doctor's own shape -- missing file included,
+    since `read_text` raises OSError on that same as any other unreadable path."""
     path = core.local_state_path(GATES_STATE_NAME)
-    if not path.is_file():
-        return None
     try:
-        return json.loads(core.read_text(path))
+        record = json.loads(core.read_text(path))
     except (OSError, ValueError):
         return None
+    if not (isinstance(record, dict) and isinstance(record.get("gates"), list)
+            and all(isinstance(g, dict) for g in record["gates"])):
+        return None
+    return record
 
 
 def _visible_gates(record, cwd_realm) -> list:

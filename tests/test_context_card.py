@@ -168,6 +168,19 @@ class CardStaleLineTests(unittest.TestCase):
         self.assertFalse(any(line.startswith("stale:") for line in result["lines"]))
         self.assertEqual(result["gates"], [])
 
+    def test_gates_key_not_a_list_means_no_stale_line_not_a_crash(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            registry, cwd = _mapped(tmp)
+            xdg = tmp / "xdg"
+            path = xdg / "rigops" / "doctor" / "gates.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"ts": "2020-01-01T00:00:00Z", "gates": None}))
+            with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(xdg)}):
+                result = card.build(registry, {}, cwd)
+        self.assertFalse(any(line.startswith("stale:") for line in result["lines"]))
+        self.assertEqual(result["gates"], [])
+
     def test_fresh_ts_and_no_gates_means_no_stale_line(self):
         with tempfile.TemporaryDirectory() as tmp_s:
             tmp = Path(tmp_s)

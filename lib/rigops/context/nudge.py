@@ -155,18 +155,32 @@ def _prune_session_states(state_dir: Path, max_age_days: int = PRUNE_MAX_AGE_DAY
             continue
 
 
+def _load_session(session_id: str) -> dict:
+    """An unwritable or unreadable state dir costs the rate limit, never the
+    nudge -- `core.local_state_path` mkdirs on the way and can itself raise."""
+    try:
+        path = _session_state_path(session_id)
+        data = json.loads(core.read_text(path)) if path.is_file() else {}
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _save_session(session_id: str, state: dict) -> None:
+    """An unwritable state dir costs the rate limit, never the nudge."""
+    try:
+        path = _session_state_path(session_id)
+        path.write_text(json.dumps(state))
+    except OSError:
+        return
+    _prune_session_states(path.parent)
+
+
 def apply_repeat_suppression(session_id, matched: list, repeat_after: int, budget=None):
     """(firing, suppressed_names); without a session id nothing is persisted --
     there is no session to rate-limit against. A budget trims `firing` before
     it is recorded, so a nudge cut for space stays due."""
-    if session_id:
-        path = _session_state_path(session_id)
-        try:
-            state = json.loads(core.read_text(path)) if path.is_file() else {}
-        except (OSError, ValueError):
-            state = {}
-    else:
-        state = {}
+    state = _load_session(session_id) if session_id else {}
     prompts = int(state.get("prompts", 0)) + 1
     fired_at = dict(state.get("fired") or {})
 
@@ -183,8 +197,7 @@ def apply_repeat_suppression(session_id, matched: list, repeat_after: int, budge
     if session_id:
         for entry in firing:
             fired_at[entry["name"]] = prompts
-        path.write_text(json.dumps({"prompts": prompts, "fired": fired_at}))
-        _prune_session_states(path.parent)
+        _save_session(session_id, {"prompts": prompts, "fired": fired_at})
 
     return firing, suppressed
 

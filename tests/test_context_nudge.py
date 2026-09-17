@@ -351,6 +351,30 @@ class RepeatSuppressionTests(unittest.TestCase):
         self.assertIn("new-sess.json", names)
 
 
+class SessionStateResilienceTests(unittest.TestCase):
+    """An unwritable state dir must cost the rate limit, never the nudge itself."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self._env = dict(os.environ)
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._env)
+        self._tmp.cleanup()
+
+    def test_plan_still_fires_the_nudge_when_the_state_dir_cannot_be_created(self):
+        blocker = self.tmp / "xdg-blocker"
+        blocker.write_text("not a directory")
+        os.environ["XDG_STATE_HOME"] = str(blocker)
+        _write_nudges(self.tmp, {"nudges": [
+            {"name": "pr", "pattern": "pr", "say": "careful with PRs"},
+        ]})
+        result = nudge.plan({}, self.tmp / "roots.json", "open a pr", "work", "sess-blocked")
+        self.assertEqual(result.fired, ["pr"])
+
+
 class SelectWithinBudgetTests(unittest.TestCase):
     def test_keeps_first_entry_even_when_it_alone_exceeds_budget(self):
         entries = [{"name": "a", "say": "x" * 400}]
