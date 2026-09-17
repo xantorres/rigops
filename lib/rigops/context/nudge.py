@@ -42,8 +42,7 @@ def declarations_path(cfg, registry_path) -> Path:
 
 
 def _count(data: dict, key: str, default: int, path) -> int:
-    """`data[key]` when it's a non-negative int, else `default` with a warning
-    naming `key` -- a bool is not an int here, only a missing key is silent."""
+    """A bool is not an int here; only a missing key is silent."""
     if key not in data:
         return default
     value = data[key]
@@ -55,7 +54,6 @@ def _count(data: dict, key: str, default: int, path) -> int:
 
 
 def _compile(entry):
-    """The compiled nudge dict for a well-formed entry, else None with a warning."""
     if not isinstance(entry, dict):
         print(f"warning: nudge entry is not an object, skipping: {entry!r}", file=sys.stderr)
         return None
@@ -84,9 +82,8 @@ def _compile(entry):
 
 
 def load_declarations(cfg, registry_path):
-    """(nudges, budget, repeat_after); a missing file means no nudges, not an
-    error, and a hand-edited file never raises -- anything malformed is
-    defaulted or skipped with a warning on stderr instead."""
+    """(nudges, budget, repeat_after); a missing file means no nudges. A
+    hand-edited file never raises -- malformed data defaults or skips with a warning."""
     path = declarations_path(cfg, registry_path)
     if not path.is_file():
         return [], DEFAULT_BUDGET, DEFAULT_REPEAT_AFTER
