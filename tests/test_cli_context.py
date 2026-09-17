@@ -144,6 +144,23 @@ class NudgeHookModeTests(unittest.TestCase):
         )
         self.assertEqual(payload["realm"], "work")
 
+    def test_unwritable_log_dir_still_prints_the_nudge(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            registry_path, cwd = _registry(tmp)
+            (tmp / "nudges.json").write_text(json.dumps({"nudges": [
+                {"name": "pr", "pattern": "pr", "say": "careful with PRs"},
+            ]}))
+            env = _env(tmp)
+            # XDG_STATE_HOME (env["XDG_STATE_HOME"] == tmp/"xdg") as a plain file:
+            # the retrieval log's write can't create its directory.
+            Path(env["XDG_STATE_HOME"]).write_text("not a directory")
+            stdin = json.dumps({"prompt": "open a pr", "cwd": str(cwd), "session_id": "sess-1"})
+            result = _run(NUDGE_SCRIPT, ["--hook", "--registry", str(registry_path)],
+                           env, stdin)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("careful with PRs", result.stdout)
+
     def test_non_hook_direct_text_is_never_treated_as_a_session(self):
         with tempfile.TemporaryDirectory() as tmp_s:
             tmp = Path(tmp_s)

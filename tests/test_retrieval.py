@@ -832,6 +832,18 @@ class LogTests(unittest.TestCase):
         self.assertEqual(len(lines), 2)
         self.assertEqual(json.loads(lines[0])["query"], "q1")
 
+    def test_record_survives_an_unwritable_log_path(self):
+        # The log is telemetry; a line that can't be written must not cost the
+        # query or the prompt it serves.
+        blocker = self.tmp / "blocked"
+        blocker.write_text("not a directory")
+        result = search.Result(hits=[], realms=("personal",), scopes=("vault",), repo="",
+                               cwd=str(self.tmp), query="q1", latency_ms=10, tokens=0,
+                               silent_reason="no match")
+        with mock.patch.dict(os.environ, {"RIGOPS_RETRIEVAL_LOG": str(blocker / "log.jsonl")}):
+            row = log.record(result, mode="search")
+        self.assertEqual(row["query"], "q1")
+
     def test_read_respects_the_day_window(self):
         now = dt.datetime.now(dt.timezone.utc)
         old_row = {"ts": (now - dt.timedelta(days=10)).isoformat(timespec="seconds"),

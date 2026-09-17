@@ -52,10 +52,15 @@ def record(result, mode="search", session_id=None, extra=None) -> dict:
     }
     if extra:
         row.update(extra)
-    path = log_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row, separators=(",", ":")) + "\n")
+    # The log is telemetry; a line that can't be written must not cost the
+    # query or the prompt it serves.
+    try:
+        path = log_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, separators=(",", ":")) + "\n")
+    except OSError:
+        pass
     return row
 
 
