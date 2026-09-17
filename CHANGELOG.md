@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.7.0] - 2026-09-16
-
 ### Added
 
 - card: `rigops card` prints a short session-start card for the working
@@ -35,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Rows under `memory/archive/` are left to explicit search. Replaying real
   coding prompts, the prefetch had fired on nine turns in ten with fewer than
   half its rows relevant.
+
+## [0.7.0] - 2026-09-16
+
+### Added
 
 - doctor: a `levers` config check that reads `ledger.jsonl` and warns when a
   lever configured under `doctor.levers.rules` breaks its limit (`max`) or moves
