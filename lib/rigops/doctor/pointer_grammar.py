@@ -21,6 +21,7 @@ DEFAULT_SOURCES = [
     "~/docs/CLAUDE.md",
     "~/docs/AGENT-CHEATSHEET.md",
     "~/projects/personal/*/CLAUDE.md",
+    "~/.claude/projects/*/memory/*.md",
 ]
 
 DEFAULT_IGNORE_PREFIXES = [
@@ -37,6 +38,10 @@ TRANSCRIPT_RE = re.compile(
     r"/\.claude/projects/[^/]+/"
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.jsonl|/|$)"
 )
+
+# A memory note gets the path rule alone, under these roots; check_pointers says why.
+MEMORY_NOTE_RE = re.compile(r"/\.claude/projects/[^/]+/memory/")
+DEFAULT_MEMORY_ROOTS = ["~/.claude", "~/rig", "~/bin", "~/.local/bin"]
 
 # Segments that mark a documentation placeholder rather than a real location.
 DEFAULT_IGNORE_SEGMENTS = [

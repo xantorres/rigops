@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-16
+
 ### Added
 
 - doctor: a `levers` config check that reads `ledger.jsonl` and warns when a
@@ -47,6 +49,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   working directory granted a scope its realm cannot produce, or a root that
   matches nothing on disk, and an index that is missing, stale or holds a realm
   or scope the registry does not define.
+
+### Changed
+
+- doctor: memory notes are a pointer source. `~/.claude/projects/*/memory/*.md`
+  joins the default sources, held to the path rule alone and only for paths
+  under the new `doctor.pointers.memory_roots` (the rig's own trees by default).
+  A note is recalled and acted on, so a dead script or plan path in one misleads
+  like a dead rule; it is also a dated record, so another host's filesystem and a
+  label, model id, plugin, agent, skill or server it names are left alone.
 
 ## [0.6.0] - 2026-09-16
 

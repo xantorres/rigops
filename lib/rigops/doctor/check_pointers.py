@@ -4,6 +4,16 @@ Prose cannot be type-checked, so it rots: a retired MCP, a deleted agent, a
 disabled plugin recommended as live, a model id two generations old. This check
 extracts the pointers and asserts each one against the filesystem, settings.json,
 installed_plugins.json and launchctl.
+
+A memory note is part of that surface: it is recalled into a session and acted
+on, and notes pointing at deleted scripts and plans have had to be found by hand.
+It is also a dated record, so it is scanned narrowly. Only the path rule applies,
+and only to paths under ``doctor.pointers.memory_roots``: another host's
+filesystem is a fact about that host, and a label, model id, plugin, agent,
+skill or server named in a note is mostly history (a skill it names is often a
+project's own, which the rig-wide skill roots do not see). A note that
+records a path as retired names it without its root, so a root-anchored path in
+a note is always a claim that it exists.
 """
 
 from __future__ import annotations
@@ -20,12 +30,14 @@ from .pointer_grammar import (
     DEFAULT_AGENT_ROOTS,
     DEFAULT_IGNORE_PREFIXES,
     DEFAULT_IGNORE_SEGMENTS,
+    DEFAULT_MEMORY_ROOTS,
     DEFAULT_MODELS,
     DEFAULT_SKILL_ROOTS,
     DEFAULT_SOURCES,
     DIST_TAGS,
     LAUNCHD_RE,
     MCP_RE,
+    MEMORY_NOTE_RE,
     MODEL_RE,
     NOT_PLUGIN_NAMES,
     PATH_RE,
@@ -152,11 +164,18 @@ def _known(cfg):
             for p in _cfg(cfg, "ignore_prefixes", DEFAULT_IGNORE_PREFIXES)
         ],
         "placeholders": _cfg(cfg, "ignore_segments", DEFAULT_IGNORE_SEGMENTS),
+        "memory_roots": [
+            str(core.expand(p)) for p in _cfg(cfg, "memory_roots", DEFAULT_MEMORY_ROOTS)
+        ],
     }
 
 
 def _clean_path(raw):
     return raw.rstrip(".,;:!?)]}\"'`*")
+
+
+def _within(resolved, prefixes):
+    return any(resolved == pre or resolved.startswith(pre + "/") for pre in prefixes)
 
 
 def _path_ok(raw, known, truncated=False):
@@ -166,7 +185,7 @@ def _path_ok(raw, known, truncated=False):
     if any(seg in path for seg in known["placeholders"]):
         return True
     resolved = str(core.expand(path))
-    if any(resolved == pre or resolved.startswith(pre + "/") for pre in known["ignore"]):
+    if _within(resolved, known["ignore"]):
         return True
     if TRANSCRIPT_RE.search(resolved):
         return True
@@ -228,16 +247,20 @@ def _unregistered(name, known, kind):
     return bare.lower() not in known[kind]
 
 
-def _scan_text(path, text, known, numbered=True):
+def _scan_text(path, text, known, numbered=True, memory=False):
     out = []
     label = str(path).replace(str(core.HOME), "~")
     for lineno, line in enumerate(text.splitlines(), 1):
         where = f"{label}:{lineno}" if numbered else label
         for match in PATH_RE.finditer(line):
             raw = match.group(0)
+            if memory and not _within(str(core.expand(_clean_path(raw))), known["memory_roots"]):
+                continue
             if not _path_ok(raw, known, truncated=line[match.end():match.end() + 1] == " "):
                 out.append(_finding("path", _clean_path(raw), where,
                                     "repoint at the live path or delete the claim"))
+        if memory:
+            continue
         for regex in AGENT_RE:
             for name in regex.findall(line):
                 if _unregistered(name, known, "agents"):
@@ -314,7 +337,10 @@ def run(cfg):
             text = _settings_text(path) if is_settings else core.read_text(path)
         except OSError:
             continue
-        findings.extend(_scan_text(path, text, known, numbered=not is_settings))
+        findings.extend(_scan_text(
+            path, text, known, numbered=not is_settings,
+            memory=bool(MEMORY_NOTE_RE.search(str(path))),
+        ))
     seen, unique = set(), []
     for finding in findings:
         if finding.id in seen:
