@@ -1,5 +1,8 @@
 {
   "hooks": {
+    "SessionStart": [
+      {"matcher": "startup|resume|compact", "hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/card.sh\"", "timeout": 10}]}
+    ],
     "UserPromptSubmit": [
       {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ctx-nudge.sh\"", "timeout": 10}]}
     ]
