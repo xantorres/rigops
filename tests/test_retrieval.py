@@ -13,6 +13,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
+from rigops import core  # noqa: E402
 from rigops.doctor import check_realms  # noqa: E402
 from rigops.retrieval import chunk, index, log, probe, roots, search  # noqa: E402
 
@@ -390,7 +391,9 @@ class IndexSearchIsolationTests(unittest.TestCase):
             "index": {"db": str(self.db_path)},
             # this fixture is a handful of near-identical tiny docs, so bm25 scores
             # cluster near zero; relax the threshold here, the strict case has its own test.
-            "prefetch": {"min_score": 0},
+            # these tests probe realm isolation with single-word queries, not the term
+            # gate, so min_terms/min_head_terms are relaxed to their pre-gate no-op values.
+            "prefetch": {"min_score": 0, "min_terms": 1, "min_head_terms": 0},
             "roots": [
                 {"path": str(self.home / "personal"), "realm": "personal", "scope": "vault",
                  "classify": True, "cwd_scopes": ["vault"]},
@@ -454,12 +457,122 @@ class IndexSearchIsolationTests(unittest.TestCase):
         self.assertGreater(len(baseline.hits), len(capped.hits))
         self.assertGreaterEqual(len(capped.hits), 1)
 
+    def test_claim_cost_counts_utf8_bytes_over_four(self):
+        write_tree(self.home, {
+            "personal/prices.md": "## Prices\npersonal caching " + "€" * 60 + " prices\n",
+        })
+        index.build(self.registry)
+        result = search.query(self.registry, "caching", cwd=self.cwd_personal, top=10,
+                              db_path=self.db_path)
+        self.assertTrue(any("€" in hit.claim() for hit in result.hits))
+        self.assertEqual(result.tokens,
+                         sum(max(1, len(hit.claim().encode()) // 4) for hit in result.hits))
+
     def test_prefetch_below_min_score_returns_nothing(self):
         self.registry.raw["prefetch"] = {"min_score": -999, "max_rows": 3, "budget": 400}
         result = search.query(self.registry, "caching", cwd=self.cwd_personal, prefetch=True,
                               top=10, db_path=self.db_path)
         self.assertEqual(result.hits, [])
         self.assertEqual(result.silent_reason, "below score threshold")
+
+
+class PrefetchRelevanceGateTests(unittest.TestCase):
+    """Term coverage on top of the score cutoff: a prefetch row needs more than
+    one weak word in common with the prompt, and needs at least one of them
+    somewhere a reader would call the point of the document, not buried in prose."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.home = self.tmp / "home"
+        write_tree(self.home, {
+            "vault/single.md":
+                "## Notes\nkumquat mentioned here but the other word never shows up\n",
+            "vault/body-only.md":
+                "## Notes\nkumquat and xylophone both appear only in this ordinary body "
+                "prose and nowhere else in the row\n",
+            "vault/titled.md":
+                "## Notes\nkumquat and xylophone both appear together right here\n"
+                "# Kumquat Notes\n",
+        })
+        repo = self.home / "repos" / "alpha"
+        repo.mkdir(parents=True)
+        memory_root = self.home / "claude-projects"
+        encoded = roots.encode_project(repo)
+        write_tree(memory_root, {
+            f"{encoded}/memory/note.md": "## Live\nan ordinary live memory note\n",
+            f"{encoded}/memory/archive/old.md":
+                "## Fact\nplatypus egg incubation lasts about ten days\n",
+        })
+        self.db_path = self.tmp / "index.sqlite"
+        self.registry = make_registry(self.tmp, {
+            "realms": ["personal"], "scopes": ["vault", "repo", "memory"],
+            "memory_root": {"path": str(memory_root)},
+            "index": {"db": str(self.db_path)},
+            # a handful of near-identical tiny docs push bm25 scores near zero; relax
+            # the score cutoff so these cases exercise the term gate, not the score one.
+            "prefetch": {"min_score": 0},
+            "roots": [
+                {"path": str(self.home / "vault"), "realm": "personal", "scope": "vault",
+                 "cwd_scopes": ["vault"]},
+                {"path": str(repo), "realm": "personal", "scope": "repo", "repo": True,
+                 "cwd_scopes": ["repo", "memory"]},
+            ],
+        })
+        index.build(self.registry, self.db_path)
+        self.cwd_vault = self.home / "vault"
+        self.cwd_repo = repo
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_row_matching_one_content_word_is_dropped_at_min_terms(self):
+        result = search.query(self.registry, "kumquat xylophone", cwd=self.cwd_vault,
+                              prefetch=True, top=10, db_path=self.db_path)
+        self.assertFalse(any(hit.short_path.endswith("single.md") for hit in result.hits))
+
+    def test_row_matching_two_words_only_in_body_is_dropped_at_min_head_terms(self):
+        result = search.query(self.registry, "kumquat xylophone", cwd=self.cwd_vault,
+                              prefetch=True, top=10, db_path=self.db_path)
+        self.assertFalse(any(hit.short_path.endswith("body-only.md") for hit in result.hits))
+
+    def test_row_matching_two_words_with_one_in_title_passes(self):
+        result = search.query(self.registry, "kumquat xylophone", cwd=self.cwd_vault,
+                              prefetch=True, top=10, db_path=self.db_path)
+        self.assertTrue(any(hit.short_path.endswith("titled.md") for hit in result.hits))
+
+    def test_archive_path_is_skipped_by_prefetch_but_returned_by_explicit_search(self):
+        prefetch_result = search.query(self.registry, "platypus incubation",
+                                       cwd=self.cwd_repo, prefetch=True, top=10,
+                                       db_path=self.db_path)
+        self.assertFalse(any(hit.short_path.endswith("old.md") for hit in prefetch_result.hits))
+        search_result = search.query(self.registry, "platypus incubation", cwd=self.cwd_repo,
+                                     top=10, db_path=self.db_path)
+        self.assertTrue(any(hit.short_path.endswith("old.md") for hit in search_result.hits))
+
+    def test_archive_rows_outranking_a_live_row_do_not_crowd_it_out_of_prefetch(self):
+        memory = self.home / "claude-projects" / roots.encode_project(self.cwd_repo) / "memory"
+        crowd = {f"archive/quokka-zeppelin-{i}.md": "## Quokka zeppelin\nquokka zeppelin\n"
+                 for i in range(30)}
+        write_tree(memory, {**crowd, "live.md": "## Quokka\nquokka and zeppelin, still live\n"})
+        index.build(self.registry, self.db_path)
+        explicit = search.query(self.registry, "quokka zeppelin", cwd=self.cwd_repo, top=40,
+                                db_path=self.db_path)
+        self.assertEqual(len(explicit.hits), 31)
+        self.assertTrue(explicit.hits[-1].short_path.endswith("live.md"))
+        result = search.query(self.registry, "quokka zeppelin", cwd=self.cwd_repo,
+                              prefetch=True, top=3, db_path=self.db_path)
+        self.assertEqual([hit.short_path.rsplit("/", 1)[-1] for hit in result.hits], ["live.md"])
+
+    def test_explicit_search_results_are_unchanged_by_the_new_keys(self):
+        before = search.query(self.registry, "kumquat xylophone", cwd=self.cwd_vault,
+                              top=10, db_path=self.db_path)
+        self.registry.raw["prefetch"] = {"min_score": 999, "min_terms": 99, "min_head_terms": 99}
+        after = search.query(self.registry, "kumquat xylophone", cwd=self.cwd_vault,
+                             top=10, db_path=self.db_path)
+        self.assertTrue(before.hits)
+        self.assertEqual([hit.short_path for hit in before.hits],
+                         [hit.short_path for hit in after.hits])
 
 
 class IndexUpdateTests(unittest.TestCase):
@@ -609,7 +722,9 @@ class ProbeRunTests(unittest.TestCase):
             "index": {"db": str(self.db_path)},
             # near-identical tiny docs push bm25 scores near zero; the negative probe
             # runs a prefetch, so it needs a threshold this fixture can actually clear.
-            "prefetch": {"min_score": 0},
+            # the negative query is one word, so min_terms/min_head_terms are relaxed
+            # to their pre-gate no-op values too - this fixture isn't testing the gate.
+            "prefetch": {"min_score": 0, "min_terms": 1, "min_head_terms": 0},
             "roots": [
                 {"path": str(self.home / "personal"), "realm": "personal", "scope": "vault",
                  "cwd_scopes": ["vault"]},
@@ -667,6 +782,35 @@ class ProbeRunTests(unittest.TestCase):
         self.assertTrue(negative["leaked"])
 
 
+class StatePathTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_lands_under_xdg_state_home_rigops(self):
+        with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(self.tmp)}):
+            path = roots.state_path("widget/thing.json")
+        self.assertEqual(path, self.tmp / "rigops" / "widget" / "thing.json")
+        # Resolution only: a reader must not inherit a writer's mkdir failure.
+        self.assertFalse(path.parent.is_dir())
+
+    def test_delegates_to_core_local_state_path(self):
+        with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(self.tmp)}):
+            self.assertEqual(roots.state_path("a.json"), core.local_state_path("a.json"))
+
+    def test_ignores_rigops_state_dir_even_when_set(self):
+        other = self.tmp / "elsewhere"
+        with mock.patch.dict(os.environ, {
+            "XDG_STATE_HOME": str(self.tmp / "xdg"), "RIGOPS_STATE_DIR": str(other),
+        }):
+            path = roots.state_path("a.json")
+        self.assertTrue(str(path).startswith(str(self.tmp / "xdg")))
+        self.assertFalse(other.exists())
+
+
 class LogTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -687,6 +831,18 @@ class LogTests(unittest.TestCase):
         lines = self.log_path.read_text().splitlines()
         self.assertEqual(len(lines), 2)
         self.assertEqual(json.loads(lines[0])["query"], "q1")
+
+    def test_record_survives_an_unwritable_log_path(self):
+        # The log is telemetry; a line that can't be written must not cost the
+        # query or the prompt it serves.
+        blocker = self.tmp / "blocked"
+        blocker.write_text("not a directory")
+        result = search.Result(hits=[], realms=("personal",), scopes=("vault",), repo="",
+                               cwd=str(self.tmp), query="q1", latency_ms=10, tokens=0,
+                               silent_reason="no match")
+        with mock.patch.dict(os.environ, {"RIGOPS_RETRIEVAL_LOG": str(blocker / "log.jsonl")}):
+            row = log.record(result, mode="search")
+        self.assertEqual(row["query"], "q1")
 
     def test_read_respects_the_day_window(self):
         now = dt.datetime.now(dt.timezone.utc)

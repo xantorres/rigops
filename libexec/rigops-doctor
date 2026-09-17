@@ -197,29 +197,42 @@ def _judge_evidence_only_item(item: dict, heal_cooldown_active: bool) -> dict:
     }
 
 
+def _first_stdout_line(text: str) -> str:
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if line:
+            return line[:200]
+    return ""
+
+
 def run_custom_check(check_cfg: dict) -> dict:
     name = check_cfg.get("name", "custom")
     command = check_cfg.get("command", "")
     timeout_s = check_cfg.get("timeout_s", 10)
     warn_exit = check_cfg.get("warn_exit")
     fail_exit = check_cfg.get("fail_exit")
+    realm = check_cfg.get("realm")
     try:
         out = subprocess.run(
-            command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            timeout=timeout_s,
+            command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            timeout=timeout_s, text=True, errors="replace",
         )
         code = out.returncode
     except subprocess.TimeoutExpired:
-        return {"name": name, "status": "fail", "detail": f"timed out after {timeout_s}s"}
+        return {"name": name, "status": "fail", "detail": f"timed out after {timeout_s}s",
+                "realm": realm}
     except OSError as exc:
-        return {"name": name, "status": "fail", "detail": str(exc)}
+        return {"name": name, "status": "fail", "detail": str(exc), "realm": realm}
     if fail_exit is not None and code == fail_exit:
-        return {"name": name, "status": "fail", "detail": f"exit {code}"}
+        return {"name": name, "status": "fail",
+                "detail": _first_stdout_line(out.stdout) or f"exit {code}", "realm": realm}
     if warn_exit is not None and code == warn_exit:
-        return {"name": name, "status": "warn", "detail": f"exit {code}"}
+        return {"name": name, "status": "warn",
+                "detail": _first_stdout_line(out.stdout) or f"exit {code}", "realm": realm}
     if code == 0:
-        return {"name": name, "status": "ok", "detail": "exit 0"}
-    return {"name": name, "status": "warn", "detail": f"unexpected exit {code}"}
+        return {"name": name, "status": "ok", "detail": "exit 0", "realm": realm}
+    return {"name": name, "status": "warn",
+            "detail": _first_stdout_line(out.stdout) or f"unexpected exit {code}", "realm": realm}
 
 
 def run_disk_free_check(check_cfg: dict) -> dict:
@@ -351,6 +364,32 @@ def report_config_checks(cfg: dict, args) -> int:
     return 1 if _failing(findings) else 0
 
 
+def _job_gate_entries(jobs: list) -> list:
+    return [
+        {"kind": "job", "name": j["id"], "status": j["status"], "realm": None, "detail": ""}
+        for j in jobs if j["status"] in ("failing", "hung", "stale")
+    ]
+
+
+def _check_gate_entries(checks: list) -> list:
+    return [
+        {"kind": "check", "name": c["name"], "status": c["status"],
+         "realm": c.get("realm"), "detail": c["detail"]}
+        for c in checks if c["status"] != "ok"
+    ]
+
+
+def _config_gate_entries(findings: list) -> list:
+    by_check: dict = {}
+    for f in findings:
+        by_check.setdefault(f.check, []).append(f)
+    return [
+        {"kind": "config", "name": check, "realm": None, "detail": f"{len(group)} findings",
+         "status": "fail" if any(f.severity != "warn" for f in group) else "warn"}
+        for check, group in sorted(by_check.items())
+    ]
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Health watchdog for the rigops job fleet.")
     ap.add_argument("--report", action="store_true", help="print the full report to stdout")
@@ -460,6 +499,7 @@ def main(argv=None) -> int:
     disk_free_cfg = rigops_config.get(cfg, "doctor.checks.disk_free")
     if disk_free_cfg:
         checks.append(run_disk_free_check(disk_free_cfg))
+    findings = [] if args.no_config else config_checks.run_checks(cfg, only=set(args.check or []) or None)
 
     fail_count = sum(1 for j in jobs if j["status"] in ("failing", "hung"))
     # Reported, never paged: a stale row is a trend to read in the events log,
@@ -483,7 +523,14 @@ def main(argv=None) -> int:
         if notify_error:
             state.append_jsonl(events_path, {"ts": ts, "event": notify_error})
 
-    findings = [] if args.no_config else config_checks.run_checks(cfg, only=set(args.check or []) or None)
+    # Written every run, gates or none: an empty list still proves the doctor ran,
+    # which is what a card reading it needs to tell "clean" from "never checked".
+    gates = _job_gate_entries(jobs) + _check_gate_entries(checks) + _config_gate_entries(findings)
+    try:
+        _save_json(rigops_core.local_state_path("doctor/gates.json"),
+                   {"version": 1, "ts": ts, "gates": gates})
+    except OSError as exc:
+        print(f"warning: gates record not written: {exc}", file=sys.stderr)
 
     if args.json:
         payload = {

@@ -16,7 +16,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from rigops import launchd  # noqa: E402
+from rigops import core, launchd  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DOCTOR_SCRIPT = REPO_ROOT / "libexec" / "rigops-doctor"
@@ -138,6 +138,9 @@ class EnvIsolatedTestCase(unittest.TestCase):
         self.tmp = self._tmpdir.name
         os.environ["RIGOPS_STATE_DIR"] = str(Path(self.tmp) / "state")
         os.environ["RIGOPS_CONFIG"] = str(Path(self.tmp) / "config.json")
+        # local_state_path (the gates record) reads XDG_STATE_HOME, not
+        # RIGOPS_STATE_DIR, by design: it must stay off a shared state dir.
+        os.environ["XDG_STATE_HOME"] = str(Path(self.tmp) / "xdg-state")
 
     def tearDown(self):
         self._tmpdir.cleanup()
@@ -349,6 +352,50 @@ class CustomCheckTests(unittest.TestCase):
         })
         self.assertEqual(result["status"], "ok")
 
+    def test_realm_defaults_to_none(self):
+        result = doctor.run_custom_check({
+            "name": "t", "command": f"{sys.executable} -c 'pass'", "timeout_s": 5,
+        })
+        self.assertIsNone(result["realm"])
+
+    def test_realm_passes_through_from_config(self):
+        result = doctor.run_custom_check({
+            "name": "t", "command": f"{sys.executable} -c 'import sys; sys.exit(9)'",
+            "fail_exit": 9, "timeout_s": 5, "realm": "client",
+        })
+        self.assertEqual(result["realm"], "client")
+
+    def test_fail_detail_is_first_nonempty_stdout_line(self):
+        cmd = (f"{sys.executable} -c 'import sys; print(); print(\"first line\"); "
+               "print(\"second\"); sys.exit(9)'")
+        result = doctor.run_custom_check({
+            "name": "t", "command": cmd, "fail_exit": 9, "timeout_s": 5,
+        })
+        self.assertEqual(result["status"], "fail")
+        self.assertEqual(result["detail"], "first line")
+
+    def test_fail_detail_falls_back_to_exit_text_with_no_stdout(self):
+        result = doctor.run_custom_check({
+            "name": "t", "command": f"{sys.executable} -c 'import sys; sys.exit(9)'",
+            "fail_exit": 9, "timeout_s": 5,
+        })
+        self.assertEqual(result["detail"], "exit 9")
+
+    def test_warn_detail_uses_stdout_line_too(self):
+        cmd = f"{sys.executable} -c 'print(\"low disk\"); import sys; sys.exit(3)'"
+        result = doctor.run_custom_check({
+            "name": "t", "command": cmd, "warn_exit": 3, "timeout_s": 5,
+        })
+        self.assertEqual(result["status"], "warn")
+        self.assertEqual(result["detail"], "low disk")
+
+    def test_fail_detail_truncated_to_200_chars(self):
+        cmd = f"{sys.executable} -c 'print(\"x\" * 300); import sys; sys.exit(9)'"
+        result = doctor.run_custom_check({
+            "name": "t", "command": cmd, "fail_exit": 9, "timeout_s": 5,
+        })
+        self.assertEqual(len(result["detail"]), 200)
+
 
 class DiskFreeCheckTests(unittest.TestCase):
     def test_below_fail_threshold(self):
@@ -379,6 +426,129 @@ class DiskFreeCheckTests(unittest.TestCase):
         self.assertEqual(result["status"], "fail")
         self.assertIn("~/rigops-test-missing-dir", result["detail"])
         self.assertNotIn(tmp + "/", result["detail"])
+
+
+class GatesRecordTests(EnvIsolatedTestCase):
+    def _gates_record(self) -> dict:
+        path = core.local_state_path("doctor/gates.json")
+        return json.loads(path.read_text())
+
+    def test_written_even_when_everything_is_ok(self):
+        registry_path = _write_registry(self.tmp, OK_ITEM)
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, None, 0)),
+        ):
+            code, _ = _run_doctor(["--registry", str(registry_path)])
+        self.assertEqual(code, 0)
+        record = self._gates_record()
+        self.assertEqual(record["version"], 1)
+        self.assertEqual(record["gates"], [])
+        self.assertRegex(record["ts"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+
+    def test_failing_job_is_recorded_with_null_realm_and_empty_detail(self):
+        registry_path = _write_registry(self.tmp, FAILING_ITEM)
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, None, 1)),
+        ):
+            _run_doctor(["--registry", str(registry_path)])
+        self.assertEqual(self._gates_record()["gates"], [
+            {"kind": "job", "name": "job-failing", "status": "failing",
+             "realm": None, "detail": ""},
+        ])
+
+    def test_stale_job_is_recorded(self):
+        evidence = Path(self.tmp) / "evidence.log"
+        evidence.write_text("ran\n")
+        mtime = time.time() - 40 * 3600
+        os.utime(evidence, (mtime, mtime))
+        stale_item = NO_LABEL_ITEM.replace("health: -", f"health: {evidence}")
+        registry_path = _write_registry(self.tmp, stale_item)
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=False),
+        ):
+            _run_doctor(["--registry", str(registry_path)])
+        self.assertEqual(self._gates_record()["gates"], [
+            {"kind": "job", "name": "job-nolabel", "status": "stale",
+             "realm": None, "detail": ""},
+        ])
+
+    def test_custom_check_gate_carries_its_configured_realm_and_detail(self):
+        registry_path = _write_registry(self.tmp, OK_ITEM)
+        Path(os.environ["RIGOPS_CONFIG"]).write_text(json.dumps({"doctor": {"checks": {"custom": [
+            {"name": "probe", "command": f"{sys.executable} -c 'import sys; sys.exit(1)'",
+             "fail_exit": 1, "realm": "client"},
+        ]}}}))
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, None, 0)),
+        ):
+            _run_doctor(["--registry", str(registry_path)])
+        self.assertEqual(self._gates_record()["gates"], [
+            {"kind": "check", "name": "probe", "status": "fail",
+             "realm": "client", "detail": "exit 1"},
+        ])
+
+    def test_ok_custom_check_is_not_a_gate(self):
+        registry_path = _write_registry(self.tmp, OK_ITEM)
+        Path(os.environ["RIGOPS_CONFIG"]).write_text(json.dumps({"doctor": {"checks": {"custom": [
+            {"name": "probe", "command": f"{sys.executable} -c 'pass'"},
+        ]}}}))
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, None, 0)),
+        ):
+            _run_doctor(["--registry", str(registry_path)])
+        self.assertEqual(self._gates_record()["gates"], [])
+
+    def _run_with_config_findings(self, registry_path, findings) -> None:
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, None, 0)),
+            mock.patch.object(doctor.config_checks, "run_checks", return_value=findings),
+        ):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                doctor.main(["--registry", str(registry_path)])
+
+    def test_config_findings_for_one_check_collapse_into_one_failing_gate(self):
+        registry_path = _write_registry(self.tmp, OK_ITEM)
+        findings = [
+            core.Finding(check="pointers", area="rigops", symptom="s1", evidence="e1", fix="f1"),
+            core.Finding(check="pointers", area="rigops", symptom="s2", evidence="e2", fix="f2",
+                         severity="warn"),
+        ]
+        self._run_with_config_findings(registry_path, findings)
+        self.assertEqual(self._gates_record()["gates"], [
+            {"kind": "config", "name": "pointers", "status": "fail",
+             "realm": None, "detail": "2 findings"},
+        ])
+
+    def test_config_gate_is_warn_when_every_finding_is_a_warning(self):
+        registry_path = _write_registry(self.tmp, OK_ITEM)
+        findings = [core.Finding(check="levers", area="rigops", symptom="s", evidence="e",
+                                  fix="f", severity="warn")]
+        self._run_with_config_findings(registry_path, findings)
+        self.assertEqual(self._gates_record()["gates"], [
+            {"kind": "config", "name": "levers", "status": "warn",
+             "realm": None, "detail": "1 findings"},
+        ])
+
+    def test_unwritable_state_dir_warns_instead_of_failing_the_run(self):
+        registry_path = _write_registry(self.tmp, OK_ITEM)
+        # XDG_STATE_HOME as a plain file: local_state_path's own mkdir raises OSError.
+        Path(os.environ["XDG_STATE_HOME"]).write_text("not a directory")
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, None, 0)),
+        ):
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                code, out = _run_doctor(["--registry", str(registry_path)])
+        self.assertEqual(code, 0)
+        self.assertIn("OK", out)
+        self.assertIn("warning:", err.getvalue())
 
 
 class EventsJsonlTests(EnvIsolatedTestCase):

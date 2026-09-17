@@ -23,7 +23,7 @@ HOME = str(Path.home())
 # line without drowning it.
 RANK_SQL = "bm25(docs, 0,0,1.0,0,0,0,2.0,2.0,0,0,8.0,6.0)"
 SELECT_SQL = f"""
-SELECT path, line, section, title, realm, scope, repo, verified,
+SELECT rowid, path, line, section, title, realm, scope, repo, verified,
        snippet(docs, 2, '[', ']', '…', 18) AS snip, {RANK_SQL} AS rank
 FROM docs WHERE docs MATCH ?
 """
@@ -39,7 +39,11 @@ STOPWORDS = {
     "about", "have", "has", "had", "not", "but", "you", "use", "used", "using", "any",
     "get", "got", "one", "two", "all", "out", "off", "own", "per", "via", "run", "runs",
 }
-DEFAULT_PREFETCH = {"min_score": -4.0, "max_rows": 3, "budget": 400}
+DEFAULT_PREFETCH = {
+    "min_score": -14.0, "min_terms": 2, "min_head_terms": 1, "max_rows": 3, "budget": 400,
+}
+HEAD_COLUMNS = "{title section answers pathwords}"
+ARCHIVE_MARKER = "/memory/archive/"
 
 
 @dataclass(frozen=True)
@@ -131,6 +135,27 @@ def loose_query(text: str, limit: int = 8) -> str:
     return " OR ".join(f'"{w}"' for w in _content_words(text, limit))
 
 
+def _term_matches(conn, words, rowids):
+    """(all_hits, head_hits): rowid -> the content words it matched, split by scope.
+
+    One MATCH query per word against the candidate rowids, not one query per row:
+    on the row counts this gate runs over, a handful of word-scoped queries beats
+    fetching and re-tokenizing every candidate's text in Python.
+    """
+    if not words or not rowids:
+        return {}, {}
+    placeholders = ",".join("?" * len(rowids))
+    sql = f"SELECT rowid FROM docs WHERE docs MATCH ? AND rowid IN ({placeholders})"
+    all_hits, head_hits = {}, {}
+    for word in words:
+        term = f'"{word}"'
+        for (rowid,) in conn.execute(sql, [term, *rowids]):
+            all_hits.setdefault(rowid, set()).add(word)
+        for (rowid,) in conn.execute(sql, [f"{HEAD_COLUMNS} : {term}", *rowids]):
+            head_hits.setdefault(rowid, set()).add(word)
+    return all_hits, head_hits
+
+
 def _prefetch_cfg(registry, key):
     return registry.raw.get("prefetch", {}).get(key, DEFAULT_PREFETCH[key])
 
@@ -172,6 +197,7 @@ def query(registry, text, cwd=None, scopes=None, top=10, budget=None,
     if not match.strip():
         result.silent_reason = "empty query"
         return result
+    min_score = _prefetch_cfg(registry, "min_score") if prefetch else None
 
     sql = SELECT_SQL + f" AND realm IN ({','.join('?' * len(realms))})"
     params = [match, *realms]
@@ -181,6 +207,11 @@ def query(registry, text, cwd=None, scopes=None, top=10, budget=None,
     if repo:
         sql += " AND (scope NOT IN ('repo','memory') OR repo = ?)"
         params.append(repo)
+    if prefetch:
+        # Archived facts are explicit-search-only; excluded before the LIMIT so a
+        # crowd of them cannot push every live row out of the candidates.
+        sql += " AND instr(path, ?) = 0"
+        params.append(ARCHIVE_MARKER)
     sql += " ORDER BY rank LIMIT ?"
     params.append(max(top * 5, 25))
 
@@ -212,28 +243,42 @@ def query(registry, text, cwd=None, scopes=None, top=10, budget=None,
                 result.silent_reason = ""
             if len({row["path"] for row in rows}) >= wanted:
                 break
+        gate_hits, gate_head = {}, {}
+        if prefetch and rows:
+            score_ok = [
+                row["rowid"] for row in rows
+                if min_score is None or row["rank"] <= min_score
+            ]
+            gate_hits, gate_head = _term_matches(conn, _content_words(text), score_ok)
     finally:
         conn.close()
     result.latency_ms = int((time.time() - started) * 1000)
 
-    min_score = _prefetch_cfg(registry, "min_score") if prefetch else None
     if prefetch:
         top = min(top, _prefetch_cfg(registry, "max_rows"))
         budget = budget or _prefetch_cfg(registry, "budget")
+    min_terms = _prefetch_cfg(registry, "min_terms") if prefetch else None
+    min_head_terms = _prefetch_cfg(registry, "min_head_terms") if prefetch else None
 
-    seen, hits, tokens = set(), [], 0
+    seen, hits, tokens, gated_out = set(), [], 0, False
     for row in rows:
         if row["path"] in seen:
             continue
         if min_score is not None and row["rank"] > min_score:
             continue
+        if prefetch:
+            rowid = row["rowid"]
+            if (len(gate_hits.get(rowid, ())) < min_terms
+                    or len(gate_head.get(rowid, ())) < min_head_terms):
+                gated_out = True
+                continue
         hit = Hit(
             path=row["path"], line=int(row["line"] or 1), section=row["section"] or "",
             title=row["title"] or "", realm=row["realm"], scope=row["scope"],
             repo=row["repo"] or "", verified=row["verified"] or "",
             snippet=clean(row["snip"], max_len), rank=float(row["rank"]),
         )
-        cost = max(1, len(hit.claim()) // 4)
+        cost = max(1, len(hit.claim().encode()) // 4)
         if budget and hits and tokens + cost > budget:
             break
         seen.add(row["path"])
@@ -243,7 +288,10 @@ def query(registry, text, cwd=None, scopes=None, top=10, budget=None,
             break
     result.hits, result.tokens = hits, tokens
     if not hits and not result.silent_reason:
-        result.silent_reason = "below score threshold" if min_score is not None else "no match"
+        if gated_out:
+            result.silent_reason = "below relevance gate"
+        else:
+            result.silent_reason = "below score threshold" if min_score is not None else "no match"
     return result
 
 
