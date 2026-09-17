@@ -115,16 +115,16 @@ def _prune_session_states(state_dir: Path, max_age_days: int = PRUNE_MAX_AGE_DAY
 
 
 def apply_repeat_suppression(session_id, matched: list, repeat_after: int, budget=None):
-    """(firing, suppressed_names); without a session id every match fires and
-    nothing is persisted -- there is no session to rate-limit against. A budget
-    trims `firing` before it is recorded, so a nudge cut for space stays due."""
-    if not session_id:
-        return matched, []
-
-    path = _session_state_path(session_id)
-    try:
-        state = json.loads(core.read_text(path)) if path.is_file() else {}
-    except (OSError, ValueError):
+    """(firing, suppressed_names); without a session id nothing is persisted --
+    there is no session to rate-limit against. A budget trims `firing` before
+    it is recorded, so a nudge cut for space stays due."""
+    if session_id:
+        path = _session_state_path(session_id)
+        try:
+            state = json.loads(core.read_text(path)) if path.is_file() else {}
+        except (OSError, ValueError):
+            state = {}
+    else:
         state = {}
     prompts = int(state.get("prompts", 0)) + 1
     fired_at = dict(state.get("fired") or {})
@@ -138,11 +138,13 @@ def apply_repeat_suppression(session_id, matched: list, repeat_after: int, budge
             suppressed.append(entry["name"])
     if budget is not None:
         firing, _ = select_within_budget(firing, budget)
-    for entry in firing:
-        fired_at[entry["name"]] = prompts
 
-    path.write_text(json.dumps({"prompts": prompts, "fired": fired_at}))
-    _prune_session_states(path.parent)
+    if session_id:
+        for entry in firing:
+            fired_at[entry["name"]] = prompts
+        path.write_text(json.dumps({"prompts": prompts, "fired": fired_at}))
+        _prune_session_states(path.parent)
+
     return firing, suppressed
 
 
@@ -186,10 +188,11 @@ def plan(cfg, registry_path, prompt: str, cwd_realm, session_id, budget_override
     budget = budget_override if budget_override is not None else file_budget
     matched = match(nudges, prompt, cwd_realm)
     firing, suppressed = apply_repeat_suppression(session_id, matched, repeat_after, budget)
-    kept, nudge_tokens = select_within_budget(firing, budget)
+    say = [entry["say"] for entry in firing]
+    fired = [entry["name"] for entry in firing]
     return Plan(
-        say=[entry["say"] for entry in kept], fired=[entry["name"] for entry in kept],
-        suppressed=suppressed, tokens=nudge_tokens, budget=budget,
+        say=say, fired=fired, suppressed=suppressed,
+        tokens=util.tokens("\n".join(say)), budget=budget,
     )
 
 
