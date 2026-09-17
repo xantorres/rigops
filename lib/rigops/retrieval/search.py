@@ -207,6 +207,11 @@ def query(registry, text, cwd=None, scopes=None, top=10, budget=None,
     if repo:
         sql += " AND (scope NOT IN ('repo','memory') OR repo = ?)"
         params.append(repo)
+    if prefetch:
+        # Archived facts are explicit-search-only; excluded before the LIMIT so a
+        # crowd of them cannot push every live row out of the candidates.
+        sql += " AND instr(path, ?) = 0"
+        params.append(ARCHIVE_MARKER)
     sql += " ORDER BY rank LIMIT ?"
     params.append(max(top * 5, 25))
 
@@ -240,9 +245,6 @@ def query(registry, text, cwd=None, scopes=None, top=10, budget=None,
                 break
         gate_hits, gate_head = {}, {}
         if prefetch and rows:
-            # Archived facts are explicit-search-only, so they never enter the
-            # gate and can't be the thing that makes a row "pass".
-            rows = [row for row in rows if ARCHIVE_MARKER not in row["path"]]
             score_ok = [
                 row["rowid"] for row in rows
                 if min_score is None or row["rank"] <= min_score

@@ -539,6 +539,20 @@ class PrefetchRelevanceGateTests(unittest.TestCase):
                                      top=10, db_path=self.db_path)
         self.assertTrue(any(hit.short_path.endswith("old.md") for hit in search_result.hits))
 
+    def test_archive_rows_outranking_a_live_row_do_not_crowd_it_out_of_prefetch(self):
+        memory = self.home / "claude-projects" / roots.encode_project(self.cwd_repo) / "memory"
+        crowd = {f"archive/quokka-zeppelin-{i}.md": "## Quokka zeppelin\nquokka zeppelin\n"
+                 for i in range(30)}
+        write_tree(memory, {**crowd, "live.md": "## Quokka\nquokka and zeppelin, still live\n"})
+        index.build(self.registry, self.db_path)
+        explicit = search.query(self.registry, "quokka zeppelin", cwd=self.cwd_repo, top=40,
+                                db_path=self.db_path)
+        self.assertEqual(len(explicit.hits), 31)
+        self.assertTrue(explicit.hits[-1].short_path.endswith("live.md"))
+        result = search.query(self.registry, "quokka zeppelin", cwd=self.cwd_repo,
+                              prefetch=True, top=3, db_path=self.db_path)
+        self.assertEqual([hit.short_path.rsplit("/", 1)[-1] for hit in result.hits], ["live.md"])
+
     def test_explicit_search_results_are_unchanged_by_the_new_keys(self):
         before = search.query(self.registry, "kumquat xylophone", cwd=self.cwd_vault,
                               top=10, db_path=self.db_path)
