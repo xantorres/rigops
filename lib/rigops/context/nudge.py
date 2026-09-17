@@ -147,16 +147,17 @@ def apply_repeat_suppression(session_id, matched: list, repeat_after: int, budge
 
 
 def select_within_budget(firing: list, budget: int):
-    """Declaration order; the first nudge always survives even if it alone is
-    over budget, matching how `retrieval.search` never rejects its first hit."""
-    kept, total = [], 0
+    """Declaration order, costed as the joined block `render_output` prints; the
+    first nudge always survives even if it alone is over budget, matching how
+    `retrieval.search` never rejects its first hit."""
+    kept, text = [], ""
     for entry in firing:
-        cost = util.tokens(entry["say"])
-        if kept and total + cost > budget:
+        joined = f"{text}\n{entry['say']}" if kept else entry["say"]
+        if kept and util.tokens(joined) > budget:
             break
         kept.append(entry)
-        total += cost
-    return kept, total
+        text = joined
+    return kept, util.tokens(text)
 
 
 def render_output(say_lines: list, claims_text: str, budget: int) -> str:

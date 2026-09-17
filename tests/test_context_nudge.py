@@ -339,6 +339,15 @@ class PlanIntegrationTests(unittest.TestCase):
         self.assertEqual(again.fired, ["second"])
         self.assertEqual(again.suppressed, ["first"])
 
+    def test_every_fired_say_line_renders_in_full(self):
+        _write_nudges(self.tmp, {"budget": 20, "nudges": [
+            {"name": "a", "pattern": "pr", "say": "x" * 43},
+            {"name": "b", "pattern": "pr", "say": "y" * 43},
+        ]})
+        result = nudge.plan({}, self.tmp / "roots.json", "open a pr", "work", "sess-full")
+        out = nudge.render_output(result.say, "", result.budget)
+        self.assertEqual(out.split("\n"), result.say)
+
     def test_json_shape_helper_tokens_matches_util(self):
         result = nudge.plan({}, self.tmp / "roots.json", "hi", "work", None)
         self.assertEqual(util.tokens("\n".join(result.say)), result.tokens)
