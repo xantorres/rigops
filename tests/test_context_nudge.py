@@ -128,6 +128,117 @@ class LoadDeclarationsTests(unittest.TestCase):
         self.assertEqual(len(nudges), 1)
         self.assertTrue(nudges[0]["regex"].search("please OPEN A PR now"))
 
+    def test_non_object_top_level_json_means_no_nudges(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            (tmp / "nudges.json").write_text(json.dumps(["not", "an", "object"]))
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                nudges, budget, repeat_after = nudge.load_declarations({}, tmp / "roots.json")
+        self.assertEqual(nudges, [])
+        self.assertEqual(budget, nudge.DEFAULT_BUDGET)
+        self.assertEqual(repeat_after, nudge.DEFAULT_REPEAT_AFTER)
+        self.assertTrue(err.getvalue())
+
+    def test_nudges_key_not_a_list_means_no_nudges(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            _write_nudges(tmp, {"nudges": {"name": "oops"}})
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                nudges, _, _ = nudge.load_declarations({}, tmp / "roots.json")
+        self.assertEqual(nudges, [])
+        self.assertTrue(err.getvalue())
+
+    def test_budget_not_a_non_negative_int_falls_back_with_a_warning(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            _write_nudges(tmp, {"budget": "500", "nudges": []})
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                _, budget, _ = nudge.load_declarations({}, tmp / "roots.json")
+        self.assertEqual(budget, nudge.DEFAULT_BUDGET)
+        self.assertIn("budget", err.getvalue())
+
+    def test_repeat_after_not_a_non_negative_int_falls_back_with_a_warning(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            _write_nudges(tmp, {"repeat_after": None, "nudges": []})
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                _, _, repeat_after = nudge.load_declarations({}, tmp / "roots.json")
+        self.assertEqual(repeat_after, nudge.DEFAULT_REPEAT_AFTER)
+        self.assertIn("repeat_after", err.getvalue())
+
+    def test_negative_budget_falls_back_with_a_warning(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            _write_nudges(tmp, {"budget": -1, "nudges": []})
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                _, budget, _ = nudge.load_declarations({}, tmp / "roots.json")
+        self.assertEqual(budget, nudge.DEFAULT_BUDGET)
+        self.assertIn("budget", err.getvalue())
+
+    def test_bool_budget_falls_back_with_a_warning(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            _write_nudges(tmp, {"budget": True, "nudges": []})
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                _, budget, _ = nudge.load_declarations({}, tmp / "roots.json")
+        self.assertEqual(budget, nudge.DEFAULT_BUDGET)
+        self.assertIn("budget", err.getvalue())
+
+    def test_flags_not_a_string_is_skipped_with_a_warning(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            _write_nudges(tmp, {"nudges": [
+                {"name": "bad-flags", "pattern": "x", "say": "hi", "flags": 123},
+            ]})
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                nudges, _, _ = nudge.load_declarations({}, tmp / "roots.json")
+        self.assertEqual(nudges, [])
+        self.assertIn("bad-flags", err.getvalue())
+
+    def test_realms_not_a_list_is_skipped_with_a_warning(self):
+        """Today's `match()` treats a string realms as substring-matchable ("wor" in
+        "work"), so a hand-typed scalar here must be rejected, not silently accepted."""
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            _write_nudges(tmp, {"nudges": [
+                {"name": "bad-realms", "pattern": "x", "say": "hi", "realms": "work"},
+            ]})
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                nudges, _, _ = nudge.load_declarations({}, tmp / "roots.json")
+        self.assertEqual(nudges, [])
+        self.assertIn("bad-realms", err.getvalue())
+
+    def test_realms_list_with_a_non_string_entry_is_skipped_with_a_warning(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            _write_nudges(tmp, {"nudges": [
+                {"name": "bad-realm-item", "pattern": "x", "say": "hi", "realms": ["work", 1]},
+            ]})
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                nudges, _, _ = nudge.load_declarations({}, tmp / "roots.json")
+        self.assertEqual(nudges, [])
+        self.assertIn("bad-realm-item", err.getvalue())
+
+    def test_entry_that_is_not_an_object_is_skipped_with_a_warning(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            _write_nudges(tmp, {"nudges": ["just a string"]})
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                nudges, _, _ = nudge.load_declarations({}, tmp / "roots.json")
+        self.assertEqual(nudges, [])
+        self.assertTrue(err.getvalue())
+
+    def test_non_string_name_is_skipped_with_a_warning(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            _write_nudges(tmp, {"nudges": [
+                {"name": 123, "pattern": "x", "say": "hi"},
+            ]})
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                nudges, _, _ = nudge.load_declarations({}, tmp / "roots.json")
+        self.assertEqual(nudges, [])
+        self.assertTrue(err.getvalue())
+
 
 class MatchTests(unittest.TestCase):
     def _entry(self, name, pattern, say, realms=None, flags=""):

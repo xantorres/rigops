@@ -41,8 +41,52 @@ def declarations_path(cfg, registry_path) -> Path:
     return core.expand(Path(registry_path).parent / "nudges.json")
 
 
+def _count(data: dict, key: str, default: int, path) -> int:
+    """`data[key]` when it's a non-negative int, else `default` with a warning
+    naming `key` -- a bool is not an int here, only a missing key is silent."""
+    if key not in data:
+        return default
+    value = data[key]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        print(f"warning: nudges file {path} {key} must be a non-negative int, "
+              f"using default {default}: {value!r}", file=sys.stderr)
+        return default
+    return value
+
+
+def _compile(entry):
+    """The compiled nudge dict for a well-formed entry, else None with a warning."""
+    if not isinstance(entry, dict):
+        print(f"warning: nudge entry is not an object, skipping: {entry!r}", file=sys.stderr)
+        return None
+    name, pattern, say = entry.get("name"), entry.get("pattern"), entry.get("say")
+    if not (isinstance(name, str) and name and isinstance(pattern, str) and pattern
+            and isinstance(say, str) and say):
+        print(f"warning: nudge entry missing name/pattern/say: {entry}", file=sys.stderr)
+        return None
+    flags_raw = entry.get("flags")
+    if flags_raw is not None and not isinstance(flags_raw, str):
+        print(f"warning: nudge {name!r} flags must be a string, skipping", file=sys.stderr)
+        return None
+    realms = entry.get("realms")
+    if realms is not None and not (isinstance(realms, list)
+                                    and all(isinstance(r, str) for r in realms)):
+        print(f"warning: nudge {name!r} realms must be a list of strings, skipping",
+              file=sys.stderr)
+        return None
+    flags = re.IGNORECASE if "i" in (flags_raw or "") else 0
+    try:
+        compiled = re.compile(pattern, flags)
+    except re.error as exc:
+        print(f"warning: nudge {name!r} pattern does not compile: {exc}", file=sys.stderr)
+        return None
+    return {"name": name, "regex": compiled, "say": say, "realms": realms}
+
+
 def load_declarations(cfg, registry_path):
-    """(nudges, budget, repeat_after); a missing file means no nudges, not an error."""
+    """(nudges, budget, repeat_after); a missing file means no nudges, not an
+    error, and a hand-edited file never raises -- anything malformed is
+    defaulted or skipped with a warning on stderr instead."""
     path = declarations_path(cfg, registry_path)
     if not path.is_file():
         return [], DEFAULT_BUDGET, DEFAULT_REPEAT_AFTER
@@ -51,22 +95,19 @@ def load_declarations(cfg, registry_path):
     except (OSError, ValueError) as exc:
         print(f"warning: nudges file {path} unreadable: {exc}", file=sys.stderr)
         return [], DEFAULT_BUDGET, DEFAULT_REPEAT_AFTER
+    if not isinstance(data, dict):
+        print(f"warning: nudges file {path} is not a JSON object, ignoring", file=sys.stderr)
+        return [], DEFAULT_BUDGET, DEFAULT_REPEAT_AFTER
 
-    budget = data.get("budget", DEFAULT_BUDGET)
-    repeat_after = data.get("repeat_after", DEFAULT_REPEAT_AFTER)
-    nudges = []
-    for entry in data.get("nudges", []) or []:
-        name, pattern, say = entry.get("name"), entry.get("pattern"), entry.get("say")
-        if not (name and pattern and say):
-            print(f"warning: nudge entry missing name/pattern/say: {entry}", file=sys.stderr)
-            continue
-        flags = re.IGNORECASE if "i" in (entry.get("flags") or "") else 0
-        try:
-            compiled = re.compile(pattern, flags)
-        except re.error as exc:
-            print(f"warning: nudge {name!r} pattern does not compile: {exc}", file=sys.stderr)
-            continue
-        nudges.append({"name": name, "regex": compiled, "say": say, "realms": entry.get("realms")})
+    budget = _count(data, "budget", DEFAULT_BUDGET, path)
+    repeat_after = _count(data, "repeat_after", DEFAULT_REPEAT_AFTER, path)
+
+    raw_nudges = data.get("nudges", [])
+    if not isinstance(raw_nudges, list):
+        print(f"warning: nudges file {path} nudges must be a list, ignoring", file=sys.stderr)
+        raw_nudges = []
+
+    nudges = [compiled for entry in raw_nudges if (compiled := _compile(entry)) is not None]
     return nudges, budget, repeat_after
 
 
