@@ -33,7 +33,8 @@ if [ -n "$RIGOPS_BIN" ]; then
   fi
   REARM_RAW=$(printf '%s' "$CONTEXT_JSON" | jq -r '.rearm_tokens // empty' 2>/dev/null || true)
   [[ "$REARM_RAW" =~ ^[0-9]+$ ]] && REARM="$REARM_RAW"
-  PROMPT_NUDGE=$(printf '%s' "$CONTEXT_JSON" | jq -r '.prompt_nudge // empty' 2>/dev/null || true)
+  # No `// empty` here: jq's alternative operator discards false along with null.
+  PROMPT_NUDGE=$(printf '%s' "$CONTEXT_JSON" | jq -r '.prompt_nudge' 2>/dev/null || true)
 fi
 
 if [ -n "$RIGOPS_BIN" ] && [ "$PROMPT_NUDGE" != "false" ]; then

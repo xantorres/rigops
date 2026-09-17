@@ -84,7 +84,7 @@ cat >"$FAKE_BIN/rigops" <<'RIGOPS_EOF'
 case "$1" in
   config)
     [ "$2" = "get" ] && [ "$3" = "context" ] || exit 1
-    printf '{"nudge_tiers":[250000,350000,500000],"rearm_tokens":50000}'
+    printf '{"nudge_tiers":[250000,350000,500000],"rearm_tokens":50000%s}' "${FAKE_CONTEXT_EXTRA:-}"
     exit 0
     ;;
   nudge)
@@ -100,13 +100,13 @@ chmod +x "$FAKE_BIN/rigops"
 NUDGE_TRANSCRIPT="$NUDGE_WORK/session.jsonl"
 printf '{"type": "assistant", "message": {"usage": {"input_tokens": 1000, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}}}\n' >"$NUDGE_TRANSCRIPT"
 
-run_nudge_hook() { # reads FAKE_NUDGE_SAYS from the caller's environment
+run_nudge_hook() { # reads FAKE_NUDGE_SAYS and FAKE_CONTEXT_EXTRA from the caller's environment
   jq -n --arg tp "$NUDGE_TRANSCRIPT" --arg sid "sess-nudge-integration" \
         --arg prompt "open a pr" --arg cwd "$NUDGE_WORK" \
         '{transcript_path:$tp, session_id:$sid, prompt:$prompt, cwd:$cwd}' \
     | env -i PATH="$FAKE_BIN:$JQ_DIR:/usr/bin:/bin" HOME="$NUDGE_WORK/home" \
              XDG_STATE_HOME="$NUDGE_WORK/state" FAKE_NUDGE_SAYS="${FAKE_NUDGE_SAYS:-}" \
-             bash "$HOOK"
+             FAKE_CONTEXT_EXTRA="${FAKE_CONTEXT_EXTRA:-}" bash "$HOOK"
 }
 
 FAKE_NUDGE_SAYS="[nudge] careful with that PR" out="$(run_nudge_hook)"
@@ -122,6 +122,15 @@ if [ -z "$out" ]; then
 else
   FAIL=$((FAIL + 1)); printf 'FAIL  %s (expected empty, got: %s)\n' \
     'fake rigops nudge prints nothing: hook prints nothing' "$out"
+fi
+
+FAKE_NUDGE_SAYS="[nudge] careful with that PR" FAKE_CONTEXT_EXTRA=',"prompt_nudge":false' \
+  out="$(run_nudge_hook)"
+if [ -z "$out" ]; then
+  PASS=$((PASS + 1)); printf 'ok    %s\n' 'context.prompt_nudge false: nudge is skipped'
+else
+  FAIL=$((FAIL + 1)); printf 'FAIL  %s (expected empty, got: %s)\n' \
+    'context.prompt_nudge false: nudge is skipped' "$out"
 fi
 
 rm -rf "$NUDGE_WORK"
