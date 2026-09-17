@@ -314,7 +314,7 @@ class CardStaleLineTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(xdg)}):
                 result = card.build(registry, {}, cwd)
         stale = next(line for line in result["lines"] if line.startswith("stale:"))
-        self.assertLessEqual(len(stale), 60 * 4)
+        self.assertLessEqual(util.tokens(stale), 60)
         self.assertTrue(stale.endswith("…"))
 
     def test_stale_line_truncation_counts_utf8_bytes(self):
