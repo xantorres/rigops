@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
+import fcntl
 import json
 import os
 import sys
@@ -36,6 +38,19 @@ def _load_ledger_rows(path: Path) -> list:
     return rows
 
 
+@contextlib.contextmanager
+def _locked(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.with_name(path.name + ".lock").open("a") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        yield
+
+
+def _refuse_existing(at: dt.date) -> int:
+    print(f"ledger {at}: row exists, nothing appended (use --force to replace)")
+    return 0
+
+
 def cmd_write(args) -> int:
     cfg = rigops_config.load()
     watch_projects = rigops_config.get(cfg, "ledger.watch_projects", {}) or {}
@@ -61,25 +76,28 @@ def cmd_write(args) -> int:
     existing = [r for r in rows if r.get("date") == at.isoformat()]
 
     if existing and not args.force and not args.dry_run:
-        print(f"ledger {at}: row exists, nothing appended (use --force to replace)")
-        return 0
+        return _refuse_existing(at)
 
     row = levers.build_row(at, args.label, cfg=cfg)
     prev = rows[-1] if rows else None
     base = rows[0] if rows else None
 
     if not args.dry_run:
-        if existing and args.force:
-            idx = next(i for i, r in enumerate(rows) if r.get("date") == at.isoformat())
-            rows[idx] = row
-            rows.sort(key=lambda r: r.get("date", ""))
-            _rewrite_jsonl(jsonl_path, rows)
-        else:
-            rows.append(row)
-            state.append_jsonl(jsonl_path, row)
-        # ledger.md is fully regenerated from ledger.jsonl so column additions never
-        # desync the table header from appended rows; jsonl stays the source of truth.
-        _atomic_write(md_path, levers.render_markdown(rows, watch_projects))
+        with _locked(jsonl_path):
+            # The scan takes minutes, so another writer may have landed this date meanwhile.
+            rows = _load_ledger_rows(jsonl_path)
+            if any(r.get("date") == at.isoformat() for r in rows):
+                if not args.force:
+                    return _refuse_existing(at)
+                rows = [r for r in rows if r.get("date") != at.isoformat()] + [row]
+                rows.sort(key=lambda r: r.get("date", ""))
+                _rewrite_jsonl(jsonl_path, rows)
+            else:
+                rows.append(row)
+                state.append_jsonl(jsonl_path, row)
+            # ledger.md is fully regenerated from ledger.jsonl so column additions never
+            # desync the table header from appended rows; jsonl stays the source of truth.
+            _atomic_write(md_path, levers.render_markdown(rows, watch_projects))
 
     if args.json:
         print(json.dumps(row, indent=2, default=str))

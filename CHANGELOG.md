@@ -35,6 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   coding prompts, the prefetch had fired on nine turns in ten with fewer than
   half its rows relevant.
 
+### Fixed
+
+- ledger: `rigops ledger write` re-checks the date under an exclusive lock
+  after its transcript scan, so two overlapping writers can no longer both
+  append a row for the same week; the later one refuses, or replaces the row
+  with `--force`. It had only checked before a scan that can run for minutes.
+
 ## [0.7.0] - 2026-09-16
 
 ### Added
