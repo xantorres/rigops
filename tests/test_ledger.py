@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
+import importlib.machinery
+import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -8,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
@@ -131,6 +136,55 @@ def _run_ledger(args: list, env: dict) -> subprocess.CompletedProcess:
         [sys.executable, str(LEDGER_SCRIPT), *args],
         env=env, capture_output=True, text=True, check=False,
     )
+
+
+def _load_ledger_module():
+    # libexec/rigops-ledger has no .py suffix, so importlib needs an explicit loader.
+    loader = importlib.machinery.SourceFileLoader("rigops_ledger_cli", str(LEDGER_SCRIPT))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+ledger_cli = _load_ledger_module()
+
+
+class LedgerWriteRaceTests(EnvIsolatedTestCase):
+    """Two schedulers scanning the same week: the other one appends mid-scan."""
+
+    def _write_while_other_writer_lands(self, tmp: str, *flags: str) -> tuple:
+        self._isolate_env(tmp)
+        Path(os.environ["RIGOPS_CONFIG"]).write_text(json.dumps(_cfg_dict()))
+        jsonl_path = Path(tmp) / "state" / "ledger.jsonl"
+        real_build_row = levers.build_row
+
+        def build_row_while_other_appends(at, label, **kwargs):
+            state.append_jsonl(jsonl_path, {"date": at.isoformat(), "label": "other"})
+            return real_build_row(at, label, **kwargs)
+
+        argv = ["rigops-ledger", "write", "--at", ROW_DATE.isoformat(), "--label", "late", *flags]
+        out = io.StringIO()
+        with mock.patch.object(levers, "build_row", build_row_while_other_appends), \
+                mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(out):
+            code = ledger_cli.main()
+        return code, out.getvalue(), state.read_jsonl(jsonl_path)
+
+    def test_refuses_a_row_that_landed_during_the_scan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, out, rows = self._write_while_other_writer_lands(tmp)
+            self.assertEqual(code, 0)
+            self.assertIn("row exists, nothing appended", out)
+            self.assertEqual([r["label"] for r in rows], ["other"])
+
+    def test_force_replaces_a_row_that_landed_during_the_scan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, _, rows = self._write_while_other_writer_lands(tmp, "--force")
+            self.assertEqual(code, 0)
+            self.assertEqual([r["label"] for r in rows], ["late"])
+            md_path = Path(tmp) / "state" / "ledger.md"
+            watch_projects = _cfg_dict()["ledger"]["watch_projects"]
+            self.assertEqual(md_path.read_text(), levers.render_markdown(rows, watch_projects))
 
 
 class LedgerCliTests(EnvIsolatedTestCase):
