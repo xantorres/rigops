@@ -1,7 +1,6 @@
 """A stdio MCP server spawns one process per live session, and the desktop app
-never reaps an idle one -- eighteen sentry-mcp processes measured at 1.5 GB on
-this host. The sentry server is being retired separately; this check guards the
-whole class across every registry a session can resolve one from.
+keeps idle sessions alive: eighteen copies of one server measured at 1.5 GB on
+this host. Every registry a session can resolve a server from is checked.
 """
 
 from __future__ import annotations
@@ -54,18 +53,9 @@ def _claude_json_servers():
     return out
 
 
-def _settings_servers():
-    path = core.CLAUDE_DIR / "settings.json"
-    data = _json(path, {})
-    label = _label(path)
-    return [(name, server, label) for name, server in (data.get("mcpServers", {}) or {}).items()]
-
-
-def _dir_mcp_servers():
-    path = core.CLAUDE_DIR / ".mcp.json"
-    data = _json(path, {})
-    label = _label(path)
-    return [(name, server, label) for name, server in (data.get("mcpServers", {}) or {}).items()]
+def _file_servers(path):
+    servers = _json(path, {}).get("mcpServers", {}) or {}
+    return [(name, server, _label(path)) for name, server in servers.items()]
 
 
 def _plugin_servers():
@@ -99,7 +89,12 @@ def _plugin_servers():
 def run(cfg):
     allow = {name.lower() for name in core.cfg_get(cfg, "doctor.mcp.stdio_allow", [])}
     findings = []
-    sources = _claude_json_servers() + _settings_servers() + _dir_mcp_servers() + _plugin_servers()
+    sources = (
+        _claude_json_servers()
+        + _file_servers(core.CLAUDE_DIR / "settings.json")
+        + _file_servers(core.CLAUDE_DIR / ".mcp.json")
+        + _plugin_servers()
+    )
     for name, server, where in sources:
         if not _is_stdio(server) or name.lower() in allow:
             continue
