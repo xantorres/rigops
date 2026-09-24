@@ -17,6 +17,7 @@ from rigops.doctor import (  # noqa: E402
     check_budget,
     check_imports,
     check_levers,
+    check_mcp,
     check_plans,
     check_pointers,
     check_render,
@@ -915,6 +916,108 @@ class CheckLeversTests(unittest.TestCase):
             findings = self._run(tmp, row + "\n", "not json\n",
                                  rules={"denials_headless": {"max": 0}})
         self.assertEqual(sorted(f.key for f in findings), ["denials_headless:max", "notes"])
+
+
+class CheckMcpTests(unittest.TestCase):
+    def _home(self, tmp):
+        home = Path(tmp) / "home"
+        claude_dir = home / ".claude"
+        claude_dir.mkdir(parents=True)
+        return home, claude_dir
+
+    def _write(self, path, data):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data))
+
+    def _run(self, home, claude_dir, cfg=None):
+        with mock.patch.object(core, "HOME", home), \
+                mock.patch.object(core, "CLAUDE_DIR", claude_dir):
+            return check_mcp.run(cfg or {})
+
+    def test_user_scope_stdio_server_is_a_finding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, claude_dir = self._home(tmp)
+            self._write(home / ".claude.json", {
+                "mcpServers": {"sentry": {"type": "stdio", "command": "/bin/sentry-mcp-server"}},
+            })
+            findings = self._run(home, claude_dir)
+        self.assertEqual([f.key for f in findings], ["stdio:sentry"])
+        self.assertEqual(findings[0].evidence, "sentry-mcp-server")
+
+    def test_http_server_is_not_a_finding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, claude_dir = self._home(tmp)
+            self._write(home / ".claude.json", {
+                "mcpServers": {"notion": {"type": "http", "url": "https://mcp.notion.com/mcp"}},
+            })
+            findings = self._run(home, claude_dir)
+        self.assertEqual(findings, [])
+
+    def test_allowlisted_stdio_server_is_not_a_finding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, claude_dir = self._home(tmp)
+            self._write(home / ".claude.json", {
+                "mcpServers": {"sentry": {"type": "stdio", "command": "/bin/sentry-mcp-server"}},
+            })
+            cfg = {"doctor": {"mcp": {"stdio_allow": ["Sentry"]}}}
+            findings = self._run(home, claude_dir, cfg)
+        self.assertEqual(findings, [])
+
+    def test_project_scoped_stdio_server_is_a_finding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, claude_dir = self._home(tmp)
+            self._write(home / ".claude.json", {
+                "projects": {
+                    "/opt/projects/widget": {
+                        "mcpServers": {"desktop-commander": {"command": "npx"}},
+                    },
+                },
+            })
+            findings = self._run(home, claude_dir)
+        self.assertEqual([f.key for f in findings], ["stdio:desktop-commander"])
+        self.assertIn("/opt/projects/widget", findings[0].symptom)
+
+    def test_enabled_plugin_stdio_server_is_a_finding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, claude_dir = self._home(tmp)
+            install_dir = Path(tmp) / "plugins" / "cache" / "widget" / "1.0.0"
+            self._write(claude_dir / "settings.json", {
+                "enabledPlugins": {"widget@market": True},
+            })
+            self._write(claude_dir / "plugins" / "installed_plugins.json", {
+                "plugins": {
+                    "widget@market": [{"installPath": str(install_dir)}],
+                },
+            })
+            self._write(install_dir / ".mcp.json", {
+                "mcpServers": {"widget-tool": {"command": "widget-server"}},
+            })
+            findings = self._run(home, claude_dir)
+        self.assertEqual([f.key for f in findings], ["stdio:widget-tool"])
+
+    def test_disabled_plugin_stdio_server_is_not_a_finding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, claude_dir = self._home(tmp)
+            install_dir = Path(tmp) / "plugins" / "cache" / "widget" / "1.0.0"
+            self._write(claude_dir / "settings.json", {
+                "enabledPlugins": {"widget@market": False},
+            })
+            self._write(claude_dir / "plugins" / "installed_plugins.json", {
+                "plugins": {
+                    "widget@market": [{"installPath": str(install_dir)}],
+                },
+            })
+            self._write(install_dir / ".mcp.json", {
+                "mcpServers": {"widget-tool": {"command": "widget-server"}},
+            })
+            findings = self._run(home, claude_dir)
+        self.assertEqual(findings, [])
+
+    def test_missing_files_yield_no_findings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, claude_dir = self._home(tmp)
+            findings = self._run(home, claude_dir)
+        self.assertEqual(findings, [])
 
 
 class RunChecksTests(unittest.TestCase):

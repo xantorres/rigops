@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- doctor: `check_mcp` flags every stdio MCP server reachable from the main
+  CLI's config -- `~/.claude.json` (user and project scope), `settings.json`,
+  `.mcp.json` and every enabled plugin's `.mcp.json` or inline manifest. A
+  stdio server spawns one process per live session and the desktop app never
+  reaps an idle one; `doctor.mcp.stdio_allow` names servers that stay stdio on
+  purpose.
 - card: `rigops card` prints a short session-start card for the working
   directory: the realm and prefetch scopes in force, one line per scope from the
   registry's `scope_notes`, a stale line only when a gate the doctor recorded has
