@@ -47,6 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after its transcript scan, so two overlapping writers can no longer both
   append a row for the same week; the later one refuses, or replaces the row
   with `--force`. It had only checked before a scan that can run for minutes.
+- doctor: the rtk check runs the binary named by `doctor.rtk.path` when set.
+  The scheduled doctor runs under launchd's minimal `PATH`, which misses a
+  Homebrew rtk, so every scheduled run reported rtk missing while an
+  interactive `rigops doctor` passed.
 
 ## [0.7.0] - 2026-09-16
 
