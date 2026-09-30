@@ -40,14 +40,16 @@ def apply(rendered: Rendered, home: Path, delete_stale: bool = True) -> list:
     written = {path.resolve() for path in rendered.files}
 
     for path, content in rendered.files.items():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.parent / f".{path.name}.tmp"
-        tmp.write_bytes(content)
-        os.replace(tmp, path)
+        # Rewriting identical bytes would bump mtime, which staleness gates read as an edit.
+        if path.is_symlink() or not path.is_file() or path.read_bytes() != content:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.parent / f".{path.name}.tmp"
+            tmp.write_bytes(content)
+            os.replace(tmp, path)
+            log.append(f"wrote {path}")
         mode = rendered.modes.get(path)
         if mode is not None:
             os.chmod(path, mode)
-        log.append(f"wrote {path}")
 
     if delete_stale:
         for managed_dir in dict.fromkeys(rendered.managed_dirs):

@@ -268,6 +268,31 @@ class ApplyAndCheckTests(RenderTestCase):
         render.apply(rendered, self.home)
         self.assertTrue(outsider.exists())
 
+    def test_only_changed_or_symlinked_targets_are_rewritten(self):
+        unchanged = self.home / "unchanged.md"
+        unchanged.write_bytes(b"same\n")
+        os.chmod(unchanged, 0o644)
+        os.utime(unchanged, (1_000_000_000, 1_000_000_000))
+        changed = self.home / "changed.md"
+        changed.write_bytes(b"old\n")
+        elsewhere = self.tmp / "elsewhere.md"
+        elsewhere.write_bytes(b"same\n")
+        linked = self.home / "linked.md"
+        linked.symlink_to(elsewhere)
+        rendered = render.Rendered(
+            files={unchanged: b"same\n", changed: b"new\n", linked: b"same\n"},
+            modes={unchanged: 0o755},
+        )
+
+        log = render.apply(rendered, self.home)
+
+        self.assertEqual(unchanged.stat().st_mtime, 1_000_000_000)
+        self.assertEqual(stat.S_IMODE(unchanged.stat().st_mode), 0o755)
+        self.assertEqual(changed.read_bytes(), b"new\n")
+        self.assertFalse(linked.is_symlink())
+        self.assertEqual(linked.read_bytes(), b"same\n")
+        self.assertEqual(log, [f"wrote {changed}", f"wrote {linked}"])
+
 
 if __name__ == "__main__":
     unittest.main()
