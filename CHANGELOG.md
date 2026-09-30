@@ -52,6 +52,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The scheduled doctor runs under launchd's minimal `PATH`, which misses a
   Homebrew rtk, so every scheduled run reported rtk missing while an
   interactive `rigops doctor` passed.
+- render: `rigops render` leaves a regular file that already holds the
+  rendered bytes untouched, still applies its mode, and prints `wrote` only
+  for real writes. Rewriting every target bumped each mtime, so a no-op
+  render tripped any check comparing a run time against config mtimes.
 
 ## [0.7.0] - 2026-09-16
 
