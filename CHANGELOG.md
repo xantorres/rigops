@@ -56,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rendered bytes untouched, still applies its mode, and prints `wrote` only
   for real writes. Rewriting every target bumped each mtime, so a no-op
   render tripped any check comparing a run time against config mtimes.
+- render: `rigops render` keeps a target it just wrote over a symlink in a
+  managed directory. The stale pass matched files against the symlink's
+  destination instead of the target path, so it deleted the fresh file and
+  `rigops render all --check` reported it missing until the next render.
 
 ## [0.7.0] - 2026-09-16
 

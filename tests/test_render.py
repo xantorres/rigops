@@ -293,6 +293,22 @@ class ApplyAndCheckTests(RenderTestCase):
         self.assertEqual(linked.read_bytes(), b"same\n")
         self.assertEqual(log, [f"wrote {changed}", f"wrote {linked}"])
 
+    def test_symlinked_target_in_managed_dir_is_rewritten_not_removed(self):
+        managed = self.home / "skills"
+        managed.mkdir()
+        elsewhere = self.tmp / "elsewhere.sh"
+        elsewhere.write_bytes(b"echo hi\n")
+        target = managed / "run.sh"
+        target.symlink_to(elsewhere)
+        rendered = render.Rendered(files={target: b"echo hi\n"}, managed_dirs=[managed])
+
+        log = render.apply(rendered, self.home)
+
+        self.assertEqual(log, [f"wrote {target}"])
+        self.assertTrue(target.is_file())
+        self.assertFalse(target.is_symlink())
+        self.assertEqual(target.read_bytes(), b"echo hi\n")
+
 
 if __name__ == "__main__":
     unittest.main()
