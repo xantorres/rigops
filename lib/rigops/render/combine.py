@@ -37,7 +37,8 @@ def render_selected(names, source: Path, home: Path) -> Rendered:
 
 def apply(rendered: Rendered, home: Path, delete_stale: bool = True) -> list:
     log = []
-    written = {path.resolve() for path in rendered.files}
+    # Resolve only the parent: the loop below replaces a symlinked target with a regular file.
+    written = {path.parent.resolve() / path.name for path in rendered.files}
 
     for path, content in rendered.files.items():
         # Rewriting identical bytes would bump mtime, which staleness gates read as an edit.
