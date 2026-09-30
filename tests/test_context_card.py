@@ -29,7 +29,7 @@ def _registry(tmp: Path, raw: dict) -> roots.Registry:
     return roots.load(path)
 
 
-def _mapped(tmp: Path, *, scopes=("repo",), scope_notes=None, realm="work",
+def _mapped(tmp: Path, *, scopes=("repo",), scope_notes=None, needs=None, realm="work",
             repo=True, cwd_name="acme-app"):
     """A registry with one cwd_scopes root, plus the cwd it maps."""
     cwd = tmp / "repos" / cwd_name
@@ -41,7 +41,13 @@ def _mapped(tmp: Path, *, scopes=("repo",), scope_notes=None, realm="work",
     }
     if scope_notes:
         raw["scope_notes"] = scope_notes
+    if needs is not None:
+        raw["needs"] = needs
     return _registry(tmp, raw), cwd
+
+
+def _need(name: str, route=None) -> dict:
+    return {"need": name, "route": route or f"acme-{name}", "skills": [f"acme-{name}-skill"]}
 
 
 # The host's own doctor record and nudge state must never leak into these tests.
@@ -151,6 +157,124 @@ class CardScopeNotesTests(unittest.TestCase):
             registry, cwd = _mapped(tmp, scopes=("repo",))
             result = card.build(registry, {}, cwd)
         self.assertFalse(any(line.startswith("- ") for line in result["lines"]))
+
+
+class CardNeedsTests(unittest.TestCase):
+    def test_realm_entries_then_mixed_entries_follow_the_search_line(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            registry, cwd = _mapped(tmp, realm="work", needs={
+                "work": [_need("deploy"), _need("review", "acme-review agent")],
+                "mixed": [_need("notes")],
+                "personal": [_need("leak")],
+            })
+            result = card.build(registry, {}, cwd)
+        self.assertEqual(result["lines"][1:5], [
+            card.SEARCH_LINE,
+            "- need deploy: acme-deploy",
+            "- need review: acme-review agent",
+            "- need notes: acme-notes",
+        ])
+        self.assertNotIn("leak", "\n".join(result["lines"]))
+        self.assertEqual(result["needs"], 3)
+
+    def test_need_lines_come_before_the_scope_lines(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            registry, cwd = _mapped(tmp, scope_notes={"repo": "repo notes"},
+                                    needs={"work": [_need("deploy")]})
+            result = card.build(registry, {}, cwd)
+        self.assertEqual(result["lines"][1:4], [
+            card.SEARCH_LINE, "- need deploy: acme-deploy", "- repo: repo notes",
+        ])
+
+    def test_a_mixed_realm_cwd_lists_the_mixed_entries_once(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            registry, cwd = _mapped(tmp, realm="mixed", needs={"mixed": [_need("notes")]})
+            result = card.build(registry, {}, cwd)
+        self.assertEqual(result["lines"].count("- need notes: acme-notes"), 1)
+        self.assertEqual(result["needs"], 1)
+
+    def test_no_entry_for_the_realm_means_no_need_lines(self):
+        for needs in (None, {}, {"personal": [_need("leak")]}):
+            with self.subTest(needs=needs):
+                with tempfile.TemporaryDirectory() as tmp_s:
+                    registry, cwd = _mapped(Path(tmp_s), needs=needs)
+                    result = card.build(registry, {}, cwd)
+                self.assertFalse(any(line.startswith("- need") for line in result["lines"]))
+                self.assertEqual(result["needs"], 0)
+
+    def test_need_lines_cap_at_the_limit_realm_entries_first(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            registry, cwd = _mapped(tmp, needs={
+                "work": [_need(f"w{i}") for i in range(10)],
+                "mixed": [_need(f"m{i}") for i in range(10)],
+            })
+            result = card.build(registry, {}, cwd)
+        need_lines = [line for line in result["lines"] if line.startswith("- need")]
+        self.assertEqual(card.MAX_NEED_LINES, 15)
+        self.assertEqual(need_lines, [
+            *(f"- need w{i}: acme-w{i}" for i in range(10)),
+            *(f"- need m{i}: acme-m{i}" for i in range(5)),
+        ])
+        self.assertEqual(result["needs"], 15)
+
+    def test_unmapped_cwd_gets_no_need_lines(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            elsewhere = tmp / "elsewhere"
+            elsewhere.mkdir()
+            registry = _registry(tmp, {
+                "roots": [], "needs": {"work": [_need("deploy")], "mixed": [_need("notes")]},
+            })
+            result = card.build(registry, {}, elsewhere)
+        self.assertFalse(any(line.startswith("- need") for line in result["lines"]))
+        self.assertEqual(result["needs"], 0)
+
+    def test_malformed_entries_are_skipped_without_a_trace(self):
+        junk = ["not a dict", 7, None, {"need": "no-route"}, {"route": "no-need"},
+                {"need": "", "route": "empty-need"}, {"need": "empty-route", "route": ""}]
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            registry, cwd = _mapped(tmp, needs={"work": [*junk, _need("kept")], "mixed": junk})
+            result = card.build(registry, {}, cwd)
+        self.assertEqual(
+            [line for line in result["lines"] if line.startswith("- need")],
+            ["- need kept: acme-kept"],
+        )
+        self.assertEqual(result["needs"], 1)
+        text = "\n".join(result["lines"])
+        for name in ("no-route", "no-need", "empty-need", "empty-route"):
+            self.assertNotIn(name, text)
+
+    def test_needs_of_the_wrong_shape_yield_no_lines_not_a_crash(self):
+        for needs in (["deploy"], "deploy", 7, {"work": 7, "mixed": _need("notes")}):
+            with self.subTest(needs=needs):
+                with tempfile.TemporaryDirectory() as tmp_s:
+                    registry, cwd = _mapped(Path(tmp_s), needs=needs)
+                    result = card.build(registry, {}, cwd)
+                self.assertFalse(any(line.startswith("- need") for line in result["lines"]))
+                self.assertEqual(result["needs"], 0)
+
+    def test_card_component_counts_the_need_lines(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            registry, cwd = _mapped(tmp, needs={"work": [_need("deploy"), _need("review")]})
+            cfg = {"context": {"preload": {"law": str(tmp / "missing.md")}}}
+            result = card.build(registry, cfg, cwd)
+        self.assertEqual(result["preload"]["components"][-1]["tokens"], result["tokens"])
+
+    def test_card_component_never_counts_more_than_the_cap(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            needs = {"work": [_need(f"deploy step {i} " + "x" * 80) for i in range(10)]}
+            registry, cwd = _mapped(tmp, needs=needs)
+            cfg = {"context": {"card": {"max_tokens": 80},
+                               "preload": {"law": str(tmp / "missing.md")}}}
+            result = card.build(registry, cfg, cwd)
+        self.assertLessEqual(result["preload"]["components"][-1]["tokens"], 80)
 
 
 class CardStaleLineTests(unittest.TestCase):
@@ -607,6 +731,44 @@ class CardCapTests(unittest.TestCase):
         text = "\n".join(result["lines"])
         self.assertLessEqual(len(text.encode()) // 4, cap)
         self.assertEqual(result["tokens"], len(text.encode()) // 4)
+
+    def _needs_and_scopes(self, tmp):
+        return _mapped(
+            tmp, scopes=("alpha", "beta"),
+            scope_notes={"alpha": "short", "beta": "x" * 300},
+            needs={"work": [_need("first"), _need("second", "y" * 300)]},
+        )
+
+    def test_scope_lines_drop_before_any_need_line(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            registry, cwd = self._needs_and_scopes(tmp)
+            uncapped = card.build(registry, self._cfg(tmp), cwd)
+            cap = util.tokens("\n".join(uncapped["lines"][:4]))
+            capped = card.build(registry, self._cfg(tmp, max_tokens=cap), cwd)
+        self.assertEqual(uncapped["lines"][4:], ["- alpha: short", "- beta: " + "x" * 300])
+        self.assertEqual(capped["lines"], uncapped["lines"][:4])
+        self.assertEqual(capped["needs"], 2)
+
+    def test_need_lines_drop_from_the_end_once_no_scope_line_is_left(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            registry, cwd = self._needs_and_scopes(tmp)
+            uncapped = card.build(registry, self._cfg(tmp), cwd)
+            cap = util.tokens("\n".join(uncapped["lines"][:3]))
+            capped = card.build(registry, self._cfg(tmp, max_tokens=cap), cwd)
+        self.assertEqual(uncapped["needs"], 2)
+        self.assertEqual(capped["lines"], uncapped["lines"][:3])
+        self.assertEqual(capped["needs"], 1)
+
+    def test_impossibly_small_cap_leaves_only_header_and_search(self):
+        with tempfile.TemporaryDirectory() as tmp_s:
+            tmp = Path(tmp_s)
+            registry, cwd = self._needs_and_scopes(tmp)
+            result = card.build(registry, self._cfg(tmp, max_tokens=1), cwd)
+        self.assertEqual(len(result["lines"]), 2)
+        self.assertEqual(result["lines"][1], card.SEARCH_LINE)
+        self.assertEqual(result["needs"], 0)
 
 
 if __name__ == "__main__":

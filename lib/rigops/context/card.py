@@ -1,6 +1,6 @@
-"""The SessionStart card: realm, prefetch scopes, a tripped doctor gate, a
-preload budget check -- everything a session needs before its first turn,
-never more than `context.card.max_tokens`.
+"""The SessionStart card: realm, prefetch scopes, the realm's capability map, a
+tripped doctor gate, a preload budget check -- everything a session needs
+before its first turn, never more than `context.card.max_tokens`.
 
 The registry and the config are handed in already loaded; this module never
 reaches past `rigops.core`, so the file-arithmetic estimate below reads the
@@ -27,6 +27,7 @@ DEFAULT_DOCTOR_MAX_AGE_H = 2
 GATES_STATE_NAME = "doctor/gates.json"
 SEARCH_LINE = ('search: rigops retrieval search "<q>" '
                '(this realm + mixed; --scope all only on an explicit ask)')
+MAX_NEED_LINES = 15
 
 # Mirrors rigops.doctor.check_budget: a rule with no `paths:` key in its
 # frontmatter loads in every session, scoped or not.
@@ -254,6 +255,19 @@ def _scope_lines(registry, scopes) -> list:
     return [f"- {scope}: {notes[scope]}" for scope in scopes if notes.get(scope)]
 
 
+def _need_lines(registry, realm) -> list:
+    needs = (registry.raw or {}).get("needs")
+    entries = []
+    if isinstance(needs, dict):
+        for key in dict.fromkeys((realm, "mixed")):
+            group = needs.get(key)
+            if isinstance(group, list):
+                entries += group
+    lines = [f"- need {entry['need']}: {entry['route']}" for entry in entries
+             if isinstance(entry, dict) and entry.get("need") and entry.get("route")]
+    return lines[:MAX_NEED_LINES]
+
+
 def build(registry, cfg, cwd) -> dict:
     cwd = _abspath(cwd)
     max_tokens = int(core.cfg_get(cfg, "context.card.max_tokens", DEFAULT_MAX_TOKENS))
@@ -270,23 +284,24 @@ def build(registry, cfg, cwd) -> dict:
         lines = [header] + ([stale] if stale else [])
         return {
             "lines": lines, "tokens": util.tokens("\n".join(lines)), "realm": None,
-            "scopes": [], "preload": {}, "gates": visible,
+            "scopes": [], "needs": 0, "preload": {}, "gates": visible,
         }
 
     name = profile.repo or Path(profile.root).name
     header = f"rig card · {name} · realm {profile.realm} · prefetch {', '.join(profile.scopes)}"
+    need_lines = _need_lines(registry, profile.realm)
     scope_lines = _scope_lines(registry, profile.scopes)
 
-    partial = [header, SEARCH_LINE, *scope_lines]
+    partial = [header, SEARCH_LINE, *need_lines, *scope_lines]
     if stale:
         partial.append(stale)
     components = _preload_components(cfg, cwd)
-    components.append({"label": "card", "path": None, "tokens": util.tokens("\n".join(partial))})
+    components.append({"label": "card", "path": None, "tokens": min(util.tokens("\n".join(partial)), max_tokens)})
     budget_tokens = _resolve_budget(cfg, profile.realm)
     budget_line = _budget_line(components, budget_tokens)
 
     def assemble():
-        out = [header, SEARCH_LINE, *scope_lines]
+        out = [header, SEARCH_LINE, *need_lines, *scope_lines]
         if stale:
             out.append(stale)
         if budget_line:
@@ -294,13 +309,13 @@ def build(registry, cfg, cwd) -> dict:
         return out
 
     lines = assemble()
-    while util.tokens("\n".join(lines)) > max_tokens and scope_lines:
-        scope_lines.pop()
+    while util.tokens("\n".join(lines)) > max_tokens and (scope_lines or need_lines):
+        (scope_lines or need_lines).pop()
         lines = assemble()
 
     return {
         "lines": lines, "tokens": util.tokens("\n".join(lines)), "realm": profile.realm,
-        "scopes": list(profile.scopes),
+        "scopes": list(profile.scopes), "needs": len(need_lines),
         "preload": {"total": sum(c["tokens"] for c in components), "budget": budget_tokens,
                     "components": components},
         "gates": visible,
