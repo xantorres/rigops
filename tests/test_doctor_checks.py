@@ -484,6 +484,16 @@ class CheckRtkTests(unittest.TestCase):
             findings = check_rtk.run(cfg)
         self.assertEqual(findings, [])
 
+    def test_configured_path_finds_rtk_missing_from_launchd_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rtk = Path(tmp) / "rtk"
+            rtk.write_text("#!/bin/sh\necho 'rtk 0.42.4'\n")
+            os.chmod(rtk, 0o755)
+            cfg = {"doctor": {"rtk": {"version": "0.42.4", "path": str(rtk)}}}
+            with mock.patch.dict(os.environ, {"PATH": "/usr/bin:/bin:/usr/sbin:/sbin"}):
+                findings = check_rtk.run(cfg)
+        self.assertEqual(findings, [])
+
 
 class CheckRenderTests(unittest.TestCase):
     def test_missing_source_dir_yields_no_findings(self):
