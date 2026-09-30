@@ -296,7 +296,8 @@ def build(registry, cfg, cwd) -> dict:
     if stale:
         partial.append(stale)
     components = _preload_components(cfg, cwd)
-    components.append({"label": "card", "path": None, "tokens": min(util.tokens("\n".join(partial)), max_tokens)})
+    card_tokens = min(util.tokens("\n".join(partial)), max_tokens)
+    components.append({"label": "card", "path": None, "tokens": card_tokens})
     budget_tokens = _resolve_budget(cfg, profile.realm)
     budget_line = _budget_line(components, budget_tokens)
 
