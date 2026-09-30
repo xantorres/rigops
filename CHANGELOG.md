@@ -21,7 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tripped and is visible to that realm, and a budget line only when the estimated
   preload exceeds `context.preload.budget_tokens`. `--hook` reads the
   SessionStart payload and never fails the session. The plugin's `card.sh`
-  runs it at session start.
+  runs it at session start. The registry's optional `needs` map adds up to 15
+  `- need <need>: <route>` lines, the cwd realm's entries then `mixed`'s.
 - nudge: `rigops nudge` injects prompt-time context under one token budget:
   the `say` line of every pattern in a `nudges.json` beside the registry that
   matches the prompt (at most once per `repeat_after` prompts in a session),
