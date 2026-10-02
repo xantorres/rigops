@@ -35,7 +35,6 @@ from .pointer_grammar import (
     DEFAULT_SKILL_ROOTS,
     DEFAULT_SOURCES,
     DIST_TAGS,
-    LAUNCHD_RE,
     MCP_RE,
     MEMORY_NOTE_RE,
     MODEL_RE,
@@ -46,6 +45,7 @@ from .pointer_grammar import (
     SETTINGS_PATH_KEYS,
     SKILL_RE,
     TRANSCRIPT_RE,
+    launchd_re,
 )
 
 AREA = "docs"
@@ -158,6 +158,7 @@ def _known(cfg):
         "skills": skills,
         "mcp": _mcp_names(cfg),
         "labels": labels,
+        "label_re": launchd_re(core.cfg_get(cfg, "doctor.label_prefix", None)),
         "models": set(_cfg(cfg, "known_models", DEFAULT_MODELS)),
         "ignore": [
             str(core.expand(p))
@@ -295,7 +296,7 @@ def _scan_text(path, text, known, numbered=True, memory=False):
                                         area="repos"))
         # No labels at all means no launchctl, not a rig with nothing loaded, so
         # the rule stands down rather than reporting every label in the docs.
-        for label_name in LAUNCHD_RE.findall(line) if known["labels"] else []:
+        for label_name in known["label_re"].findall(line) if known["labels"] else []:
             stripped = label_name[:-6] if label_name.endswith(".plist") else label_name
             if stripped.startswith("com.apple.") or ".example." in stripped:
                 continue
