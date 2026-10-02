@@ -60,6 +60,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   managed directory. The stale pass matched files against the symlink's
   destination instead of the target path, so it deleted the fresh file and
   `rigops render all --check` reported it missing until the next render.
+- doctor: a notify command that exits non-zero is recorded in `events.jsonl`
+  as `notify command exited N`. Only a timeout or a failure to start was
+  recorded, so a notifier that ran and failed (command not found, a missing
+  dependency) left no trace and alerts stopped without any signal.
 
 ## [0.7.0] - 2026-09-16
 
