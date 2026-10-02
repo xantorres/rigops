@@ -570,6 +570,50 @@ class EventsJsonlTests(EnvIsolatedTestCase):
         self.assertEqual(event["fail_count"], 0)
 
 
+class NotifyCommandTests(EnvIsolatedTestCase):
+    def _notify(self, command: str) -> str:
+        return doctor._notify(command, Path(self.tmp) / "report.txt")
+
+    def test_clean_exit_and_no_command_are_silent(self):
+        self.assertEqual(self._notify("true"), "")
+        self.assertEqual(self._notify(""), "")
+
+    def test_nonzero_exit_is_reported_with_its_code(self):
+        self.assertEqual(self._notify("sh -c 'exit 3' notify"), "notify command exited 3")
+
+    def test_missing_command_is_reported_as_exit_127(self):
+        self.assertEqual(
+            self._notify("rigops-no-such-notifier"), "notify command exited 127"
+        )
+
+    def test_timeout_and_oserror_are_reported(self):
+        cases = (
+            (subprocess.TimeoutExpired("notify", 60), "notify command timed out after 60s"),
+            (OSError("boom"), "notify command failed: boom"),
+        )
+        for error, message in cases:
+            with self.subTest(error=type(error).__name__):
+                with mock.patch.object(subprocess, "run", side_effect=error):
+                    self.assertEqual(self._notify("anything"), message)
+
+    def test_failing_notify_command_lands_an_event_after_the_run_event(self):
+        registry_path = _write_registry(self.tmp, FAILING_ITEM)
+        (Path(self.tmp) / "config.json").write_text(
+            json.dumps({"doctor": {"notify_command": "sh -c 'exit 3' notify"}})
+        )
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, None, 1)),
+        ):
+            code, _ = _run_doctor(["--json", "--registry", str(registry_path)])
+        self.assertEqual(code, 0)
+        events_path = Path(self.tmp) / "state" / "doctor" / "events.jsonl"
+        events = [json.loads(line) for line in events_path.read_text().splitlines()]
+        self.assertEqual(
+            [event.get("event") for event in events], [None, "notify command exited 3"]
+        )
+
+
 class StaleCountTests(EnvIsolatedTestCase):
     def _stale_registry(self) -> Path:
         evidence = Path(self.tmp) / "evidence.log"

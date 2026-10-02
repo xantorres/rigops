@@ -263,11 +263,13 @@ def _notify(command: str, report_path: Path) -> str:
         return ""
     cmd = f"{command} {shlex.quote(str(report_path))}"
     try:
-        subprocess.run(cmd, shell=True, capture_output=True, timeout=60)
+        proc = subprocess.run(cmd, shell=True, capture_output=True, timeout=60)
     except subprocess.TimeoutExpired:
         return "notify command timed out after 60s"
     except OSError as exc:
         return f"notify command failed: {exc}"
+    if proc.returncode != 0:
+        return f"notify command exited {proc.returncode}"
     return ""
 
 
