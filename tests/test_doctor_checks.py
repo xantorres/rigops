@@ -409,10 +409,60 @@ class CheckPointersTests(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 5)
 
     def test_two_segment_launchd_label_is_checked_and_a_filename_is_not(self):
-        self.assertEqual(
-            check_pointers.LAUNCHD_RE.findall("local.rigops-doctor"), ["local.rigops-doctor"]
-        )
-        self.assertEqual(check_pointers.LAUNCHD_RE.findall("settings.local.json"), [])
+        label_re = pointer_grammar.launchd_re([])
+        self.assertEqual(label_re.findall("local.rigops-doctor"), ["local.rigops-doctor"])
+        self.assertEqual(label_re.findall("com.example-rig.job"), ["com.example-rig.job"])
+        self.assertEqual(label_re.findall("settings.local.json"), [])
+
+    def test_configured_label_prefix_extends_the_label_pattern(self):
+        label_re = pointer_grammar.launchd_re(["acme.", "org.example."])
+        self.assertEqual(label_re.findall("run acme.sync-job nightly"), ["acme.sync-job"])
+        self.assertEqual(label_re.findall("org.example.sync-job.x"), ["org.example.sync-job.x"])
+        self.assertEqual(label_re.findall("local.sync-job"), ["local.sync-job"])
+        self.assertEqual(label_re.findall("config.acme.sync-job and settings.acme"), [])
+
+    def test_configured_prefix_before_a_bare_word_is_code_not_a_label(self):
+        label_re = pointer_grammar.launchd_re(["acme."])
+        self.assertEqual(label_re.findall("acme.email, acme.id and acme.first_name"), [])
+        self.assertEqual(label_re.findall("local.sync"), ["local.sync"])
+
+    def test_label_prefix_without_a_trailing_dot_is_not_a_pattern(self):
+        default = pointer_grammar.launchd_re([]).pattern
+        for bad in ([""], ["."], ["acme"], [None], None, "acme.", ["com.", "local."]):
+            with self.subTest(prefixes=bad):
+                self.assertEqual(pointer_grammar.launchd_re(bad).pattern, default)
+        self.assertEqual(pointer_grammar.launchd_re(["acme"]).findall("acmesync-job"), [])
+
+    def test_configured_prefix_label_is_judged_against_launchctl(self):
+        labels = "PID\tStatus\tLabel\n-\t0\tacme.loaded-job\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            text = "acme.loaded-job and acme.absent-job; user.email is code\n"
+            source = self._write_source(tmp, text)
+            cfg = self._cfg(source)
+            cfg["doctor"]["label_prefix"] = ["acme.", "user."]
+            with mock.patch.object(core, "run", return_value=labels):
+                findings = check_pointers.run(cfg)
+        launchd = [f.key.split(":")[1] for f in findings if f.key.startswith("launchd:")]
+        self.assertEqual(launchd, ["acme.absent-job"])
+
+    def test_unconfigured_prefix_label_is_not_judged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._write_source(tmp, "acme.absent-job\n")
+            with mock.patch.object(core, "run", return_value="PID\tStatus\tLabel\n"):
+                findings = check_pointers.run(self._cfg(source))
+        self.assertEqual([f for f in findings if f.key.startswith("launchd:")], [])
+
+    def test_date_template_path_is_a_placeholder(self):
+        with tempfile.TemporaryDirectory(dir=str(Path.home())) as home_tmp:
+            template = f"~/{Path(home_tmp).name}/reports/YYYY-MM-DD.md"
+            with tempfile.TemporaryDirectory() as tmp:
+                source = self._write_source(tmp, f"write {template} then\n")
+                findings = check_pointers.run(self._cfg(source))
+        self.assertEqual([f for f in findings if f.key.startswith("path:")], [])
+
+    def test_default_sources_cover_the_vault_docs_an_agent_reads(self):
+        for entry in ("~/docs/AGENTS.md", "~/docs/playbooks/*.md"):
+            self.assertIn(entry, check_pointers.DEFAULT_SOURCES)
 
     def test_launchd_rule_stands_down_when_no_labels_are_readable(self):
         with tempfile.TemporaryDirectory() as tmp:

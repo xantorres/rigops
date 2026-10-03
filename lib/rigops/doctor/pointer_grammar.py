@@ -19,7 +19,9 @@ DEFAULT_SOURCES = [
     "~/.claude/agents/*.md",
     "~/.claude/settings.json",
     "~/docs/CLAUDE.md",
+    "~/docs/AGENTS.md",
     "~/docs/AGENT-CHEATSHEET.md",
+    "~/docs/playbooks/*.md",
     "~/projects/personal/*/CLAUDE.md",
     "~/.claude/projects/*/memory/*.md",
 ]
@@ -45,7 +47,7 @@ DEFAULT_MEMORY_ROOTS = ["~/.claude", "~/rig", "~/bin", "~/.local/bin"]
 
 # Segments that mark a documentation placeholder rather than a real location.
 DEFAULT_IGNORE_SEGMENTS = [
-    "skill-name", "my-project", "path/to", "example", "foo", "bar", "repo-name",
+    "skill-name", "my-project", "path/to", "example", "foo", "bar", "repo-name", "YYYY",
 ]
 
 # Skills and agents ship in several layouts (user directory, project directory,
@@ -123,8 +125,23 @@ MCP_RE = [
     re.compile(r"[`*]{1,2}([A-Za-z0-9][A-Za-z0-9_-]{2,})[`*]{1,2}\s+MCP\b"),
     re.compile(r"\bMCP\s+server\s+[`*]{1,2}([A-Za-z0-9][A-Za-z0-9_-]{2,})[`*]{1,2}"),
 ]
+
+_LABEL_SEGMENT = r"[A-Za-z0-9_-]+"
+
+
 # Two segments is a label: `local.rigops-doctor` is the shape this fleet's own
 # default prefix produces, and requiring a third missed all of them. The
 # lookbehind keeps a filename such as `settings.local.json` out of the match.
-LAUNCHD_RE = re.compile(r"(?<![\w.-])((?:com|local)\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)\b")
+# An operator prefix is commoner in prose (`user.` is also a code variable), so
+# it counts only before a hyphenated name, and only when it ends in a dot.
+def launchd_re(prefixes) -> re.Pattern:
+    own = {p for p in prefixes or () if isinstance(p, str) and len(p) > 1 and p.endswith(".")}
+    own -= {"com.", "local."}
+    shapes = [rf"(?:com|local)\.{_LABEL_SEGMENT}(?:\.{_LABEL_SEGMENT})*"]
+    if own:
+        head = "|".join(re.escape(p) for p in sorted(own))
+        shapes.append(rf"(?:{head})[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)+(?:\.{_LABEL_SEGMENT})*")
+    return re.compile(rf"(?<![\w.-])({'|'.join(shapes)})\b")
+
+
 MODEL_RE = re.compile(r"\bclaude-(?:opus|sonnet|haiku|fable|instant|[0-9])[a-z0-9.-]*\b")

@@ -41,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Rows under `memory/archive/` are left to explicit search. Replaying real
   coding prompts, the prefetch had fired on nine turns in ten with fewer than
   half its rows relevant.
+- doctor: the pointer check reads the vault's `AGENTS.md` and `playbooks/*.md`
+  by default, and ignores `YYYY` date templates as placeholders. It also builds
+  its launchd label pattern from `doctor.label_prefix`: `com.` and `local.`
+  always count, and so does each configured prefix that ends in a dot when a
+  hyphenated name follows (`user.sync-job`, not `user.email` in a code sample).
 
 ### Fixed
 
