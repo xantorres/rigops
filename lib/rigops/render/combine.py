@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from .agents_doc import render_agents
-from .claude import is_ignored, render_claude
+from .claude import is_engine_generated, is_ignored, render_claude
 from .codex import render_codex
 from .common import Rendered, merge
 from .local import render_local
@@ -35,6 +35,15 @@ def render_selected(names, source: Path, home: Path) -> Rendered:
     return merge(RENDERERS[name](source, home) for name in seen)
 
 
+def _not_stale(path: Path, claimed: set) -> bool:
+    return (
+        path.is_dir()
+        or path.resolve() in claimed
+        or is_ignored(path)
+        or is_engine_generated(path)
+    )
+
+
 def apply(rendered: Rendered, home: Path, delete_stale: bool = True) -> list:
     log = []
     # Resolve only the parent: the loop below replaces a symlinked target with a regular file.
@@ -57,7 +66,7 @@ def apply(rendered: Rendered, home: Path, delete_stale: bool = True) -> list:
             if not managed_dir.is_dir():
                 continue
             for existing in sorted(managed_dir.rglob("*"), reverse=True):
-                if existing.is_dir() or existing.resolve() in written or is_ignored(existing):
+                if _not_stale(existing, written):
                     continue
                 existing.unlink()
                 log.append(f"removed {existing}")
@@ -85,7 +94,7 @@ def check(rendered: Rendered) -> list:
         if not managed_dir.is_dir():
             continue
         for existing in sorted(managed_dir.rglob("*")):
-            if existing.is_dir() or existing.resolve() in seen or is_ignored(existing):
+            if _not_stale(existing, seen):
                 continue
             results.append({"path": str(existing), "state": "stale"})
 

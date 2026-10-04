@@ -310,6 +310,78 @@ class ApplyAndCheckTests(RenderTestCase):
         self.assertEqual(target.read_bytes(), b"echo hi\n")
 
 
+class PluginTypeFileTests(RenderTestCase):
+    def setUp(self):
+        super().setUp()
+        manifest = self.source / "skills" / "myskill" / ".claude-plugin"
+        manifest.mkdir()
+        (manifest / "plugin.json").write_text('{"name": "myskill"}\n')
+        self.rendered = render.render_all(self.source, self.home)
+        render.apply(self.rendered, self.home)
+        self.plugin = self.home / ".claude" / "skills" / "myskill"
+
+    def write(self, rel, text="x\n"):
+        path = self.plugin / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+        return path
+
+    def drift(self):
+        return [r for r in render.check(self.rendered) if r["state"] != "skipped"]
+
+    def test_types_tree_under_the_plugin_dir_is_not_reported_stale(self):
+        self.write(".claude-plugin/types/.gitignore", "*\n")
+        self.write(".claude-plugin/types/tsconfig.json")
+        self.write(".claude-plugin/types/sdk/index.d.ts")
+        self.assertEqual(self.drift(), [])
+
+    def test_tsconfig_beside_the_plugin_dir_is_not_reported_stale(self):
+        self.write("tsconfig.json", '{"extends": "./.claude-plugin/types/tsconfig.json"}\n')
+        self.assertEqual(self.drift(), [])
+
+    def test_engine_files_survive_a_reapply(self):
+        kept = [
+            self.write("tsconfig.json"),
+            self.write(".claude-plugin/types/.gitignore"),
+            self.write(".claude-plugin/types/sdk/index.d.ts"),
+        ]
+        render.apply(self.rendered, self.home)
+        self.assertEqual([p.is_file() for p in kept], [True, True, True])
+
+    def test_tsconfig_with_no_plugin_dir_beside_it_is_stale_and_removed(self):
+        stray = self.write("hooks/tsconfig.json")
+        self.assertEqual(self.drift(), [{"path": str(stray), "state": "stale"}])
+        render.apply(self.rendered, self.home)
+        self.assertFalse(stray.exists())
+
+    def test_types_dir_outside_the_plugin_dir_is_stale_and_removed(self):
+        stray = self.write("types/index.d.ts")
+        self.assertEqual(self.drift(), [{"path": str(stray), "state": "stale"}])
+        render.apply(self.rendered, self.home)
+        self.assertFalse(stray.exists())
+
+    def test_other_stray_file_in_the_plugin_dir_is_stale_and_removed(self):
+        stray = self.write(".claude-plugin/stray.json")
+        self.assertEqual(self.drift(), [{"path": str(stray), "state": "stale"}])
+        render.apply(self.rendered, self.home)
+        self.assertFalse(stray.exists())
+
+    def test_source_provided_files_in_those_places_are_still_rendered(self):
+        skill = self.source / "skills" / "myskill"
+        (skill / "tsconfig.json").write_text('{"strict": true}\n')
+        (skill / ".claude-plugin" / "types").mkdir()
+        (skill / ".claude-plugin" / "types" / "index.d.ts").write_text("export {};\n")
+        rendered = render.render_all(self.source, self.home)
+        render.apply(rendered, self.home)
+
+        tsconfig = self.plugin / "tsconfig.json"
+        types = self.plugin / ".claude-plugin" / "types" / "index.d.ts"
+        self.assertEqual(tsconfig.read_text(), '{"strict": true}\n')
+        self.assertEqual(types.read_text(), "export {};\n")
+        tsconfig.write_text("tampered\n")
+        self.assertIn({"path": str(tsconfig), "state": "differs"}, render.check(rendered))
+
+
 if __name__ == "__main__":
     unittest.main()
 
