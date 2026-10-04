@@ -38,3 +38,9 @@ bit included, with no marker.
 on disk, or `stale` (an extra file inside a managed directory that render
 didn't produce). A pointer repo whose directory doesn't exist yet is reported
 `skipped`, not a drift. Exit `1` iff any path is missing, differs, or stale.
+
+Type files the function-hook engine writes into a rendered plugin on load are
+never `stale` and never deleted: everything under `types/` in the plugin
+manifest directory (the one holding `plugin.json`), and a `tsconfig.json` beside
+that directory. A file the source tree provides at those paths is rendered and
+checked like any other.

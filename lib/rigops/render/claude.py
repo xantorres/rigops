@@ -18,12 +18,21 @@ CLASS_MAP = {
 }
 
 IGNORE_NAMES = {"__pycache__", ".DS_Store"}
+MANIFEST_DIR = ".claude-plugin"
 
 
 def is_ignored(path: Path) -> bool:
     if path.suffix == ".pyc":
         return True
     return bool(IGNORE_NAMES & set(path.parts))
+
+
+def is_engine_generated(path: Path) -> bool:
+    # The function-hook engine rewrites these in a plugin dir on every load.
+    parts = path.parts
+    if any(a == MANIFEST_DIR and b == "types" for a, b in zip(parts, parts[1:-1])):
+        return True
+    return path.name == "tsconfig.json" and (path.parent / MANIFEST_DIR).is_dir()
 
 
 def _tools_line(fields: dict) -> str:

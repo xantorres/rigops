@@ -69,6 +69,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as `notify command exited N`. Only a timeout or a failure to start was
   recorded, so a notifier that ran and failed (command not found, a missing
   dependency) left no trace and alerts stopped without any signal.
+- render: `rigops render` and `--check` leave alone the type files the
+  function-hook engine writes into a plugin directory each time it loads the
+  plugin: everything under `types/` in the plugin manifest directory (the one
+  holding `plugin.json`), and a `tsconfig.json` beside that directory when the
+  source tree has none. Both were reported as stale and deleted, so a
+  doctor-gated commit blocked until the next render removed them, and the next
+  plugin load wrote them again.
 
 ## [0.7.0] - 2026-09-16
 
