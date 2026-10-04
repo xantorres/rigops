@@ -707,6 +707,64 @@ class SearchAnswersColumnRankingTests(unittest.TestCase):
         self.assertTrue(result.hits[0].short_path.endswith("declared.md"))
 
 
+class RepoLaneTests(unittest.TestCase):
+    """A question asked from inside a repo always has that repo's rows among the candidates.
+
+    The AND rung is accepted as soon as three documents hold every word, and those can
+    all be plans, so a repo document that holds only some of the words never reaches
+    the ranking.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.home = self.tmp / "home"
+        write_tree(self.home, {
+            # Filler rows keep every term's idf meaningful; on a tiny corpus it clamps to ~0.
+            **{f"plans/filler-{n}.md": f"## Filler\nunrelated number {n}\n" for n in range(12)},
+            "plans/q1.md": "## One\nledger audit sweep of the quarter\n",
+            "plans/q2.md": "## Two\nledger audit sweep of the year\n",
+            "plans/q3.md": "## Three\nledger audit sweep of the month\n",
+            "repos/alpha/ledger-audit.md": "## Books\nthe books and the vault\n",
+            "repos/beta/notes.md": "## Beta\nthe deploy pipeline checks run in ci\n",
+        })
+        self.db_path = self.tmp / "index.sqlite"
+        self.registry = make_registry(self.tmp, {
+            "realms": ["personal"], "scopes": ["plans", "repo"],
+            "index": {"db": str(self.db_path)},
+            "roots": [
+                {"path": str(self.home / "plans"), "realm": "personal", "scope": "plans",
+                 "cwd_scopes": ["plans"]},
+                {"path": str(self.home / "repos" / "*"), "realm": "personal", "scope": "repo",
+                 "repo": True, "cwd_scopes": ["repo"]},
+            ],
+        })
+        index.build(self.registry, self.db_path)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _order(self, cwd, text="ledger audit sweep"):
+        result = search.query(self.registry, text, cwd=cwd, scopes=("all",), top=3,
+                              db_path=self.db_path)
+        return [hit.repo or "plan" for hit in result.hits]
+
+    def test_a_repo_row_the_and_rung_misses_still_enters_the_pool(self):
+        self.assertEqual(self._order(self.home / "repos" / "alpha")[0], "alpha")
+
+    def test_only_the_cwd_repo_gets_a_lane(self):
+        self.assertNotIn("alpha", self._order(self.home / "repos" / "beta"))
+
+    def test_a_cwd_that_is_not_a_repo_gets_no_lane(self):
+        self.assertNotIn("alpha", self._order(self.home / "plans"))
+
+    def test_a_query_without_content_words_does_not_fail_in_a_repo(self):
+        self.assertIsInstance(
+            search.query(self.registry, "the", cwd=self.home / "repos" / "alpha",
+                         scopes=("all",), db_path=self.db_path),
+            search.Result)
+
+
 class ProbeRunTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

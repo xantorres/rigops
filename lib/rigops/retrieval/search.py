@@ -181,7 +181,7 @@ def _plan(registry, cwd, scopes, prefetch):
 def query(registry, text, cwd=None, scopes=None, top=10, budget=None,
           prefetch=False, max_len=180, db_path=None) -> Result:
     cwd = str(cwd or os.getcwd())
-    realms, use_scopes, repo, _profile, reason = _plan(registry, cwd, scopes, prefetch)
+    realms, use_scopes, repo, profile, reason = _plan(registry, cwd, scopes, prefetch)
     result = Result(cwd=cwd, query=text)
     if reason:
         result.silent_reason = reason
@@ -212,8 +212,10 @@ def query(registry, text, cwd=None, scopes=None, top=10, budget=None,
         # crowd of them cannot push every live row out of the candidates.
         sql += " AND instr(path, ?) = 0"
         params.append(ARCHIVE_MARKER)
+    select = sql
     sql += " ORDER BY rank LIMIT ?"
     params.append(max(top * 5, 25))
+    lane_repo = "" if prefetch or profile is None else profile.repo or ""
 
     started = time.time()
     conn = sqlite3.connect(str(db))
@@ -243,6 +245,15 @@ def query(registry, text, cwd=None, scopes=None, top=10, budget=None,
                 result.silent_reason = ""
             if len({row["path"] for row in rows}) >= wanted:
                 break
+        lane_match = loose_query(text)
+        if lane_repo and lane_match:
+            # An accepted rung can hold only long plans, so the cwd repo gets a lane of
+            # its own through the loose query and the merged pool is ranked by score.
+            lane = conn.execute(f"{select} AND repo = ? ORDER BY rank LIMIT ?",
+                                [lane_match, *params[1:-1], lane_repo, params[-1]])
+            known = {row["rowid"] for row in rows}
+            rows.extend(row for row in lane if row["rowid"] not in known)
+            rows.sort(key=lambda row: row["rank"])
         gate_hits, gate_head = {}, {}
         if prefetch and rows:
             score_ok = [
