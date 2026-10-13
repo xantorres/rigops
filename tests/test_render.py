@@ -175,6 +175,24 @@ class SkillFileTests(RenderTestCase):
         self.assertEqual(rendered.modes[target], stat.S_IMODE(self.script.stat().st_mode))
 
 
+class WorkflowTests(RenderTestCase):
+    def test_workflow_is_copied_verbatim(self):
+        (self.source / "workflows").mkdir()
+        (self.source / "workflows" / "ship.js").write_text("export const meta = {}\n")
+        rendered = render.render_claude(self.source, self.home)
+        target = self.home / ".claude" / "workflows" / "ship.js"
+        self.assertEqual(rendered.files[target], b"export const meta = {}\n")
+
+    def test_harness_saved_workflow_survives_a_reapply(self):
+        rendered = render.render_all(self.source, self.home)
+        render.apply(rendered, self.home)
+        saved = self.home / ".claude" / "workflows" / "mine.js"
+        saved.parent.mkdir(parents=True)
+        saved.write_text("x\n")
+        render.apply(rendered, self.home)
+        self.assertTrue(saved.exists())
+
+
 class CodexTests(RenderTestCase):
     def test_agents_md_line_count(self):
         rendered = render.render_codex(self.source, self.home)

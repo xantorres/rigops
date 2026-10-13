@@ -104,5 +104,11 @@ def render_claude(source: Path, home: Path) -> Rendered:
                 files[target] = path.read_bytes()
             modes[target] = mode
 
-    managed_dirs = [claude_dir / "rules", claude_dir / "agents", claude_dir / "skills"]
+    # Unmanaged: the harness saves its own workflows into the same dir, so prune would delete them.
+    workflows_src = source / "workflows"
+    if workflows_src.is_dir():
+        for workflow in sorted(workflows_src.glob("*.js")):
+            files[claude_dir / "workflows" / workflow.name] = workflow.read_bytes()
+
+    managed_dirs =[claude_dir / "rules", claude_dir / "agents", claude_dir / "skills"]
     return Rendered(files=files, managed_dirs=managed_dirs, modes=modes)
