@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import core, doctor  # noqa: E402
 from rigops.doctor import (  # noqa: E402
+    check_agents,
     check_budget,
     check_imports,
     check_levers,
@@ -1078,6 +1079,55 @@ class CheckMcpTests(unittest.TestCase):
             home, claude_dir = self._home(tmp)
             findings = self._run(home, claude_dir)
         self.assertEqual(findings, [])
+
+
+class CheckAgentsTests(unittest.TestCase):
+    def _run(self, **agents):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = Path(tmp) / "agents"
+            agents_dir.mkdir()
+            for name, text in agents.items():
+                (agents_dir / f"{name}.md").write_text(text)
+            return check_agents.run({"render": {"source": tmp}})
+
+    def test_read_only_claim_with_edit_tool_yields_one_finding(self):
+        findings = self._run(liar=(
+            "---\nname: liar\npurpose: Triage.\ntools: [read, edit]\n---\n"
+            "Read-only. Never edit, never propose fixes.\n"
+        ))
+        self.assertEqual([f.symptom for f in findings], ["liar: claims read-only but grants edit"])
+
+    def test_read_only_agent_without_edit_yields_no_finding(self):
+        findings = self._run(reader=(
+            "---\nname: reader\npurpose: Read-only digester.\ntools: [read, search]\n---\n"
+            "Never edits files.\n"
+        ))
+        self.assertEqual(findings, [])
+
+    def test_editing_agent_without_claim_yields_no_finding(self):
+        findings = self._run(worker=(
+            "---\nname: worker\npurpose: Mechanical edits.\ntools: [read, edit, shell]\n---\n"
+            "Apply the pattern uniformly.\n"
+        ))
+        self.assertEqual(findings, [])
+
+    def test_absent_tools_line_grants_edit(self):
+        findings = self._run(open_=(
+            "---\nname: open_\npurpose: Anything.\n---\nMust not edit.\n"
+        ))
+        self.assertEqual(len(findings), 1)
+
+    def test_claim_about_another_agent_or_a_tool_is_not_a_claim(self):
+        findings = self._run(worker=(
+            "---\nname: worker\npurpose: Edits (read-only triage goes to haiku-reader).\n"
+            "tools: [read, edit, shell]\n---\n"
+            "Shell is read-only: git show only. The mode is not read-only.\n"
+        ))
+        self.assertEqual(findings, [])
+
+    def test_missing_agents_dir_yields_no_findings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(check_agents.run({"render": {"source": tmp}}), [])
 
 
 class RunChecksTests(unittest.TestCase):
