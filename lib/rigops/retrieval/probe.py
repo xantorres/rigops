@@ -24,11 +24,61 @@ def _expand(value) -> str:
     return os.path.expanduser(str(value))
 
 
-def load(path=None) -> dict:
-    target = Path(_expand(path or os.environ.get("RIGOPS_PROBES") or DEFAULT_SPEC))
+def _read_suite(path: Path, label: str) -> dict:
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        raise SystemExit(f"error: {label} {path} is not readable JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise SystemExit(f"error: {label} {path} is not a JSON object")
+    for key in ("probes", "negatives"):
+        items = data.get(key, [])
+        if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
+            raise SystemExit(f"error: {label} {path}: `{key}` is not a list of objects")
+    return data
+
+
+def _duplicate_ids(items) -> list:
+    seen, dupes = set(), []
+    for item in items:
+        ident = item.get("id")
+        if ident is None:
+            continue
+        key = str(ident)
+        if key in seen and key not in dupes:
+            dupes.append(key)
+        seen.add(key)
+    return dupes
+
+
+def load(path=None, registry=None) -> dict:
+    """The probe suite; with no explicit file, every realm's own suite is merged in."""
+    explicit = path or os.environ.get("RIGOPS_PROBES")
+    target = Path(_expand(explicit or DEFAULT_SPEC))
     if not target.is_file():
         raise SystemExit(f"error: probe suite not found: {target}")
-    return json.loads(target.read_text())
+    spec = _read_suite(target, "probe suite")
+    if explicit or registry is None:
+        return spec
+    if not registry.path.is_file():
+        raise SystemExit(f"error: roots registry not found: {registry.path}")
+    if not registry.roots:
+        raise SystemExit(f"error: roots registry {registry.path} lists no roots")
+    spec["merged"] = []
+    for realm_dir in core.realms_from_registry(registry):
+        extra = realm_dir / "eval" / "retrieval-probes.json"
+        if not extra.is_file():
+            continue
+        data = _read_suite(extra, "realm probe suite")
+        for key in ("probes", "negatives"):
+            spec[key] = [*spec.get(key, []), *data.get(key, [])]
+        spec["merged"].append({"path": str(extra), "probes": len(data.get("probes", [])),
+                               "negatives": len(data.get("negatives", []))})
+    for key in ("probes", "negatives"):
+        dupes = _duplicate_ids(spec.get(key, []))
+        if dupes:
+            raise SystemExit(f"error: duplicate {key} ids across merged suites: {', '.join(dupes)}")
+    return spec
 
 
 def _is_hit(expect, paths) -> bool:
@@ -98,11 +148,16 @@ def run(registry, spec, top=3, logger=None, db_path=None) -> dict:
         "by_realm": by_realm, "misses": misses, "negatives": negatives,
         "target_precision": target, "thin_realms": thin, "pass": ok,
         "probes": sum(bucket["n"] for bucket in by_realm.values()),
+        "merged": list(spec.get("merged", [])),
     }
 
 
 def report(outcome: dict) -> str:
-    lines = []
+    lines = [
+        f"merged realm suite {item['path']}: "
+        f"{item['probes']} probes, {item['negatives']} negatives"
+        for item in outcome.get("merged", [])
+    ]
     for realm in sorted(outcome["by_realm"]):
         bucket = outcome["by_realm"][realm]
         lines.append(

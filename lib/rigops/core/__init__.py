@@ -16,6 +16,7 @@ from datetime import date
 from pathlib import Path
 
 from rigops import config as _config
+from rigops import realm as _realm
 from rigops import state as _state
 from rigops import transcripts as _transcripts
 
@@ -58,6 +59,10 @@ def local_state_path(name: str) -> Path:
 
 def percentile(sorted_vals, p) -> float:
     return _transcripts.percentile(sorted_vals, p)
+
+
+def realms_from_registry(registry) -> list:
+    return _realm.from_registry(registry)
 
 
 def find_transcripts(transcripts_dir=None) -> list:

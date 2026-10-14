@@ -159,7 +159,7 @@ def cmd_stats(args) -> int:
 
 def cmd_probe(args) -> int:
     registry = _registry(args)
-    spec = probe_mod.load(args.file)
+    spec = probe_mod.load(args.file, registry)
     logger = None if args.no_log else (
         lambda result, mode, extra: log_mod.record(result, mode=mode, extra=extra)
     )

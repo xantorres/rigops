@@ -2,16 +2,19 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import os
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from rigops import backlog, janitor  # noqa: E402
+from rigops import backlog, janitor, watermarks  # noqa: E402
+from rigops.retrieval import roots  # noqa: E402
 
 
 def _age(path: Path, days_old: float, now: float) -> None:
@@ -441,15 +444,15 @@ class WatermarkFileStatErrorTests(unittest.TestCase):
                 {"name": "stays", "path": str(stays), "max_kb": 8, "area": "memory"},
             ]
             backlog_path = Path(tmp) / "backlog.md"
-            real_file_watermark = janitor._file_watermark
+            real_file_watermark = watermarks._file_watermark
 
             def unlink_then_measure(f, max_kb):
                 if f == gone:
                     f.unlink()
                 return real_file_watermark(f, max_kb)
 
-            janitor._file_watermark = unlink_then_measure
-            self.addCleanup(setattr, janitor, "_file_watermark", real_file_watermark)
+            watermarks._file_watermark = unlink_then_measure
+            self.addCleanup(setattr, watermarks, "_file_watermark", real_file_watermark)
 
             results = janitor.check_watermarks(wms, backlog_path, ["memory"], apply=True)
 
@@ -756,6 +759,220 @@ class TruncateKeepLinesGuardTests(unittest.TestCase):
             rule = {"name": "r", "path": str(f), "action": "truncate", "keep_lines": -1}
             result = janitor.run_rules([rule], apply=True, max_delete=200, now=time.time())
             self.assertEqual(result["rules"][0]["skipped"], "keep_lines must be positive")
+
+
+class WatermarkRealmRoutingTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name).resolve()
+        self.transcripts = self.tmp / "transcripts"
+        self.default_backlog = self.tmp / "backlog.md"
+        self.realm_dir = self.tmp / "brain" / "rig"
+        (self.realm_dir / "plans").mkdir(parents=True)
+        self.realm_backlog = self.realm_dir / "plans" / "backlog.md"
+        self.realm_backlog.write_text("# Backlog\n\n## Open\n\n## Done\n")
+        (self.tmp / "mnt" / ".claude").mkdir(parents=True)
+        (self.tmp / "mnt" / ".claude" / "realm").symlink_to(self.realm_dir)
+        (self.tmp / "rogue" / ".claude").mkdir(parents=True)
+        (self.tmp / "rogue" / ".claude" / "realm").symlink_to(self.realm_dir)
+        (self.tmp / "nolink").mkdir()
+        self.registry_file = self.tmp / "roots.json"
+        self.set_roots([
+            {"path": str(self.tmp / "mnt"), "realm": "client"},
+            {"path": f"{self.tmp}/nolink/*", "realm": "client"},
+            {"path": str(self.tmp / "plain"), "realm": "personal"},
+        ])
+        patcher = mock.patch.dict(os.environ, {"REALM_REGISTRY": str(self.registry_file)})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def set_roots(self, entries) -> None:
+        self.registry_file.write_text(json.dumps({"roots": entries}))
+
+    def slug(self, *parts) -> str:
+        return roots.encode_project(self.tmp.joinpath(*parts)) + "-repo"
+
+    def _project(self, name: str, cwd, lines=None) -> Path:
+        proj = self.transcripts / name
+        memory = proj / "memory"
+        memory.mkdir(parents=True)
+        for i in range(3):
+            (memory / f"f{i}.md").write_text("x")
+        records = lines if lines is not None else [{"type": "user", "cwd": str(cwd)}]
+        (proj / "s.jsonl").write_text("\n".join(json.dumps(r) for r in records) + "\n")
+        return memory
+
+    def _check(self, apply=True, transcripts_dir="unset"):
+        wm = {"name": "auto-memory", "path": str(self.transcripts / "*" / "memory"),
+              "max_files": 2, "area": "memory"}
+        tdir = self.transcripts if transcripts_dir == "unset" else transcripts_dir
+        return janitor.check_watermarks(
+            [wm], self.default_backlog, ["memory"], apply=apply, transcripts_dir=tdir,
+        )
+
+    def test_personal_session_goes_to_the_configured_backlog(self):
+        memory = self._project("p-personal", self.tmp / "plain" / "repo")
+        results = self._check()
+        self.assertEqual(results[0]["status"], "appended")
+        self.assertEqual(results[0]["backlog"], str(self.default_backlog))
+        self.assertIn(f"watermark {memory} tripped:", self.default_backlog.read_text())
+        self.assertNotIn("watermark", self.realm_backlog.read_text())
+
+    def test_client_session_goes_to_the_realm_backlog(self):
+        memory = self._project("p-client", self.tmp / "mnt" / "repo")
+        results = self._check()
+        self.assertEqual(results[0]["status"], "appended")
+        self.assertEqual(results[0]["backlog"], str(self.realm_backlog))
+        self.assertIn(f"watermark {memory} tripped:", self.realm_backlog.read_text())
+        self.assertFalse(self.default_backlog.exists())
+
+    def test_each_target_dedupes_on_its_own_file(self):
+        self._project("p-client", self.tmp / "mnt" / "repo")
+        self._project("p-personal", self.tmp / "plain")
+        self.assertEqual([r["status"] for r in self._check()], ["appended", "appended"])
+        self.assertEqual([r["status"] for r in self._check()], ["deduped", "deduped"])
+        self.assertEqual(self.realm_backlog.read_text().count("tripped:"), 1)
+        self.assertEqual(self.default_backlog.read_text().count("tripped:"), 1)
+
+    def test_dry_run_reports_the_target_without_writing(self):
+        self._project("p-client", self.tmp / "mnt" / "repo")
+        results = self._check(apply=False)
+        self.assertEqual(results[0]["status"], "would-append")
+        self.assertEqual(results[0]["backlog"], str(self.realm_backlog))
+        self.assertNotIn("tripped:", self.realm_backlog.read_text())
+
+    def test_client_session_without_a_realm_backlog_is_unrouted_not_personal(self):
+        self._project("p-client", self.tmp / "mnt" / "repo")
+        self.realm_backlog.unlink()
+        results = self._check()
+        self.assertEqual(results[0]["status"], "unrouted")
+        self.assertIsNone(results[0]["backlog"])
+        self.assertFalse(self.default_backlog.exists())
+        self.assertFalse(self.realm_backlog.exists())
+
+    def test_dry_run_reports_a_client_dir_without_a_backlog_as_unrouted(self):
+        self._project("p-client", self.tmp / "mnt" / "repo")
+        self.realm_backlog.unlink()
+        results = self._check(apply=False)
+        self.assertEqual(results[0]["status"], "unrouted")
+        self.assertIsNone(results[0]["backlog"])
+
+    def test_project_named_for_a_client_root_goes_to_the_realm_backlog(self):
+        memory = self._project(self.slug("mnt"), self.tmp / "plain" / "repo")
+        results = self._check()
+        self.assertEqual(results[0]["status"], "appended")
+        self.assertEqual(results[0]["backlog"], str(self.realm_backlog))
+        self.assertIn(f"watermark {memory} tripped:", self.realm_backlog.read_text())
+        self.assertFalse(self.default_backlog.exists())
+
+    def test_project_named_for_a_client_root_routes_without_any_transcript(self):
+        memory = self._project(self.slug("mnt"), None)
+        (memory.parent / "s.jsonl").unlink()
+        results = self._check()
+        self.assertEqual(results[0]["backlog"], str(self.realm_backlog))
+
+    def test_name_routing_matches_the_harness_slug_of_a_dotted_underscored_path(self):
+        odd = self.tmp / "my_shared.d"
+        odd.mkdir()
+        (odd / ".claude").mkdir()
+        (odd / ".claude" / "realm").symlink_to(self.realm_dir)
+        self.set_roots([{"path": str(odd), "realm": "client"}])
+        name = str(odd).replace("/", "-").replace(".", "-").replace("_", "-") + "-repo"
+        self._project(name, None)
+        self.assertEqual(self._check()[0]["backlog"], str(self.realm_backlog))
+
+    def test_name_match_without_a_realm_backlog_is_unrouted(self):
+        self._project(self.slug("mnt"), self.tmp / "plain")
+        self.realm_backlog.unlink()
+        results = self._check()
+        self.assertEqual(results[0]["status"], "unrouted")
+        self.assertFalse(self.default_backlog.exists())
+
+    def test_name_match_on_a_root_without_a_realm_is_unrouted(self):
+        self._project(self.slug("nolink"), self.tmp / "plain")
+        results = self._check()
+        self.assertEqual(results[0]["status"], "unrouted")
+        self.assertIsNone(results[0]["backlog"])
+        self.assertFalse(self.default_backlog.exists())
+        self.assertNotIn("tripped:", self.realm_backlog.read_text())
+
+    def test_name_match_beats_a_personal_cwd(self):
+        self._project(self.slug("mnt"), self.tmp / "plain" / "repo")
+        self._project(self.slug("nolink"), self.tmp / "plain" / "repo")
+        self.assertEqual([r["status"] for r in self._check()], ["appended", "unrouted"])
+        self.assertFalse(self.default_backlog.exists())
+
+    def test_name_of_a_personal_root_does_not_route_to_a_realm(self):
+        self._project(self.slug("plain"), self.tmp / "plain")
+        results = self._check()
+        self.assertEqual(results[0]["backlog"], str(self.default_backlog))
+
+    def test_cwd_under_an_untrusted_link_stays_personal(self):
+        self._project("p-rogue", self.tmp / "rogue" / "repo")
+        results = self._check()
+        self.assertEqual(results[0]["backlog"], str(self.default_backlog))
+        self.assertNotIn("tripped:", self.realm_backlog.read_text())
+
+    def test_name_match_wins_over_an_untrusted_cwd_link(self):
+        self._project(self.slug("mnt"), self.tmp / "rogue" / "repo")
+        self.assertEqual(self._check()[0]["backlog"], str(self.realm_backlog))
+
+    def test_cwd_is_read_from_the_newest_transcript(self):
+        memory = self._project("p-mixed", self.tmp / "plain")
+        old = memory.parent / "s.jsonl"
+        new = memory.parent / "t.jsonl"
+        new.write_text(json.dumps({"cwd": str(self.tmp / "mnt" / "repo")}) + "\n")
+        os.utime(old, (1, 1))
+        results = self._check()
+        self.assertEqual(results[0]["backlog"], str(self.realm_backlog))
+
+    def test_cwd_scan_skips_junk_and_stops_after_fifty_lines(self):
+        junk = [{"type": "x"}] * 48
+        reachable = self._project("p-a", None, lines=[*junk, {"cwd": str(self.tmp / "mnt")}])
+        unreachable = self._project("p-b", None, lines=[*junk, {"type": "y"}, {"type": "y"},
+                                                        {"cwd": str(self.tmp / "mnt")}])
+        (reachable.parent / "s.jsonl").write_text(
+            "not json\n" + (reachable.parent / "s.jsonl").read_text()
+        )
+        by_dir = {r["dir"]: r["backlog"] for r in self._check()}
+        self.assertEqual(by_dir[str(reachable)], str(self.realm_backlog))
+        self.assertEqual(by_dir[str(unreachable)], str(self.default_backlog))
+
+    def test_match_outside_the_transcripts_dir_uses_its_own_path(self):
+        elsewhere = self.tmp / "mnt" / "repo" / "memory"
+        elsewhere.mkdir(parents=True)
+        for i in range(3):
+            (elsewhere / f"f{i}.md").write_text("x")
+        wm = {"name": "m", "path": str(elsewhere), "max_files": 2, "area": "memory"}
+        results = janitor.check_watermarks(
+            [wm], self.default_backlog, ["memory"], apply=True, transcripts_dir=self.transcripts,
+        )
+        self.assertEqual(results[0]["backlog"], str(self.realm_backlog))
+
+    def test_project_without_a_transcript_falls_back_to_the_configured_backlog(self):
+        memory = self._project("p-empty", None)
+        (memory.parent / "s.jsonl").unlink()
+        results = self._check()
+        self.assertEqual(results[0]["backlog"], str(self.default_backlog))
+
+    def test_no_transcripts_dir_keeps_the_configured_backlog(self):
+        self._project("p-client", self.tmp / "mnt" / "repo")
+        results = self._check(transcripts_dir=None)
+        self.assertEqual(results[0]["backlog"], str(self.default_backlog))
+
+    def test_realm_backlog_failure_is_reported_not_raised(self):
+        if os.geteuid() == 0:
+            self.skipTest("mode bits do not restrict root")
+        self._project("p-client", self.tmp / "mnt" / "repo")
+        os.chmod(self.realm_backlog, 0)
+        try:
+            results = self._check()
+        finally:
+            os.chmod(self.realm_backlog, 0o644)
+        self.assertTrue(results[0]["status"].startswith("error:"))
 
 
 if __name__ == "__main__":
