@@ -40,8 +40,8 @@ def find(start, reg=None) -> Path | None:
     reg = reg or registry()
     if reg is None:
         return None
-    trusted = set(mounts(reg))
-    here = Path(os.path.abspath(start))
+    trusted = {os.path.realpath(m) for m in mounts(reg) if os.path.isabs(m)}
+    here = Path(os.path.realpath(start))
     for candidate in (here, *here.parents):
         link = candidate / ".claude" / "realm"
         if str(candidate) in trusted and link.is_dir():

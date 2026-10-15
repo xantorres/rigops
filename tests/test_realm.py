@@ -102,6 +102,38 @@ class FindTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"HOME": str(self.tmp)}):
             self.assertEqual(realm.find(self.tmp / "mnt"), self.realm_dir)
 
+    def test_a_start_dir_reached_through_a_symlink_is_trusted(self):
+        mount(self.tmp / "mnt", self.realm_dir)
+        (self.tmp / "mnt" / "repo").mkdir()
+        (self.tmp / "elsewhere").mkdir()
+        (self.tmp / "elsewhere" / "alias").symlink_to(self.tmp / "mnt" / "repo")
+        self.trust(self.tmp / "mnt")
+        self.assertEqual(realm.find(self.tmp / "elsewhere" / "alias"), self.realm_dir)
+
+    def test_a_registry_root_that_is_a_symlink_trusts_its_real_path(self):
+        mount(self.tmp / "real", self.realm_dir)
+        (self.tmp / "mnt").symlink_to(self.tmp / "real")
+        self.trust(self.tmp / "mnt")
+        self.assertEqual(realm.find(self.tmp / "real"), self.realm_dir)
+
+    def test_a_symlink_into_an_untrusted_dir_stays_untrusted(self):
+        mount(self.tmp / "mnt", self.realm_dir)
+        (self.tmp / "plain").mkdir()
+        (self.tmp / "mnt" / "alias").symlink_to(self.tmp / "plain")
+        self.trust(self.tmp / "mnt")
+        self.assertIsNone(realm.find(self.tmp / "mnt" / "alias"))
+
+    def test_a_relative_registry_path_trusts_nothing(self):
+        (self.tmp / "cwd").mkdir()
+        mount(self.tmp / "cwd" / "rel", self.realm_dir)
+        self.trust("rel")
+        before = os.getcwd()
+        os.chdir(self.tmp / "cwd")
+        try:
+            self.assertIsNone(realm.find(self.tmp / "cwd" / "rel"))
+        finally:
+            os.chdir(before)
+
     def test_default_registry_is_the_one_under_home(self):
         mount(self.tmp / "mnt", self.realm_dir)
         (self.tmp / "rig" / "registry").mkdir(parents=True)
