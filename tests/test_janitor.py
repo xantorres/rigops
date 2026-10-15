@@ -4,6 +4,7 @@ import contextlib
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -859,6 +860,51 @@ class WatermarkRealmRoutingTests(unittest.TestCase):
         results = self._check(apply=False)
         self.assertEqual(results[0]["status"], "unrouted")
         self.assertIsNone(results[0]["backlog"])
+
+    def test_unreadable_registry_leaves_a_personal_dir_unrouted(self):
+        self._project("p-personal", self.tmp / "plain" / "repo")
+        self.registry_file.write_text("{not json")
+        for apply in (True, False):
+            results = self._check(apply=apply)
+            self.assertEqual(results[0]["status"], "unrouted")
+            self.assertIsNone(results[0]["backlog"])
+        self.assertFalse(self.default_backlog.exists())
+
+    def test_missing_registry_keeps_the_configured_backlog(self):
+        self._project("p-personal", self.tmp / "plain" / "repo")
+        self.registry_file.unlink()
+        results = self._check()
+        self.assertEqual(results[0]["status"], "appended")
+        self.assertEqual(results[0]["backlog"], str(self.default_backlog))
+
+    def _run_script(self) -> subprocess.CompletedProcess:
+        cfg = self.tmp / "config.json"
+        cfg.write_text(json.dumps({
+            "transcripts_dir": str(self.transcripts),
+            "backlog": {"path": str(self.default_backlog)},
+            "janitor": {"watermarks": [{
+                "name": "auto-memory", "path": str(self.transcripts / "*" / "memory"),
+                "max_files": 2, "area": "memory",
+            }]},
+        }))
+        script = Path(__file__).resolve().parent.parent / "libexec" / "rigops-janitor"
+        env = {**os.environ, "RIGOPS_CONFIG": str(cfg)}
+        return subprocess.run([sys.executable, str(script)], env=env,
+                              capture_output=True, text=True, check=False)
+
+    def test_script_fails_on_an_unrouted_watermark_and_keeps_the_line(self):
+        self._project("p-client", self.tmp / "mnt" / "repo")
+        self.realm_backlog.unlink()
+        proc = self._run_script()
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("files=3", proc.stdout)
+        self.assertIn("unrouted", proc.stdout)
+
+    def test_script_passes_on_a_routed_watermark(self):
+        self._project("p-client", self.tmp / "mnt" / "repo")
+        proc = self._run_script()
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("would-append", proc.stdout)
 
     def test_project_named_for_a_client_root_goes_to_the_realm_backlog(self):
         memory = self._project(self.slug("mnt"), self.tmp / "plain" / "repo")

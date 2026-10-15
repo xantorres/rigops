@@ -63,7 +63,7 @@ def main() -> int:
     )
     # A scheduled run must fail loudly on partial errors, not report success.
     had_errors = any(r["errors"] for r in report["rules"]) or any(
-        w["status"].startswith("error:") for w in wm_results
+        w["status"].startswith("error:") or w["status"] == "unrouted" for w in wm_results
     )
 
     if args.json:

@@ -101,7 +101,12 @@ def _client_mount(match: Path, transcripts_dir, reg):
 
 
 def _backlog_for(match: Path, transcripts_dir, default: Path, reg):
-    """The backlog for a match; None when it is client-owned and no realm backlog resolves."""
+    """The backlog for a match; None when it is client-owned and no realm backlog resolves.
+
+    Also None when the registry is unreadable: ownership cannot be judged.
+    """
+    if reg is None:
+        return None
     realm = rigops_realm.find(_owner(match, transcripts_dir), reg)
     client = realm is not None
     if not client:
