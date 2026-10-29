@@ -18,9 +18,13 @@ def _write_line(path: Path, obj: dict) -> None:
         fh.write(json.dumps(obj) + "\n")
 
 
-def _turn(msg_id: str, ts: str, session: str, model: str, input_tokens: int, tools=None) -> dict:
+def _turn(
+    msg_id: str, ts: str, session: str, model: str, input_tokens: int, tools=None,
+    entrypoint=None,
+) -> dict:
     return {
         "type": "assistant",
+        **({"entrypoint": entrypoint} if entrypoint else {}),
         "timestamp": ts,
         "sessionId": session,
         "message": {
@@ -166,6 +170,43 @@ class ProjectDirAndGroupTests(unittest.TestCase):
             one = root / "-Users-alice-app--claude-worktrees-blue"
             self.assertEqual(self._groups(["--dir", str(one), "--by", "group"], env),
                              {"app": (1200.0, 2)})
+
+
+class SurfaceAndDayTests(unittest.TestCase):
+    def test_by_surface_and_day_with_cost_split(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "transcripts"
+            _write_line(root / "proj-a" / "s.jsonl", _turn(
+                "t1", "2026-08-11T12:00:00Z", "sess-1", "m", 1000, entrypoint="claude-desktop",
+            ))
+            _write_line(root / "proj-a" / "s.jsonl", _turn(
+                "t2", "2026-08-12T12:00:00Z", "sess-1", "m", 1000,
+            ))
+            _write_line(root / "proj-b" / "s.jsonl", _turn(
+                "t3", "2026-08-12T12:00:00Z", "sess-2", "m", 3000, entrypoint="cli",
+            ))
+            _write_line(root / "proj-c" / "s.jsonl", _turn(
+                "t4", "2026-08-12T12:00:00Z", "sess-3", "m", 500,
+            ))
+            env = dict(os.environ, TZ="UTC")
+            out = _run_eit(
+                ["--since", "-3650d", "--dir", str(root), "--json", "--by", "surface"], env
+            )
+            self.assertEqual(out.returncode, 0, out.stderr)
+            payload = json.loads(out.stdout)
+            groups = {g["key"]: g for g in payload["top_groups"]}
+            # The tag is per file: t2 inherits t1's, proj-c has none.
+            self.assertEqual(groups["desktop"]["turns"], 2)
+            self.assertEqual(groups["cli"]["cost"], 3005.0)
+            self.assertEqual(groups["unknown"]["turns"], 1)
+            self.assertEqual(payload["cost"], 5520.0)
+            self.assertAlmostEqual(payload["cost_pct"]["output"], 20 / 5520 * 100)
+
+            by_day = _run_eit(
+                ["--since", "-3650d", "--dir", str(root), "--json", "--by", "day"], env
+            )
+            days = [g["key"] for g in json.loads(by_day.stdout)["top_groups"]]
+            self.assertEqual(days, ["2026-08-11", "2026-08-12"])
 
 
 class DirValidationTests(unittest.TestCase):

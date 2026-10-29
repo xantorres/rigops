@@ -19,18 +19,7 @@ SHAPE_TYPE = "api-request-shape"
 BUILTIN = "builtin"
 
 
-def surface(entrypoint) -> str:
-    """desktop, cli or headless from the harness's entrypoint tag; anything else as-is."""
-    if not isinstance(entrypoint, str) or not entrypoint:
-        return "unknown"
-    tag = entrypoint.lower()
-    if "desktop" in tag:
-        return "desktop"
-    if tag.startswith("sdk"):
-        return "headless"
-    if "cli" in tag:
-        return "cli"
-    return tag
+surface = transcripts.surface
 
 
 def tool_group(name: str) -> str:

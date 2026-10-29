@@ -16,7 +16,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from rigops import levers, state  # noqa: E402
+from rigops import cost, levers, state  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LEDGER_SCRIPT = REPO_ROOT / "libexec" / "rigops-ledger"
@@ -407,6 +407,52 @@ TIER3_CASES = [
         0,
     ),
 ]
+
+
+def _usage_turn(surface, cache_read=0, cache_creation=0, output=0, cache_write_1h=0):
+    return {"surface": surface, "input": 0, "cache_read": cache_read,
+            "cache_creation": cache_creation, "cache_write_1h": cache_write_1h,
+            "output": output}
+
+
+class CostBySurfaceTests(unittest.TestCase):
+    def test_shares_and_split(self):
+        turns = [
+            _usage_turn("desktop", cache_read=6000, output=40),
+            _usage_turn("desktop", cache_creation=160),
+            _usage_turn("cli", output=20),
+        ]
+        out = cost.by_surface(turns)
+        self.assertEqual(list(out), ["desktop", "cli"])
+        self.assertEqual(out["desktop"]["pct"], 90.9)
+        self.assertEqual(out["desktop"]["cache_read_pct"], 60.0)
+        self.assertEqual(out["desktop"]["cache_write_pct"], 20.0)
+        self.assertEqual(out["cli"]["output_pct"], 100.0)
+
+    def test_one_hour_cache_writes_cost_2x(self):
+        mixed = _usage_turn("desktop", cache_creation=100, cache_write_1h=40)
+        split = cost.split([mixed])
+        self.assertEqual(split["cache_write"], 60 * 1.25 + 40 * 2.0)
+        over = _usage_turn("desktop", cache_creation=10, cache_write_1h=50)
+        capped = cost.split([over])
+        self.assertEqual(capped["cache_write"], 20.0)
+
+    def test_summary_line_shows_surfaces_and_caveman(self):
+        row = {
+            "date": "2026-08-15", "turns": 1, "sessions": 1,
+            "cost_by_surface": {
+                "desktop": {"pct": 99.5, "cache_read_pct": 60.0,
+                                   "cache_write_pct": 25.0, "output_pct": 15.0,
+                                   "input_pct": 0.0},
+                "cli": {"pct": 0.5, "cache_read_pct": 0.0, "cache_write_pct": 0.0,
+                        "output_pct": 100.0, "input_pct": 0.0},
+            },
+            "sources": {"caveman": {"requests": 12, "saved_tokens": 3400}},
+        }
+        line = levers.summary_line(row, None, None, {})
+        self.assertIn("| desktop 99.5% cost (read 60.0% write 25.0% out 15.0%)", line)
+        self.assertNotIn("| cli ", line)
+        self.assertIn("| caveman proxy 12 req saved 3400 tok (est)", line)
 
 
 class Tier3BreachSessionsTests(unittest.TestCase):

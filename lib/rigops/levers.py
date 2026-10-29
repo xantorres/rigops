@@ -10,8 +10,8 @@ from collections import defaultdict
 from pathlib import Path
 
 from rigops import config as rigops_config
-from rigops import fmt, modelmix, rebuilds, starts, transcripts
-from rigops.sources import ccusage, command, rtk
+from rigops import cost, fmt, modelmix, rebuilds, starts, transcripts
+from rigops.sources import caveman, ccusage, command, rtk
 
 WINDOW_DAYS = 7
 SMOOTH_DAYS = 30
@@ -120,36 +120,27 @@ def fixed_tax_bytes(cfg=None) -> int | None:
     return sum(size for _, size in entries) if entries else None
 
 
+BUILTIN_SOURCES = {"rtk": (rtk, 20), "ccusage": (ccusage, 60), "caveman": (caveman, 20)}
+
+
 def source_annotations(cfg, since: dt.datetime, until: dt.datetime) -> dict:
     """External-tool annotations for one ledger row. probe() gates each
     built-in adapter so an absent tool never spawns a subprocess."""
-    rtk_cfg = rigops_config.get(cfg, "sources.rtk", {}) or {}
-    rtk_cfg = rtk_cfg if isinstance(rtk_cfg, dict) else {}
-    ccusage_cfg = rigops_config.get(cfg, "sources.ccusage", {}) or {}
-    ccusage_cfg = ccusage_cfg if isinstance(ccusage_cfg, dict) else {}
-    out = {
-        "rtk": (
-            rtk.window(
-                since, until, argv=rtk_cfg.get("argv"), timeout_s=rtk_cfg.get("timeout_s", 20)
-            )
-            if rtk.probe() else None
-        ),
-        "ccusage": (
-            ccusage.window(
-                since, until, argv=ccusage_cfg.get("argv"),
-                timeout_s=ccusage_cfg.get("timeout_s", 60),
-            )
-            if ccusage.probe() else None
-        ),
-    }
+    out = {}
+    for name, (adapter, timeout_default) in BUILTIN_SOURCES.items():
+        spec = rigops_config.get(cfg, f"sources.{name}", {}) or {}
+        spec = spec if isinstance(spec, dict) else {}
+        timeout = spec.get("timeout_s", timeout_default)
+        out[name] = (
+            adapter.window(since, until, argv=spec.get("argv"), timeout_s=timeout)
+            if adapter.probe() else None
+        )
     custom_specs = rigops_config.get(cfg, "sources.custom", []) or []
-    # rtk/ccusage are reserved for the built-in adapters above; a custom
-    # entry reusing one of those names would overwrite the built-in shape
-    # and crash downstream consumers (e.g. summary_line's saved_pct/cost_usd
-    # reads).
+    # A custom entry reusing a built-in name would replace its shape and crash
+    # summary_line's saved_pct/cost_usd reads.
     custom_specs = [
         spec for spec in custom_specs
-        if not (isinstance(spec, dict) and spec.get("name") in ("rtk", "ccusage"))
+        if not (isinstance(spec, dict) and spec.get("name") in BUILTIN_SOURCES)
     ]
     out.update(command.custom_annotations(custom_specs))
     return out
@@ -258,6 +249,7 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
     row["tool_err_per_100"] = (
         round(fr["tool_errors"] / len(win_main) * 100, 1) if win_main else None
     )
+    row["cost_by_surface"] = cost.by_surface(win)
     row["fixed_tax_b"] = fixed_tax_bytes(cfg)
     row.update(starts.ledger_fields(starts.collect_starts(since, until, transcripts_dir)))
     row.update(rebuilds.ledger_fields(*rebuilds.collect(since, until, transcripts_dir)))
@@ -391,6 +383,14 @@ def summary_line(row: dict, prev: dict | None, base: dict | None, watch_projects
     ccusage_src = sources.get("ccusage")
     if isinstance(ccusage_src, dict) and ccusage_src.get("cost_usd") is not None:
         parts.append(f"| spend ${ccusage_src.get('cost_usd')} (ccusage)")
+    for surface, c in (row.get("cost_by_surface") or {}).items():
+        if (c.get("pct") or 0) >= 1:
+            parts.append(f"| {surface} {c['pct']}% cost (read {c.get('cache_read_pct')}%"
+                         f" write {c.get('cache_write_pct')}% out {c.get('output_pct')}%)")
+    cav = sources.get("caveman")
+    if isinstance(cav, dict):
+        parts.append(f"| caveman proxy {cav.get('requests')} req"
+                     f" saved {cav.get('saved_tokens')} tok (est)")
     parts.append(f"| turns {row.get('turns')} sessions {row.get('sessions')}")
     parts.append(
         f"| denials {format_cell('denials', row.get('denials'))}"

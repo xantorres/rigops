@@ -149,6 +149,20 @@ def ctx(turn: dict) -> float:
     return turn["input"] + turn["cache_creation"] + turn["cache_read"]
 
 
+def surface(entrypoint) -> str:
+    """desktop, cli or headless from the harness's entrypoint tag; anything else as-is."""
+    if not isinstance(entrypoint, str) or not entrypoint:
+        return "unknown"
+    tag = entrypoint.lower()
+    if "desktop" in tag:
+        return "desktop"
+    if tag.startswith("sdk"):
+        return "headless"
+    if "cli" in tag:
+        return "cli"
+    return tag
+
+
 def collect_turns(since, until, transcripts_dir=None) -> list[dict]:
     """Collect one row per assistant turn from every transcript under transcripts_dir.
 
@@ -165,6 +179,7 @@ def collect_turns(since, until, transcripts_dir=None) -> list[dict]:
         proj = project_label(path, root)
         entries = {}
         none_key = 0
+        entrypoint = None
         try:
             fh = open(path)
         except OSError:
@@ -178,6 +193,7 @@ def collect_turns(since, until, transcripts_dir=None) -> list[dict]:
                     obj = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                entrypoint = entrypoint or obj.get("entrypoint")
                 if obj.get("type") != "assistant":
                     continue
                 message = obj.get("message") or {}
@@ -237,8 +253,11 @@ def collect_turns(since, until, transcripts_dir=None) -> list[dict]:
                     "project": entry["project"],
                     "session": entry["session"],
                     "model": entry["model"],
+                    "surface": surface(entrypoint),
                     "input": usage.get("input_tokens") or 0,
                     "cache_creation": usage.get("cache_creation_input_tokens") or 0,
+                    "cache_write_1h": (usage.get("cache_creation") or {})
+                    .get("ephemeral_1h_input_tokens") or 0,
                     "cache_read": usage.get("cache_read_input_tokens") or 0,
                     "output": usage.get("output_tokens") or 0,
                     "tools": entry["tools"],

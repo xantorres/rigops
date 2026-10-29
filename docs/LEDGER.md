@@ -86,10 +86,12 @@ Ad hoc usage report, independent of the ledger (no row is written).
 - `--since` - ISO date/time, `today`, or `-Nd` (default `-7d`).
 - `--until` - ISO date/time.
 - `--json`.
-- `--by {project,model,session,group}` - grouping for the top-N breakdown (default `project`). `group` maps each transcript path onto the `ledger.watch_projects` substrings, first match wins, and puts the rest under `other`.
+- `--by {project,model,session,group,surface,day}` - grouping for the top-N breakdown (default `project`). `group` maps each transcript path onto the `ledger.watch_projects` substrings, first match wins, and puts the rest under `other`. `surface` is where the session ran (`desktop`, `cli`, `headless`), from the entrypoint tag its transcript records, the same mapping `rigops tax --starts` uses. `day` lists the last N local days in order.
 - `--top N` - how many groups to show (default `10`).
 - `--dir PATH` - override `transcripts_dir` for this run, either a transcripts root or one project directory.
 - `--rebuilds` - cache rebuilds instead of the usage report: main-thread turns where at least 10k tokens of the previous turn's context (input, cache creation and cache read) came back uncached and under half of it was read. Each is classed `compaction` (a compact boundary sat between the turns), `quick` (within 5 minutes of the previous turn, so the short cache lifetime should still hold: a prefix change such as a model, tool-list or system-prompt switch), `idle` (more than an hour later, past the long lifetime) or `other`. Per class: turns, share of main-thread EIT, median gap, how many changed model, harness version or request shape, and the entry types most often found between the two turns. `--top N` lists the costliest rebuilds.
+
+Every group, and the window as a whole, also reports `cost`: input-equivalent tokens at list-price ratios, with cache reads at 0.1x, cache writes at 1.25x (5-minute lifetime) or 2x (1-hour lifetime) and output at 5x, split by usage class (`read`, `write`, `out`, `in`). EIT itself is unchanged.
 
 Each ledger row records `rebuild_eit_pct` (all rebuild turns' share of main-thread EIT) and `rebuild_<class>_eit_pct` per class, and a built-in doctor lever watches the total.
 
@@ -106,7 +108,9 @@ Each ledger row also records `start_tools` and `start_tool_chars`: medians over 
 
 ## `sources` annotations
 
-A row's `sources` object (`rtk`, `ccusage`, and any `sources.custom` entries) is written to `ledger.jsonl` only - it never becomes a column in `ledger.md`. See [CONFIG.md](CONFIG.md#sources) for how each adapter is gated and what it contains. `ccusage`'s contribution is a context annotation; spend accounting stays `ccusage`'s own job.
+A row's `sources` object (`rtk`, `ccusage`, `caveman`, and any `sources.custom` entries) is written to `ledger.jsonl` only - it never becomes a column in `ledger.md`. See [CONFIG.md](CONFIG.md#sources) for how each adapter is gated and what it contains. `ccusage`'s contribution is a context annotation; spend accounting stays `ccusage`'s own job.
+
+A row's `cost_by_surface` object holds each surface's share of the window's input-equivalent cost and its split by usage class; the summary line prints every surface at 1% or more, then `caveman proxy N req saved M tok (est)` when `caveman` is on PATH. Only traffic routed through the caveman proxy lands in its stats, and its saved count is its own o200k estimate.
 
 ## Examples
 
@@ -191,6 +195,7 @@ Output tokens total: 426
 Cache hit %: 0.2
 Context mean/p50/p90/max: 52,500 / 1,150 / 156,000 / 310,000
 EIT share from turns >300k ctx: 98.5%
+Cost (input-equivalent, output x5): 316,755  read 0% write 0% out 1% in 99%
 
 Top tool calls:
   Read: 1
@@ -199,8 +204,8 @@ Top tool calls:
   Bash: 1
 
 Top 2 by project (EIT):
-  proj-alpha: EIT=314,000 turns=5
-  proj-beta: EIT=625 turns=1
+  proj-alpha: EIT=314,000 turns=5 cost=315,880 (99.7%)  read 0% write 0% out 1% in 99%
+  proj-beta: EIT=625 turns=1 cost=875 (0.3%)  read 0% write 14% out 29% in 57%
 ```
 
 ## The ops loop

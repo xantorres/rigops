@@ -38,6 +38,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - eit: `rigops eit --by group` splits EIT over the `ledger.watch_projects`
   groups, with unmatched turns under `other`.
 
+- eit: `rigops eit --by surface` splits usage over desktop, cli and headless
+  sessions, `--by day` lists the last N local days in order, and every group
+  reports an input-equivalent cost split into cache reads, cache writes,
+  output and input, with output at 5x and 1-hour cache writes at 2x. Ledger
+  rows record `cost_by_surface` and the summary line prints each surface at
+  1% or more.
+- ledger: a built-in `caveman` source records proxy requests and caveman's own
+  saved-token estimate, shown on the summary line when `caveman` is on PATH.
+
 ### Fixed
 
 - eit: `--dir` naming one project directory read only its subagent files and

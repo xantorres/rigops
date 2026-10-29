@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import config as rigops_config  # noqa: E402
+from rigops import cost  # noqa: E402
 from rigops import fmt  # noqa: E402
 from rigops import rebuilds  # noqa: E402
 from rigops import transcripts  # noqa: E402
@@ -20,6 +21,15 @@ from rigops import transcripts  # noqa: E402
 def group_of(path: str, groups: dict, transcripts_dir) -> str:
     rel = transcripts.relative_path(path, transcripts_dir)
     return next((name for name, sub in groups.items() if sub and sub in rel), "other")
+
+
+def _cost(turns) -> dict:
+    split = cost.split(turns)
+    total = sum(split.values())
+    return {
+        "cost": total,
+        "cost_pct": {k: (v / total * 100) if total else 0.0 for k, v in split.items()},
+    }
 
 
 def build_report(turns, by, top_n, groups=None, transcripts_dir=None) -> dict:
@@ -62,15 +72,23 @@ def build_report(turns, by, top_n, groups=None, transcripts_dir=None) -> dict:
         "model": lambda t: t["model"],
         "session": lambda t: t["session"],
         "group": lambda t: group_of(t["path"], groups or {}, transcripts_dir),
+        "surface": lambda t: t["surface"],
+        "day": lambda t: t["ts"].astimezone().date().isoformat(),
     }[by]
     group_eit = defaultdict(float)
-    group_turns = defaultdict(int)
+    group_members = defaultdict(list)
     for t, e in zip(turns, eits):
         k = group_key_fn(t)
         group_eit[k] += e
-        group_turns[k] += 1
-    top_groups = sorted(group_eit.items(), key=lambda kv: kv[1], reverse=True)[:top_n]
-    top_groups = [{"key": k, "eit": v, "turns": group_turns[k]} for k, v in top_groups]
+        group_members[k].append(t)
+    if by == "day":
+        top_groups = sorted(group_eit.items())[-top_n:]
+    else:
+        top_groups = sorted(group_eit.items(), key=lambda kv: kv[1], reverse=True)[:top_n]
+    top_groups = [
+        {"key": k, "eit": v, "turns": len(group_members[k]), **_cost(group_members[k])}
+        for k, v in top_groups
+    ]
 
     return {
         "turns": n,
@@ -84,10 +102,19 @@ def build_report(turns, by, top_n, groups=None, transcripts_dir=None) -> dict:
         "ctx_max": max_ctx,
         "eit_share_over_300k_pct": share_over_300k,
         "top_tools": top_tools,
+        **_cost(turns),
         "by": by,
         "top_groups": top_groups,
         "histogram": histogram,
     }
+
+
+def _split_str(r) -> str:
+    p = r["cost_pct"]
+    return (
+        f"read {p['cache_read']:.0f}% write {p['cache_write']:.0f}%"
+        f" out {p['output']:.0f}% in {p['input']:.0f}%"
+    )
 
 
 def print_human(r) -> None:
@@ -103,6 +130,7 @@ def print_human(r) -> None:
         f"{r['ctx_mean']:,.0f} / {r['ctx_p50']:,.0f} / {r['ctx_p90']:,.0f} / {r['ctx_max']:,.0f}"
     )
     out.append(f"EIT share from turns >300k ctx: {r['eit_share_over_300k_pct']:.1f}%")
+    out.append(f"Cost (input-equivalent, output x5): {r['cost']:,.0f}  {_split_str(r)}")
     out.append("")
     out.append("Top tool calls:")
     for name, count in r["top_tools"]:
@@ -110,7 +138,11 @@ def print_human(r) -> None:
     out.append("")
     out.append(f"Top {len(r['top_groups'])} by {r['by']} (EIT):")
     for g in r["top_groups"]:
-        out.append(f"  {g['key']}: EIT={g['eit']:,.0f} turns={g['turns']:,}")
+        out.append(
+            f"  {g['key']}: EIT={g['eit']:,.0f} turns={g['turns']:,}"
+            f" cost={g['cost']:,.0f} ({g['cost'] / r['cost'] * 100 if r['cost'] else 0:.1f}%)"
+            f"  {_split_str(g)}"
+        )
     print("\n".join(out))
 
 
@@ -143,9 +175,10 @@ def main() -> int:
     parser.add_argument("--since", default="-7d", help="ISO date/time, 'today', or '-Nd'")
     parser.add_argument("--until", default=None, help="ISO date/time")
     parser.add_argument("--json", action="store_true")
-    parser.add_argument("--by", choices=["project", "model", "session", "group"],
+    parser.add_argument("--by", choices=["project", "model", "session", "group", "surface", "day"],
                         default="project",
-                        help="group: ledger.watch_projects substrings, unmatched turns as other")
+                        help="group: ledger.watch_projects substrings, unmatched turns as other; "
+                             "surface: desktop, cli or headless; day: last N local days in order")
     parser.add_argument("--top", type=int, default=10)
     parser.add_argument(
         "--rebuilds", action="store_true",

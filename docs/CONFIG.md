@@ -234,7 +234,8 @@ External CLIs mined for ledger row annotations, stored under `row.sources` in `l
 
 - `rtk` (default `{"argv": ["rtk", "gain", "--format", "json"], "timeout_s": 20}`) - probe-gated: `rtk.probe()` is just `shutil.which("rtk")`; if the binary isn't on PATH, the annotation is `null` and no subprocess is ever spawned.
 - `ccusage` (default `{"argv": ["ccusage", "daily", "--json"], "timeout_s": 60}`) - same probe-gating. Context annotation only; spend accounting stays `ccusage`'s job, rigops never re-counts it.
-- `custom` (`array`, default `[]`) - each `{name, argv, timeout_s}` runs an arbitrary JSON-emitting CLI, stored under its own `name`. `timeout_s` defaults to `30` if omitted. The names `rtk` and `ccusage` are reserved for the built-in adapters above; a custom entry reusing either name is dropped before it runs. **Every entry here runs on every `rigops ledger write`, including `--dry-run`** (though not on `--show`, which never computes a row) - give them read-only commands.
+- `caveman` (default `{"argv": ["caveman", "stats", "--json", "--days", "7"], "timeout_s": 20}`) - same probe-gating. A snapshot of the trailing 7 UTC days ending now, so a backdated `--at` row still reads the current week.
+- `custom` (`array`, default `[]`) - each `{name, argv, timeout_s}` runs an arbitrary JSON-emitting CLI, stored under its own `name`. `timeout_s` defaults to `30` if omitted. The names `rtk`, `ccusage` and `caveman` are reserved for the built-in adapters above; a custom entry reusing one is dropped before it runs. **Every entry here runs on every `rigops ledger write`, including `--dry-run`** (though not on `--show`, which never computes a row) - give them read-only commands.
 
 ```json
 {
