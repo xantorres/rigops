@@ -61,6 +61,7 @@ AGENT_MD = """---
 name: demo
 purpose: does the thing, quite a useful thing to have around
 tier: sonnet
+effort: low
 tools: [read, shell]
 memory: project
 voice: caveman
@@ -153,12 +154,14 @@ class ClaudeAgentTests(RenderTestCase):
         text = rendered.files[self.home / ".claude" / "agents" / "demo.md"].decode()
         self.assertIn("tools: Read, Bash", text)
         self.assertIn("model: sonnet", text)
+        self.assertIn("effort: low", text)
         self.assertIn("memory: project", text)
 
     def test_inherit_tier_and_none_memory_are_omitted(self):
         rendered = render.render_claude(self.source, self.home)
         text = rendered.files[self.home / ".claude" / "agents" / "plain.md"].decode()
         self.assertNotIn("model:", text)
+        self.assertNotIn("effort:", text)
         self.assertNotIn("memory:", text)
 
     def test_agent_without_tool_classes_omits_the_tools_line(self):

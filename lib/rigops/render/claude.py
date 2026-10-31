@@ -61,6 +61,9 @@ def _render_agent(agent_file: Path, home: Path) -> bytes:
     tier = fields.get("tier", "inherit")
     if tier != "inherit":
         lines.append(f"model: {tier}")
+    effort = fields.get("effort")
+    if effort:
+        lines.append(f"effort: {effort}")
     memory = fields.get("memory", "none")
     if memory != "none":
         lines.append(f"memory: {memory}")
