@@ -19,7 +19,8 @@ def registry():
     from rigops.retrieval import roots
 
     try:
-        return roots.load(os.environ.get("REALM_REGISTRY") or roots.DEFAULT_REGISTRY)
+        path = roots._expand(os.environ.get("REALM_REGISTRY") or roots.DEFAULT_REGISTRY)
+        return roots.load(path) if path.is_file() else None
     except (OSError, ValueError, AttributeError):
         return None
 
@@ -28,10 +29,24 @@ def _cut(path: str) -> str:
     return GLOB_CUT.sub("", os.path.expanduser(path))
 
 
+def _trustworthy(path: str) -> bool:
+    """At most one trailing `/*`, and a cut that is neither $HOME nor an ancestor of it."""
+    expanded = os.path.expanduser(path)
+    base = expanded[:-2] if expanded.endswith("/*") else expanded
+    cut = GLOB_CUT.sub("", expanded)
+    if cut != base:
+        return False
+    if not os.path.isabs(cut):
+        return True
+    home = os.path.realpath(os.path.expanduser("~"))
+    real = os.path.realpath(cut)
+    return real != home and not home.startswith(real.rstrip("/") + "/")
+
+
 def mounts(reg) -> list[str]:
-    """Where a realm link may sit: each non-personal root's path, cut at the first glob char."""
+    """Where a realm link may sit: each non-personal root's path, cut at the trailing glob."""
     cuts = (_cut(root.path) for root in reg.roots
-            if root.realm != "personal" and root.path)
+            if root.realm != "personal" and root.path and _trustworthy(root.path))
     return [cut for cut in cuts if cut]
 
 

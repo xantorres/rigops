@@ -54,7 +54,10 @@ def _session_cwd(project_dir: Path):
         if newest is None:
             return None
         with newest.open(encoding="utf-8") as fh:
-            for _, line in zip(range(CWD_SCAN_LINES), fh):
+            for _ in range(CWD_SCAN_LINES):
+                line = fh.readline(1 << 20)
+                if not line:
+                    break
                 try:
                     cwd = json.loads(line).get("cwd")
                 except (ValueError, AttributeError):
@@ -95,7 +98,7 @@ def _client_mount(match: Path, transcripts_dir, reg):
     best = None
     for mount in rigops_realm.mounts(reg):
         slug = rigops_roots.encode_project(mount)
-        if project.startswith(slug) and (best is None or len(slug) > len(best[0])):
+        if (project == slug or project.startswith(slug + "-")) and (best is None or len(slug) > len(best[0])):
             best = (slug, mount)
     return best[1] if best else None
 
@@ -167,8 +170,11 @@ def check_watermarks(watermarks: list, backlog_path, areas: list, apply: bool,
             if not tripped:
                 status = "ok"
             elif not apply:
-                target = _backlog_for(d, transcripts_dir, backlog_p, reg)
-                status = "would-append" if target is not None else "unrouted"
+                try:
+                    target = _backlog_for(d, transcripts_dir, backlog_p, reg)
+                    status = "would-append" if target is not None else "unrouted"
+                except OSError as exc:
+                    status = f"error: {exc}"
             else:
                 # One net around the whole append path: a failure here must
                 # degrade to a reported status, never abort a run whose

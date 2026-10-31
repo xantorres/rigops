@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import unittest
+import unittest.mock
 from pathlib import Path
 from unittest import mock
 
@@ -870,12 +871,41 @@ class WatermarkRealmRoutingTests(unittest.TestCase):
             self.assertIsNone(results[0]["backlog"])
         self.assertFalse(self.default_backlog.exists())
 
-    def test_missing_registry_keeps_the_configured_backlog(self):
+    def test_missing_registry_leaves_a_personal_dir_unrouted(self):
         self._project("p-personal", self.tmp / "plain" / "repo")
         self.registry_file.unlink()
         results = self._check()
-        self.assertEqual(results[0]["status"], "appended")
+        self.assertEqual(results[0]["status"], "unrouted")
+        self.assertIsNone(results[0]["backlog"])
+        self.assertFalse(self.default_backlog.exists())
+
+    def test_missing_registry_does_not_route_a_client_slug_to_the_default_backlog(self):
+        self._project(self.slug("mnt"), None)
+        self.registry_file.unlink()
+        for apply in (True, False):
+            self.assertEqual(self._check(apply=apply)[0]["status"], "unrouted")
+        self.assertFalse(self.default_backlog.exists())
+
+    def test_slug_prefix_without_a_dash_boundary_is_not_a_client_dir(self):
+        slug = roots.encode_project(self.tmp / "mnt")
+        self._project(f"{slug}ish-repo", self.tmp / "plain" / "repo")
+        results = self._check()
         self.assertEqual(results[0]["backlog"], str(self.default_backlog))
+
+    def test_dry_run_reports_a_backlog_lookup_failure_as_a_status(self):
+        self._project("p-personal", self.tmp / "plain" / "repo")
+        with mock.patch.object(watermarks, "_backlog_for",
+                               side_effect=PermissionError("denied")):
+            results = self._check(apply=False)
+        self.assertTrue(results[0]["status"].startswith("error:"))
+
+    def test_session_cwd_read_is_bounded_per_line(self):
+        proj = self.transcripts / "p-big"
+        proj.mkdir(parents=True)
+        (proj / "s.jsonl").write_text(
+            "x" * (3 << 20) + "\n" + json.dumps({"cwd": "/a"}) + "\n")
+        with unittest.mock.patch.object(watermarks, "CWD_SCAN_LINES", 2):
+            self.assertIsNone(watermarks._session_cwd(proj))
 
     def _run_script(self) -> subprocess.CompletedProcess:
         cfg = self.tmp / "config.json"

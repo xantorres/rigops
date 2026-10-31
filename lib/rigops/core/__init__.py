@@ -19,6 +19,7 @@ from rigops import config as _config
 from rigops import realm as _realm
 from rigops import state as _state
 from rigops import transcripts as _transcripts
+from rigops.render import frontmatter as _frontmatter
 
 HOME = Path(os.path.expanduser("~"))
 CLAUDE_DIR = HOME / ".claude"
@@ -71,6 +72,10 @@ def find_transcripts(transcripts_dir=None) -> list:
 
 def parse_ts(value):
     return _transcripts.parse_ts(value)
+
+
+def parse_frontmatter(text: str) -> tuple:
+    return _frontmatter.parse(text)
 
 
 def run(argv, timeout: int = 10) -> str:

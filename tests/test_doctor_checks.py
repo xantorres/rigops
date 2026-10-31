@@ -1125,6 +1125,42 @@ class CheckAgentsTests(unittest.TestCase):
         ))
         self.assertEqual(findings, [])
 
+    def test_tools_classes_are_matched_case_insensitively(self):
+        findings = self._run(liar=(
+            "---\nname: liar\npurpose: Triage.\ntools: [Read, EDIT]\n---\nRead-only.\n"
+        ))
+        self.assertEqual(len(findings), 1)
+
+    def test_scope_word_must_sit_directly_before_read_only(self):
+        findings = self._run(liar=(
+            "---\nname: liar\npurpose: Triage.\ntools: [read, edit]\n---\n"
+            "Uses git, shell and is read-only.\n"
+        ))
+        self.assertEqual(len(findings), 1)
+
+    def test_do_not_edit_and_never_write_edit_are_claims(self):
+        for prose in ("Do not edit anything.", "Do not write files.", "Never write/edit."):
+            with self.subTest(prose=prose):
+                findings = self._run(liar=(
+                    f"---\nname: liar\npurpose: Triage.\ntools: [read, edit]\n---\n{prose}\n"
+                ))
+                self.assertEqual(len(findings), 1)
+
+    def test_never_edit_scoped_to_a_location_is_not_a_claim(self):
+        for prose in ("Never edit files outside src/.", "Do not edit anything except docs."):
+            with self.subTest(prose=prose):
+                findings = self._run(worker=(
+                    f"---\nname: worker\npurpose: Edits.\ntools: [read, edit]\n---\n{prose}\n"
+                ))
+                self.assertEqual(findings, [])
+
+    def test_nested_parentheses_are_fully_stripped(self):
+        findings = self._run(worker=(
+            "---\nname: worker\npurpose: Edits.\ntools: [read, edit]\n---\n"
+            "Edits files (the triage agent (which is read-only) never edits).\n"
+        ))
+        self.assertEqual(findings, [])
+
     def test_missing_agents_dir_yields_no_findings(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(check_agents.run({"render": {"source": tmp}}), [])

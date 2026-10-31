@@ -197,6 +197,24 @@ class FromRegistryTests(unittest.TestCase):
         reg = registry_of(self.tmp, [{"path": str(self.mnt), "realm": "personal"}])
         self.assertEqual(realm.from_registry(reg), [])
 
+    def test_root_cut_at_home_or_above_is_not_trusted(self):
+        with mock.patch.dict(os.environ, {"HOME": str(self.mnt)}):
+            for path in (str(self.mnt), f"{self.mnt}/*", str(self.tmp), f"{self.tmp}/*"):
+                with self.subTest(path=path):
+                    reg = registry_of(self.tmp, [{"path": path, "realm": "client"}])
+                    self.assertEqual(realm.mounts(reg), [])
+
+    def test_root_below_home_with_a_trailing_glob_is_trusted(self):
+        with mock.patch.dict(os.environ, {"HOME": str(self.tmp)}):
+            reg = registry_of(self.tmp, [{"path": f"{self.mnt}/*", "realm": "client"}])
+            self.assertEqual(realm.mounts(reg), [str(self.mnt)])
+
+    def test_root_with_a_non_trailing_glob_is_not_trusted(self):
+        for path in (f"{self.tmp}/*/mnt", f"{self.mnt}/**", f"{self.mnt}/re*"):
+            with self.subTest(path=path):
+                reg = registry_of(self.tmp, [{"path": path, "realm": "client"}])
+                self.assertEqual(realm.mounts(reg), [])
+
     def test_glob_path_is_cut_at_the_first_glob_char(self):
         reg = registry_of(self.tmp, [{"path": f"{self.mnt}/*", "realm": "client"}])
         self.assertEqual(realm.from_registry(reg), [self.realm_dir])
@@ -305,6 +323,14 @@ class ProbeLoadMergeTests(unittest.TestCase):
         merged = [{"path": "x", "probes": 0, "negatives": 0}]
         spec = {"probes": [], "negatives": [], "merged": merged}
         self.assertEqual(probe.run(self.registry, spec)["merged"], spec["merged"])
+
+    def test_base_suite_alone_may_repeat_ids(self):
+        data = json.loads(self.default.read_text())
+        data["probes"].append(dict(data["probes"][0]))
+        self.default.write_text(json.dumps(data))
+        (self.realm_dir / "eval" / "retrieval-probes.json").unlink()
+        spec = self._load()
+        self.assertEqual([p["id"] for p in spec["probes"]], [1, 1])
 
     def test_missing_registry_is_an_error(self):
         message = self._exit_message(registry=roots.load(self.tmp / "absent.json"))

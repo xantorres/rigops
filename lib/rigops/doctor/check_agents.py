@@ -18,41 +18,28 @@ AREA = "docs"
 CHECK = "agents"
 
 CLAIM_RE = re.compile(
-    r"\bread-only\b|\bnever\s+edits?\b|\bno\s+edit\s+tool\b"
-    r"|\b(?:does\s+not|doesn't|must\s+not|cannot|can't)\s+edit\b",
+    r"\bread-only\b|\bnever\s+(?:edits?|writes?)(?:\s*/\s*(?:edit|write))?\b|\bno\s+edit\s+tool\b"
+    r"|\b(?:does\s+not|doesn't|must\s+not|cannot|can't|do\s+not|don't)\s+(?:edit|write)\b",
     re.IGNORECASE,
 )
+SCOPE_AFTER_RE = re.compile(r"\s+(?:\S+\s+){0,3}?(?:outside|except|in|under)\b", re.IGNORECASE)
 NEGATED_RE = re.compile(r"(?:\bnot|\bisn't|\bnon-?|\bnever|\bno)\s*$", re.IGNORECASE)
 SCOPED_RE = re.compile(
-    r"\b(?:shell|bash|git|gh|sql|database|db|api|mcp|network|access)\b[^.;:]*\bread-only\b",
+    r"\b(?:shell|bash|git|gh|sql|database|db|api|mcp|network|access)\b\W+(?:is\s+)?read-only\b",
     re.IGNORECASE,
 )
-BLOCK_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?", re.DOTALL)
 ASIDE_RE = re.compile(r"\([^()]*\)")
 FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+|\n")
 
 
-def _parse(text: str):
-    """(fields, body) of an agent source; ``tools`` is a list, absent when unset."""
-    match = BLOCK_RE.match(text)
-    if not match:
-        return {}, text
-    fields = {}
-    for line in match.group(1).splitlines():
-        key, sep, value = line.partition(":")
-        if not sep:
-            continue
-        key, value = key.strip(), value.strip()
-        if key == "tools":
-            fields[key] = [v.strip() for v in value.strip("[]").split(",") if v.strip()]
-        else:
-            fields[key] = value
-    return fields, text[match.end():]
-
-
 def _sentences(text: str):
-    text = ASIDE_RE.sub(" ", FENCE_RE.sub(" ", text))
+    text = FENCE_RE.sub(" ", text)
+    while True:
+        stripped = ASIDE_RE.sub(" ", text)
+        if stripped == text:
+            break
+        text = stripped
     return [s for s in SENTENCE_RE.split(text) if s.strip()]
 
 
@@ -61,15 +48,21 @@ def _claims_read_only(text: str) -> bool:
         if SCOPED_RE.search(sentence):
             continue
         for match in CLAIM_RE.finditer(sentence):
-            if not NEGATED_RE.search(sentence[:match.start()]):
-                return True
+            if NEGATED_RE.search(sentence[:match.start()]):
+                continue
+            if "read-only" not in match.group().lower() and SCOPE_AFTER_RE.match(sentence, match.end()):
+                continue
+            return True
     return False
 
 
 def _grants_edit(fields: dict) -> bool:
     if "tools" not in fields:
         return True
-    return "edit" in fields["tools"]
+    tools = fields["tools"]
+    if isinstance(tools, str):
+        tools = tools.split(",")
+    return "edit" in (t.strip().lower() for t in tools)
 
 
 def run(cfg):
@@ -77,7 +70,7 @@ def run(cfg):
     findings = []
     for agent_file in sorted((source / "agents").glob("*.md")):
         try:
-            fields, body = _parse(core.read_text(agent_file))
+            fields, body = core.parse_frontmatter(core.read_text(agent_file))
         except OSError:
             continue
         prose = f"{fields.get('purpose', '')}\n{body}"

@@ -74,10 +74,11 @@ def load(path=None, registry=None) -> dict:
             spec[key] = [*spec.get(key, []), *data.get(key, [])]
         spec["merged"].append({"path": str(extra), "probes": len(data.get("probes", [])),
                                "negatives": len(data.get("negatives", []))})
-    for key in ("probes", "negatives"):
-        dupes = _duplicate_ids(spec.get(key, []))
-        if dupes:
-            raise SystemExit(f"error: duplicate {key} ids across merged suites: {', '.join(dupes)}")
+    if spec["merged"]:
+        for key in ("probes", "negatives"):
+            dupes = _duplicate_ids(spec.get(key, []))
+            if dupes:
+                raise SystemExit(f"error: duplicate {key} ids across merged suites: {', '.join(dupes)}")
     return spec
 
 

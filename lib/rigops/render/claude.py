@@ -35,10 +35,21 @@ def is_engine_generated(path: Path) -> bool:
     return path.name == "tsconfig.json" and (path.parent / MANIFEST_DIR).is_dir()
 
 
-def _tools_line(fields: dict) -> str:
-    classes = fields.get("tools", [])
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+
+
+def _tools_line(fields: dict, name: str = "") -> str:
+    if "tools" not in fields:
+        return ""
+    classes = fields["tools"]
     if isinstance(classes, str):
         classes = [c.strip() for c in classes.split(",") if c.strip()]
+    classes = [c.lower() for c in classes]
+    if not classes:
+        raise ValueError(f"agent {name}: `tools` is empty; omit the field to grant every tool")
+    unknown = [c for c in classes if c not in CLASS_MAP]
+    if unknown:
+        raise ValueError(f"agent {name}: unknown `tools` class {', '.join(unknown)}")
     names = []
     for cls in CLASS_ORDER:
         if cls in classes:
@@ -55,14 +66,16 @@ def _render_agent(agent_file: Path, home: Path) -> bytes:
         f"description: {fields.get('purpose', '')}",
     ]
     # An absent tools line grants every tool, which no class list can express.
-    tools = _tools_line(fields)
+    tools = _tools_line(fields, name)
     if tools:
         lines.append(f"tools: {tools}")
     tier = fields.get("tier", "inherit")
     if tier != "inherit":
         lines.append(f"model: {tier}")
     effort = fields.get("effort")
-    if effort:
+    if effort is not None and effort != "inherit":
+        if not isinstance(effort, str) or effort not in EFFORTS:
+            raise ValueError(f"agent {name}: invalid `effort` {effort!r}")
         lines.append(f"effort: {effort}")
     memory = fields.get("memory", "none")
     if memory != "none":
@@ -111,6 +124,8 @@ def render_claude(source: Path, home: Path) -> Rendered:
     workflows_src = source / "workflows"
     if workflows_src.is_dir():
         for workflow in sorted(workflows_src.glob("*.js")):
+            if not workflow.is_file():
+                continue
             files[claude_dir / "workflows" / workflow.name] = workflow.read_bytes()
 
     managed_dirs =[claude_dir / "rules", claude_dir / "agents", claude_dir / "skills"]

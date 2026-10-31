@@ -171,6 +171,37 @@ class ClaudeAgentTests(RenderTestCase):
         self.assertIn("model: sonnet", text)
 
 
+    def _render_with(self, body: str):
+        (self.source / "agents" / "odd.md").write_text(f"---\nname: odd\npurpose: x\n{body}\n---\nB\n")
+        return render.render_claude(self.source, self.home)
+
+    def test_tool_classes_are_case_insensitive(self):
+        rendered = self._render_with("tools: [Read, SHELL]")
+        text = rendered.files[self.home / ".claude" / "agents" / "odd.md"].decode()
+        self.assertIn("tools: Read, Bash", text)
+
+    def test_unknown_tool_class_is_an_error_naming_the_agent(self):
+        with self.assertRaisesRegex(ValueError, "odd.*unknown `tools` class bogus"):
+            self._render_with("tools: [read, bogus]")
+
+    def test_empty_tools_list_is_an_error(self):
+        with self.assertRaisesRegex(ValueError, "odd.*`tools` is empty"):
+            self._render_with("tools: []")
+
+    def test_inherit_effort_is_omitted(self):
+        rendered = self._render_with("effort: inherit")
+        text = rendered.files[self.home / ".claude" / "agents" / "odd.md"].decode()
+        self.assertNotIn("effort:", text)
+
+    def test_unknown_effort_is_an_error(self):
+        with self.assertRaisesRegex(ValueError, "odd.*invalid `effort`"):
+            self._render_with("effort: turbo")
+
+    def test_non_string_effort_is_an_error(self):
+        with self.assertRaisesRegex(ValueError, "invalid `effort`"):
+            self._render_with("effort: [high]")
+
+
 class SkillFileTests(RenderTestCase):
     def test_script_keeps_exec_bit(self):
         rendered = render.render_claude(self.source, self.home)
@@ -185,6 +216,13 @@ class WorkflowTests(RenderTestCase):
         rendered = render.render_claude(self.source, self.home)
         target = self.home / ".claude" / "workflows" / "ship.js"
         self.assertEqual(rendered.files[target], b"export const meta = {}\n")
+
+    def test_a_directory_named_like_a_workflow_is_skipped(self):
+        (self.source / "workflows" / "x.js").mkdir(parents=True)
+        (self.source / "workflows" / "ship.js").write_text("a\n")
+        rendered = render.render_claude(self.source, self.home)
+        names = [t.name for t in rendered.files if t.parent.name == "workflows"]
+        self.assertEqual(names, ["ship.js"])
 
     def test_harness_saved_workflow_survives_a_reapply(self):
         rendered = render.render_all(self.source, self.home)
@@ -228,8 +266,8 @@ class AgentsDocTests(RenderTestCase):
     def test_table_has_a_row_per_agent(self):
         rendered = render.render_agents(self.source, self.home)
         text = rendered.files[self.home / ".claude" / "references" / "agents.md"].decode()
-        self.assertIn("| demo | sonnet | project | caveman |", text)
-        self.assertIn("| plain | inherit | none |", text)
+        self.assertIn("| demo | sonnet | low | project | caveman |", text)
+        self.assertIn("| plain | inherit | inherit | none |", text)
 
 
 class ReposTests(RenderTestCase):

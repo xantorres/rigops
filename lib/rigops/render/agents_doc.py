@@ -16,8 +16,8 @@ HEADER = [
     "Native `Explore` (read-only, skips CLAUDE.md and git status), `Plan` and `general-purpose`",
     "cover most delegation. Repo-scoped reviewers live in each repo's own `.claude/agents/`.",
     "",
-    "| Agent | Tier | Memory | Voice | Purpose |",
-    "|---|---|---|---|---|",
+    "| Agent | Tier | Effort | Memory | Voice | Purpose |",
+    "|---|---|---|---|---|---|",
 ]
 FOOTER = [
     "",
@@ -30,10 +30,10 @@ FOOTER = [
 ]
 
 
-def _row(name: str, tier: str, memory: str, voice: str, purpose: str) -> str:
+def _row(name: str, tier: str, effort: str, memory: str, voice: str, purpose: str) -> str:
     if len(purpose) > 140:
         purpose = purpose[:140] + "..."
-    cells = [name, tier, memory, voice, purpose]
+    cells = [name, tier, effort, memory, voice, purpose]
     cells = [c.replace("|", "/") for c in cells]
     return "| " + " | ".join(cells) + " |"
 
@@ -47,6 +47,7 @@ def render_agents(source: Path, home: Path) -> Rendered:
             entries.append((
                 fields.get("name", agent_file.stem),
                 fields.get("tier", "inherit"),
+                fields.get("effort", "inherit"),
                 fields.get("memory", "none"),
                 fields.get("voice", ""),
                 fields.get("purpose", ""),
