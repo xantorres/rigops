@@ -564,7 +564,8 @@ class EventsJsonlTests(EnvIsolatedTestCase):
         self.assertEqual(len(lines), 1)
         event = json.loads(lines[0])
         self.assertEqual(
-            set(event), {"ts", "jobs_checked", "fail_count", "stale_count", "healed"}
+            set(event),
+            {"ts", "jobs_checked", "fail_count", "stale_count", "healed", "notified"},
         )
         self.assertEqual(event["jobs_checked"], 1)
         self.assertEqual(event["fail_count"], 0)
@@ -612,6 +613,113 @@ class NotifyCommandTests(EnvIsolatedTestCase):
         self.assertEqual(
             [event.get("event") for event in events], [None, "notify command exited 3"]
         )
+
+
+SHARED_LABEL_ITEMS = "".join(
+    FAILING_ITEM.replace("/fake/local.job-failing.plist", "/fake/local.shared.plist").replace(
+        "job-failing", job_id
+    )
+    for job_id in ("job-a", "job-b")
+)
+
+
+class NotifyDedupeTests(EnvIsolatedTestCase):
+    def setUp(self):
+        super().setUp()
+        self.sink = Path(self.tmp) / "sink.txt"
+        (Path(self.tmp) / "config.json").write_text(json.dumps(
+            {"doctor": {"notify_command": f"sh -c 'echo x >> {self.sink}' notify"}}
+        ))
+        self.notified_path = Path(self.tmp) / "state" / "doctor" / "notified.json"
+
+    def _run(self, *items: str, exit_code: int = 1) -> dict:
+        registry_path = _write_registry(self.tmp, *items)
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, None, exit_code)),
+        ):
+            code, out = _run_doctor(["--json", "--registry", str(registry_path)])
+        self.assertEqual(code, 0)
+        return json.loads(out)
+
+    def _sent(self) -> int:
+        return len(self.sink.read_text().splitlines()) if self.sink.exists() else 0
+
+    def test_standing_failure_notifies_once(self):
+        for _ in range(3):
+            self._run(FAILING_ITEM)
+        self.assertEqual(self._sent(), 1)
+
+    def test_new_failure_notifies_on_first_sight(self):
+        other = FAILING_ITEM.replace("job-failing", "job-other").replace(
+            "local.job-failing", "local.job-other"
+        )
+        self._run(FAILING_ITEM)
+        self._run(FAILING_ITEM)
+        self.assertEqual(self._sent(), 1)
+        self._run(FAILING_ITEM, other)
+        self.assertEqual(self._sent(), 2)
+
+    def test_failure_notifies_again_after_24h(self):
+        self._run(FAILING_ITEM)
+        stamps = json.loads(self.notified_path.read_text())
+        self.notified_path.write_text(json.dumps({k: v - 25 * 3600 for k, v in stamps.items()}))
+        self._run(FAILING_ITEM)
+        self.assertEqual(self._sent(), 2)
+
+    def test_recovered_failure_notifies_again_when_it_returns(self):
+        self._run(FAILING_ITEM)
+        self._run(FAILING_ITEM, exit_code=0)
+        self._run(FAILING_ITEM)
+        self.assertEqual(self._sent(), 2)
+
+    def test_event_records_the_notified_keys(self):
+        self._run(FAILING_ITEM)
+        self._run(FAILING_ITEM)
+        events_path = Path(self.tmp) / "state" / "doctor" / "events.jsonl"
+        events = [json.loads(line) for line in events_path.read_text().splitlines()]
+        self.assertEqual(events[0]["notified"], ["job:job-failing:failing"])
+        self.assertEqual(events[1]["notified"], [])
+
+    def test_failed_send_is_retried_next_run(self):
+        (Path(self.tmp) / "config.json").write_text(
+            json.dumps({"doctor": {"notify_command": "sh -c 'exit 3' notify"}})
+        )
+        self._run(FAILING_ITEM)
+        self.assertFalse(self.notified_path.exists())
+        (Path(self.tmp) / "config.json").write_text(json.dumps(
+            {"doctor": {"notify_command": f"sh -c 'echo x >> {self.sink}' notify"}}
+        ))
+        self._run(FAILING_ITEM)
+        self.assertEqual(self._sent(), 1)
+
+    def test_corrupt_notified_file_still_notifies(self):
+        self.notified_path.parent.mkdir(parents=True, exist_ok=True)
+        self.notified_path.write_text("{not json")
+        self._run(FAILING_ITEM)
+        self.assertEqual(self._sent(), 1)
+
+    def test_check_timeout_is_a_warning_and_never_pages(self):
+        result = doctor.run_custom_check(
+            {"name": "slow", "command": "sleep 5", "timeout_s": 0.1}
+        )
+        self.assertEqual(result["status"], "warn")
+        self.assertIn("timed out", result["detail"])
+
+
+class SharedLabelKickTests(EnvIsolatedTestCase):
+    def test_jobs_sharing_a_label_get_one_kick(self):
+        registry_path = _write_registry(self.tmp, SHARED_LABEL_ITEMS)
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, None, 1)),
+            mock.patch.object(launchd, "kickstart", return_value=True) as m_kick,
+        ):
+            _, out = _run_doctor(["--heal", "--json", "--registry", str(registry_path)])
+        m_kick.assert_called_once_with("local.shared")
+        self.assertEqual(len(json.loads(out)["healed"]), 1)
+        stamps = json.loads((Path(self.tmp) / "state" / "doctor" / "heal-stamps.json").read_text())
+        self.assertEqual(set(stamps), {"job-a", "job-b"})
 
 
 class StaleCountTests(EnvIsolatedTestCase):

@@ -32,6 +32,7 @@ CADENCE_QUARTERLY_RE = re.compile(r"quarterly", re.IGNORECASE)
 CADENCE_ONDEMAND_RE = re.compile(r"on-demand|manual|deadline", re.IGNORECASE)
 HEALTH_TRAILING_NOTE_RE = re.compile(r"\s*\([^)]*\)\s*$")
 EVIDENCE_LINE_RE = re.compile(r":\d+$")
+NOTIFY_WINDOW_H = 24
 
 
 def cadence_interval_hours(cadence: str):
@@ -219,7 +220,7 @@ def run_custom_check(check_cfg: dict) -> dict:
         )
         code = out.returncode
     except subprocess.TimeoutExpired:
-        return {"name": name, "status": "fail", "detail": f"timed out after {timeout_s}s",
+        return {"name": name, "status": "warn", "detail": f"timed out after {timeout_s}s",
                 "realm": realm}
     except OSError as exc:
         return {"name": name, "status": "fail", "detail": str(exc), "realm": realm}
@@ -271,6 +272,27 @@ def _notify(command: str, report_path: Path) -> str:
     if proc.returncode != 0:
         return f"notify command exited {proc.returncode}"
     return ""
+
+
+def notify_due(stamps: dict, keys: set, now: float, window_h: float) -> tuple:
+    """Returns (due, stamps'). Due when any key is new or last sent over window_h
+    ago; stamps' keeps only live keys, so a failure that clears and returns is new."""
+    window_s = window_h * 3600
+    due = any(
+        not isinstance(stamps.get(k), (int, float)) or now - stamps[k] >= window_s
+        for k in keys
+    )
+    if not due:
+        return False, {k: stamps[k] for k in keys}
+    return True, {k: now for k in keys}
+
+
+# A kick is not a finding: the failing row it answers already carries the key,
+# and a stale row is a trend to read, so neither pages on its own.
+def _notify_keys(jobs: list, checks: list) -> set:
+    keys = {f"job:{j['id']}:{j['status']}" for j in jobs if j["status"] in ("failing", "hung")}
+    keys |= {f"check:{c['name']}" for c in checks if c["status"] == "fail"}
+    return keys
 
 
 def _is_unjudged(job: dict) -> bool:
@@ -479,6 +501,7 @@ def main(argv=None) -> int:
         jobs.append(job)
 
     heal_log = []
+    kicked_labels = set()
     if args.heal and args.supervisor == "launchd":
         for job in jobs:
             if job["action"] == "kill" and job["pid"]:
@@ -490,7 +513,12 @@ def main(argv=None) -> int:
                     heal_log.append(f"terminated hung job {job['id']} (pid {job['pid']})")
                     _save_json(heal_stamps_path, heal_stamps)
             elif job["action"] == "kickstart" and job["label"]:
-                if launchd.kickstart(job["label"]):
+                if job["label"] in kicked_labels:
+                    # One launchd label runs every job sharing it: a second kick is a double run.
+                    heal_stamps[job["id"]] = now
+                    _save_json(heal_stamps_path, heal_stamps)
+                elif launchd.kickstart(job["label"]):
+                    kicked_labels.add(job["label"])
                     heal_stamps[job["id"]] = now
                     heal_log.append(f"kickstarted {job['id']} ({job['label']})")
                     _save_json(heal_stamps_path, heal_stamps)
@@ -507,23 +535,33 @@ def main(argv=None) -> int:
     # Reported, never paged: a stale row is a trend to read in the events log,
     # not a nightly interruption, so it stays out of the notify predicate.
     stale_count = sum(1 for j in jobs if j["status"] == "stale")
-    checks_failed = any(c["status"] == "fail" for c in checks)
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     report_text = render_report(ts, jobs, checks, heal_log, args.supervisor)
+
+    notify_command = rigops_config.get(cfg, "doctor.notify_command", "")
+    notify_stamps_path = doctor_state_dir / "notified.json"
+    notify_keys = _notify_keys(jobs, checks) if notify_command else set()
+    stamps = _load_json(notify_stamps_path, {})
+    due, stamps = notify_due(
+        stamps if isinstance(stamps, dict) else {}, notify_keys, now, NOTIFY_WINDOW_H,
+    )
 
     state.append_jsonl(events_path, {
         "ts": ts, "jobs_checked": len(jobs), "fail_count": fail_count,
         "stale_count": stale_count, "healed": heal_log,
+        "notified": sorted(notify_keys) if due else [],
     })
 
-    notify_command = rigops_config.get(cfg, "doctor.notify_command", "")
-    if notify_command and (fail_count > 0 or checks_failed or heal_log):
-        doctor_state_dir.mkdir(parents=True, exist_ok=True)
+    notify_error = ""
+    if due:
         report_path = doctor_state_dir / "report-latest.txt"
         report_path.write_text(report_text)
         notify_error = _notify(notify_command, report_path)
         if notify_error:
             state.append_jsonl(events_path, {"ts": ts, "event": notify_error})
+    # A failed send leaves the keys unstamped so the next tick tries again.
+    if notify_command and not notify_error:
+        _save_json(notify_stamps_path, stamps)
 
     # Written every run, gates or none: an empty list still proves the doctor ran,
     # which is what a card reading it needs to tell "clean" from "never checked".
