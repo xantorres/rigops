@@ -195,7 +195,7 @@ def _run_keep_newest_n_rule(rule, base, matches, apply, running_delete_total, ma
     )
 
 
-def _run_truncate_rule(rule, base, apply) -> dict:
+def _run_truncate_rule(rule, base, apply, now) -> dict:
     keep_lines = rule.get("keep_lines", 500)
     name = rule.get("name", "")
     if keep_lines <= 0:
@@ -227,6 +227,11 @@ def _run_truncate_rule(rule, base, apply) -> dict:
     acted = 0
     errors = []
     try:
+        if rule.get("archive"):
+            # Archived before the cut so a failed write leaves the log whole.
+            stamp = time.strftime("%Y-%m-%d", time.localtime(now))
+            with open(f"{base}.{stamp}", "a", encoding="utf-8", errors="surrogateescape") as fh:
+                fh.writelines(lines[:-keep_lines])
         mode = os.stat(base).st_mode
         fd, tmp_path = tempfile.mkstemp(dir=str(base.parent))
         with os.fdopen(fd, "w", encoding="utf-8", errors="surrogateescape") as fh:
@@ -291,7 +296,7 @@ def _run_rule(
         return _skipped_result(rule, base, reason)
 
     if action == "truncate":
-        return _run_truncate_rule(rule, base, apply)
+        return _run_truncate_rule(rule, base, apply, now)
 
     if action in ("delete", "keep_newest_n") and base.is_file():
         return _skipped_result(rule, base, "base is a file (needs a directory)")

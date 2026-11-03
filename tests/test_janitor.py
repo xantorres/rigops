@@ -150,6 +150,76 @@ class TruncateTests(unittest.TestCase):
             self.assertEqual(result["rules"][0]["matched"], [])
 
 
+class TruncateArchiveTests(unittest.TestCase):
+    def _rule(self, f, **over):
+        rule = {"name": "r", "path": str(f), "action": "truncate", "keep_lines": 3, "archive": True}
+        rule.update(over)
+        return rule
+
+    def test_dropped_head_is_kept_in_a_dated_sibling(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "run.jsonl"
+            f.write_text("".join(f"line {i}\n" for i in range(1, 8)))
+            now = time.mktime((2026, 11, 3, 12, 0, 0, 0, 0, -1))
+
+            result = janitor.run_rules([self._rule(f)], apply=True, max_delete=200, now=now)
+
+            self.assertEqual(f.read_text().splitlines(), ["line 5", "line 6", "line 7"])
+            kept = Path(tmp) / "run.jsonl.2026-11-03"
+            self.assertEqual(kept.read_text().splitlines(), [f"line {i}" for i in range(1, 5)])
+            self.assertEqual(result["rules"][0]["acted"], 1)
+            self.assertEqual(result["rules"][0]["errors"], [])
+
+    def test_second_cut_the_same_day_appends(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "run.jsonl"
+            now = time.mktime((2026, 11, 3, 12, 0, 0, 0, 0, -1))
+            f.write_text("".join(f"a{i}\n" for i in range(5)))
+            janitor.run_rules([self._rule(f)], apply=True, max_delete=200, now=now)
+            f.write_text(f.read_text() + "".join(f"b{i}\n" for i in range(3)))
+            janitor.run_rules([self._rule(f)], apply=True, max_delete=200, now=now)
+
+            kept = (Path(tmp) / "run.jsonl.2026-11-03").read_text().splitlines()
+            self.assertEqual(kept, ["a0", "a1", "a2", "a3", "a4"])
+            self.assertEqual(f.read_text().splitlines(), ["b0", "b1", "b2"])
+
+    def test_dry_run_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "run.jsonl"
+            content = "".join(f"line {i}\n" for i in range(1, 8))
+            f.write_text(content)
+
+            rules = [self._rule(f)]
+            result = janitor.run_rules(rules, apply=False, max_delete=200, now=time.time())
+
+            self.assertEqual(f.read_text(), content)
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["run.jsonl"])
+            self.assertEqual(result["rules"][0]["matched"], [str(f)])
+
+    def test_failed_archive_leaves_the_log_whole(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "run.jsonl"
+            content = "".join(f"line {i}\n" for i in range(1, 8))
+            f.write_text(content)
+            now = time.mktime((2026, 11, 3, 12, 0, 0, 0, 0, -1))
+            (Path(tmp) / "run.jsonl.2026-11-03").mkdir()
+
+            result = janitor.run_rules([self._rule(f)], apply=True, max_delete=200, now=now)
+
+            self.assertEqual(f.read_text(), content)
+            self.assertEqual(result["rules"][0]["acted"], 0)
+            self.assertTrue(result["rules"][0]["errors"])
+
+    def test_without_archive_the_head_is_dropped_as_before(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "run.jsonl"
+            f.write_text("".join(f"line {i}\n" for i in range(1, 8)))
+            rule = self._rule(f)
+            del rule["archive"]
+            janitor.run_rules([rule], apply=True, max_delete=200, now=time.time())
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["run.jsonl"])
+
+
 class KeepNewestNTests(unittest.TestCase):
     def test_keeps_newest_3_of_5(self):
         with tempfile.TemporaryDirectory() as tmp:
