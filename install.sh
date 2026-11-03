@@ -336,6 +336,19 @@ with open(sys.argv[2], "w", encoding="utf-8") as fh:
 PYEOF
 fi
 
+# A bare run keeps the job set the previous manifest recorded, so a job
+# retired on purpose (or dropped with --jobs) is not reinstalled by the next
+# --apply. A first install, or a manifest with no jobs, still gets all of them.
+if [ -z "$JOBS_FILTER" ] && [ -s "$OLD_JOBS_TSV" ]; then
+    KEPT_JOBS=()
+    for avail in "${SELECTED_JOBS[@]}"; do
+        while IFS=$'\t' read -r old_label _; do
+            [ "$old_label" = "$LABEL_PREFIX.$avail" ] && KEPT_JOBS+=("$avail")
+        done <"$OLD_JOBS_TSV"
+    done
+    [ "${#KEPT_JOBS[@]}" -eq 0 ] || SELECTED_JOBS=("${KEPT_JOBS[@]}")
+fi
+
 old_hash_for() {
     local rel="$1" tag p h
     while IFS=$'\t' read -r tag p h; do

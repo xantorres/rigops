@@ -96,6 +96,21 @@ case "$OUT" in
     *) fail "--jobs , missing error message: $OUT" ;;
 esac
 
+echo "smoke: bare re-install keeps the jobs the previous manifest lists"
+if command -v launchctl >/dev/null 2>&1; then
+    KEEP_HOME="$(mktemp -d)"
+    mkdir -p "$KEEP_HOME/prefix"
+    printf '%s' '{"jobs":[{"label":"com.rigops.doctor","plist":"/x/d.plist","sha256":"a","domain":"gui/1"}]}' \
+        >"$KEEP_HOME/prefix/install.manifest.json"
+    run bash "$INSTALL_SH" --prefix "$KEEP_HOME/prefix"
+    rm -rf "$KEEP_HOME"
+    case "$OUT" in
+        *"launchd jobs enabled: doctor ledger"*) fail "bare plan re-enabled a job the manifest dropped: $OUT" ;;
+        *"launchd jobs enabled: doctor"*) : ;;
+        *) fail "bare plan with a doctor-only manifest should enable only doctor: $OUT" ;;
+    esac
+fi
+
 echo "smoke: --no-jobs --jobs conflict rejected"
 run bash "$INSTALL_SH" --no-jobs --jobs doctor
 [ "$RC" -eq 2 ] || fail "--no-jobs --jobs doctor expected exit 2, got $RC: $OUT"
