@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import glob
 import json
 import os
@@ -118,7 +119,7 @@ def _load_json(path: Path, default):
         return default
     try:
         return json.loads(path.read_text())
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
         return default
 
 
@@ -192,6 +193,15 @@ def _judge_launchd_item(
 
 
 def _apply_cause(job, item, label, last_exit, interval_h, ctx, heal_cooldown_active) -> None:
+    try:
+        _apply_cause_unsafe(job, item, label, last_exit, interval_h, ctx, heal_cooldown_active)
+    except Exception as exc:  # advisory: a classifier fault must never stop the supervisor
+        job.pop("cause", None)
+        job.pop("would", None)
+        print(f"warning: cause classification skipped for {job['id']}: {exc}", file=sys.stderr)
+
+
+def _apply_cause_unsafe(job, item, label, last_exit, interval_h, ctx, heal_cooldown_active) -> None:
     """Classify a failing job and judge it again with the cause.
 
     Shadow records the verdict as job["would"] and leaves job["action"] alone;
@@ -205,6 +215,7 @@ def _apply_cause(job, item, label, last_exit, interval_h, ctx, heal_cooldown_act
     )
     cause = rigops_cause.classify(last_exit, tail)
     release = False
+    before = copy.deepcopy(ctx["holds"].get(job["id"]))
     if cause in rigops_cause.HELD_CAUSES:
         release = rigops_cause.update_hold(
             ctx["holds"], job["id"], cause, ctx["now"], ctx["probe"],
@@ -214,6 +225,12 @@ def _apply_cause(job, item, label, last_exit, interval_h, ctx, heal_cooldown_act
         evidence_age_h=job["evidence_age_h"], expected_interval_h=interval_h,
         heal_cooldown_active=heal_cooldown_active, cause=cause, hold_release=release,
     )
+    if release:
+        if would == "kickstart":
+            ctx["undo"][job["id"]] = before
+        elif before is not None:
+            # A release the heal cooldown swallowed is not a spent retry.
+            ctx["holds"][job["id"]] = before
     job["cause"] = cause
     if ctx["policy"] == "on":
         job["action"] = would
@@ -350,7 +367,7 @@ def _notify_keys(jobs: list, checks: list, holds: dict | None = None, now: float
         f"job:{j['id']}:{j['status']}" for j in jobs
         if j["status"] in ("failing", "hung")
         and not (
-            holds is not None and j.get("action") == "hold"
+            holds is not None and j.get("cause") in rigops_cause.HELD_CAUSES
             and rigops_cause.hold_is_silent(holds, j["id"], j.get("cause"), now)
         )
     }
@@ -557,12 +574,16 @@ def main(argv=None) -> int:
     holds_path = doctor_state_dir / "holds.json"
     cause_ctx = None
     if cause_policy in ("shadow", "on") and args.supervisor == "launchd":
-        loaded_holds = _load_json(holds_path, {})
         probe_command = rigops_config.get(cfg, "doctor.cause_probe_command", "")
+        # A run that cannot kick must not spend a hold's retry, and a shadow run must not
+        # run the probe: it would be work the unchanged supervisor never did.
         cause_ctx = {
-            "policy": cause_policy, "now": now,
-            "holds": loaded_holds if isinstance(loaded_holds, dict) else {},
-            "probe": _run_probe(probe_command) if probe_command else None,
+            "policy": cause_policy, "now": now, "undo": {},
+            "holds": rigops_cause.clean_holds(_load_json(holds_path, {})),
+            "probe": (
+                _run_probe(probe_command)
+                if probe_command and cause_policy == "on" and args.heal else None
+            ),
         }
     jobs = []
     for item in items:
@@ -575,21 +596,15 @@ def main(argv=None) -> int:
         jobs.append(job)
 
     would_log = []
-    if cause_ctx:
-        live = {j["id"]: j.get("cause") for j in jobs if j["status"] == "failing"}
-        cause_ctx["holds"] = {
-            k: v for k, v in cause_ctx["holds"].items()
-            if live.get(k) is not None and live[k] == (v or {}).get("cause")
-        }
-        _save_json(holds_path, cause_ctx["holds"])
-        if cause_policy == "shadow":
-            would_log = [
-                {"id": j["id"], "cause": j["cause"], "action": j["action"], "would": j["would"]}
-                for j in jobs if "would" in j
-            ]
+    if cause_ctx and cause_policy == "shadow":
+        would_log = [
+            {"id": j["id"], "cause": j["cause"], "action": j["action"], "would": j["would"]}
+            for j in jobs if "would" in j
+        ]
 
     heal_log = []
     kicked_labels = set()
+    kicked_ids = set()
     if args.heal and args.supervisor == "launchd":
         for job in jobs:
             if job["action"] == "kill" and job["pid"]:
@@ -604,12 +619,31 @@ def main(argv=None) -> int:
                 if job["label"] in kicked_labels:
                     # One launchd label runs every job sharing it: a second kick is a double run.
                     heal_stamps[job["id"]] = now
+                    kicked_ids.add(job["id"])
                     _save_json(heal_stamps_path, heal_stamps)
                 elif launchd.kickstart(job["label"]):
                     kicked_labels.add(job["label"])
+                    kicked_ids.add(job["id"])
                     heal_stamps[job["id"]] = now
                     heal_log.append(f"kickstarted {job['id']} ({job['label']})")
                     _save_json(heal_stamps_path, heal_stamps)
+
+    if cause_ctx and args.heal:
+        for job_id, previous in cause_ctx["undo"].items():
+            if job_id not in kicked_ids:
+                if previous is None:
+                    cause_ctx["holds"].pop(job_id, None)
+                else:
+                    cause_ctx["holds"][job_id] = previous
+        keep = {
+            j["id"]: j.get("cause") for j in jobs
+            if j["runtime_h"] is not None or j["status"] == "failing"
+        }
+        cause_ctx["holds"] = {
+            k: v for k, v in cause_ctx["holds"].items()
+            if k in keep and (keep[k] is None or keep[k] == v["cause"])
+        }
+        _save_json(holds_path, cause_ctx["holds"])
 
     checks = []
     for check_cfg in rigops_config.get(cfg, "doctor.checks.custom", []) or []:

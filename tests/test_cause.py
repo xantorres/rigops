@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from rigops.cause import (  # noqa: E402
     CAUSES,
     classify,
+    clean_holds,
     hold_is_silent,
     log_paths,
     tail_of,
@@ -62,6 +63,44 @@ class ClassifyTests(unittest.TestCase):
 
     def test_quota_wins_over_network_like_the_probe(self):
         self.assertEqual(classify(1, "rate limit; API Error: 503"), "quota")
+
+
+class ClassifyDefectTests(unittest.TestCase):
+    def test_current_run_only_after_the_last_run_header(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "x.log"
+            path.write_text("Not logged in\n===== run2 =====\nValueError: boom\n")
+            tail = tail_of(path, now=path.stat().st_mtime, max_age_h=1.0)
+        self.assertEqual(classify(1, tail), "unknown")
+
+    def test_latest_probe_line_wins(self):
+        text = "claude-auth-probe: FAIL (network): x\nclaude-auth-probe: FAIL (auth): y"
+        self.assertEqual(classify(1, text), "auth")
+
+    def test_deterministic_beats_incidental_mentions(self):
+        self.assertEqual(classify(1, "checked quota ok\njq: command not found"), "deterministic")
+        self.assertEqual(classify(1, "API Error: 500\njq: command not found"), "deterministic")
+
+    def test_quota_needs_a_word(self):
+        self.assertEqual(classify(1, "failed to generate limit report"), "unknown")
+
+    def test_raw_wait_status_is_normalised(self):
+        self.assertEqual(classify(32512, ""), "deterministic")
+        self.assertEqual(classify(256, ""), "unknown")
+
+
+class CleanHoldsTests(unittest.TestCase):
+    def test_malformed_entries_are_dropped(self):
+        good = {"cause": "auth", "since": 1.0, "last_try": 2.0, "releases": [3.0]}
+        raw = {
+            "ok": good, "str": "garbage", "nocause": {"since": 1, "last_try": 1},
+            "badtry": {"cause": "auth", "since": 1, "last_try": "x"},
+            "nullrel": {"cause": "auth", "since": 1, "last_try": 1, "releases": None},
+        }
+        self.assertEqual(clean_holds(raw), {"ok": good})
+        self.assertEqual(clean_holds([1]), {})
 
 
 class TailTests(unittest.TestCase):
@@ -118,11 +157,20 @@ class UpdateHoldTests(unittest.TestCase):
         update_hold(holds, "j", "auth", 1 * H, probe=lambda: calls.append(1) or True)
         self.assertEqual(calls, [])
 
-    def test_cause_change_restarts_the_hold(self):
+    def test_cause_change_keeps_the_clock(self):
         holds = {}
-        update_hold(holds, "j", "auth", 0.0)
-        self.assertFalse(update_hold(holds, "j", "network", 10 * H))
+        update_hold(holds, "j", "quota", 0.0)
+        self.assertFalse(update_hold(holds, "j", "network", 0.5 * H))
         self.assertEqual(holds["j"]["cause"], "network")
+        self.assertEqual(holds["j"]["since"], 0.0)
+        self.assertTrue(update_hold(holds, "j", "quota", 4 * H))
+
+    def test_flapping_cause_still_releases(self):
+        holds = {}
+        released = False
+        for i in range(0, 12):
+            released |= update_hold(holds, "j", "quota" if i % 2 else "network", i * H)
+        self.assertTrue(released)
 
     def test_network_releases_capped_per_day(self):
         holds = {}
@@ -163,7 +211,16 @@ class LogPathsTests(unittest.TestCase):
             self.assertEqual(log_paths(p), ["/e.txt", "/o.txt"])
 
     def test_missing_or_broken_plist_is_empty(self):
+        import tempfile
+
         self.assertEqual(log_paths("/nonexistent.plist"), [])
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = Path(tmp) / "bad.plist"
+            bad.write_text("<plist><dict>")
+            self.assertEqual(log_paths(bad), [])
+            arr = Path(tmp) / "arr.plist"
+            arr.write_text('<?xml version="1.0"?><plist version="1.0"><array/></plist>')
+            self.assertEqual(log_paths(arr), [])
 
 
 if __name__ == "__main__":

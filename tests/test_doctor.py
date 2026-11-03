@@ -835,6 +835,84 @@ class CausePolicyTests(EnvIsolatedTestCase):
         self._run(exit_status=0)
         self.assertEqual(self._holds(), {})
 
+    def _seed_hold(self, cause="auth", since_h=8, try_h=7):
+        self.state.mkdir(parents=True, exist_ok=True)
+        (self.state / "holds.json").write_text(json.dumps({"job-failing": {
+            "cause": cause, "since": time.time() - since_h * 3600,
+            "last_try": time.time() - try_h * 3600, "releases": [],
+        }}))
+
+    def test_live_run_keeps_the_hold(self):
+        self._config("on")
+        self._seed_hold()
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, 4242, 1)),
+            mock.patch.object(launchd, "runtime_hours", return_value=0.5),
+        ):
+            _run_doctor(["--heal", "--json", "--registry", str(self.registry)])
+        self.assertIn("job-failing", self._holds())
+
+    def test_cooldown_swallowed_release_is_not_spent(self):
+        self._config("on")
+        self._log("auth.txt")
+        self._seed_hold()
+        before = self._holds()["job-failing"]["last_try"]
+        (self.state / "heal-stamps.json").write_text(json.dumps({"job-failing": time.time() - 60}))
+        _, m_kick = self._run()
+        m_kick.assert_not_called()
+        self.assertEqual(self._holds()["job-failing"]["last_try"], before)
+
+    def test_run_without_heal_does_not_spend_the_release(self):
+        self._config("on")
+        self._log("auth.txt")
+        self._seed_hold()
+        before = self._holds()
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, None, 1)),
+        ):
+            _run_doctor(["--json", "--registry", str(self.registry)])
+        self.assertEqual(self._holds(), before)
+
+    def test_failed_kick_does_not_spend_the_release(self):
+        self._config("on")
+        self._log("auth.txt")
+        self._seed_hold()
+        before = self._holds()["job-failing"]["last_try"]
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, None, 1)),
+            mock.patch.object(launchd, "kickstart", return_value=False),
+        ):
+            _run_doctor(["--heal", "--json", "--registry", str(self.registry)])
+        self.assertEqual(self._holds()["job-failing"]["last_try"], before)
+
+    def test_shadow_never_runs_the_probe(self):
+        marker = Path(self.tmp) / "probe-ran"
+        self._config("shadow", cause_probe_command=f"touch {marker}")
+        self._log("auth.txt")
+        self._seed_hold()
+        self._run()
+        self.assertFalse(marker.exists())
+
+    def test_corrupt_holds_do_not_stop_the_supervisor(self):
+        self._config("shadow")
+        self._log("unknown.txt")
+        self.state.mkdir(parents=True, exist_ok=True)
+        (self.state / "holds.json").write_text(json.dumps({"job-failing": "garbage"}))
+        _, m_kick = self._run()
+        m_kick.assert_called_once()
+        (self.state / "holds.json").write_bytes(b"\xff\xfe")
+        (self.state / "heal-stamps.json").unlink()
+        _, m_kick = self._run()
+        m_kick.assert_called_once()
+
+    def test_release_tick_inside_quiet_period_does_not_page(self):
+        job = {"id": "j", "status": "failing", "cause": "quota", "action": "kickstart"}
+        holds = {"j": {"cause": "quota", "since": 0.0}}
+        self.assertEqual(doctor._notify_keys([job], [], holds, 5 * 3600), set())
+
     def test_quiet_hold_does_not_page_until_24h(self):
         job = {"id": "j", "status": "failing", "cause": "quota", "action": "hold"}
         holds = {"j": {"cause": "quota", "since": 100.0}}
