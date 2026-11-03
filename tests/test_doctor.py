@@ -993,3 +993,36 @@ class ConfigOnlyStagedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EvidenceGlobTests(EnvIsolatedTestCase):
+    def _touch(self, name: str, age_h: float) -> Path:
+        path = Path(self.tmp) / name
+        path.write_text("x")
+        mtime = time.time() - age_h * 3600
+        os.utime(path, (mtime, mtime))
+        return path
+
+    def test_glob_picks_the_newest_match(self):
+        self._touch("doctor-1.txt", 50)
+        newest = self._touch("doctor-2.txt", 2)
+        self._touch("coverage-1.txt", 0)
+        path, mtime = doctor.newest_evidence_mtime(f"{self.tmp}/doctor-*.txt")
+        self.assertEqual(path, newest)
+        self.assertAlmostEqual((time.time() - mtime) / 3600, 2, delta=0.1)
+
+    def test_glob_without_a_match_is_no_evidence(self):
+        self.assertEqual(doctor.newest_evidence_mtime(f"{self.tmp}/doctor-*.txt"), (None, None))
+
+    def test_glob_combines_with_braces_and_trailing_note(self):
+        self._touch("a-1.log", 5)
+        newest = self._touch("b-1.err", 1)
+        path, _ = doctor.newest_evidence_mtime(f"{self.tmp}/{{a,b}}-*.* (weekly)")
+        self.assertEqual(path, newest)
+
+    def test_unmatched_glob_row_is_unknown_never_ok(self):
+        job = doctor._judge_evidence_only_item(
+            {"id": "j", "cadence": "weekly", "health": f"{self.tmp}/doctor-*.txt",
+             "max_runtime_h": 1}, False)
+        self.assertEqual(job["status"], "unknown")
+        self.assertIsNone(job["evidence_age_h"])

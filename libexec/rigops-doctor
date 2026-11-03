@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
 import re
@@ -32,6 +33,7 @@ CADENCE_QUARTERLY_RE = re.compile(r"quarterly", re.IGNORECASE)
 CADENCE_ONDEMAND_RE = re.compile(r"on-demand|manual|deadline", re.IGNORECASE)
 HEALTH_TRAILING_NOTE_RE = re.compile(r"\s*\([^)]*\)\s*$")
 EVIDENCE_LINE_RE = re.compile(r":\d+$")
+GLOB_CHARS_RE = re.compile(r"[*?\[]")
 NOTIFY_WINDOW_H = 24
 
 
@@ -69,8 +71,9 @@ def cadence_interval_hours(cadence: str):
 
 def newest_evidence_mtime(health_field: str):
     """health_field may be a single path, a brace-expansion like foo.{log,err.log},
-    a path with a trailing '(note)' annotation, or '-' (no evidence). Returns
-    (path_used, mtime) of the freshest match."""
+    a glob (* ? [), a path with a trailing '(note)' annotation, or '-' (no
+    evidence). Returns (path_used, mtime) of the freshest match; a glob with no
+    match is no evidence."""
     if not health_field or health_field.strip() == "-":
         return None, None
     cleaned = HEALTH_TRAILING_NOTE_RE.sub("", health_field.strip())
@@ -82,6 +85,10 @@ def newest_evidence_mtime(health_field: str):
             candidates.append(rigops_config.expand(prefix + alt + suffix))
     else:
         candidates.append(rigops_config.expand(cleaned))
+    candidates = [
+        Path(hit) for c in candidates
+        for hit in (glob.glob(str(c)) if GLOB_CHARS_RE.search(str(c)) else [c])
+    ]
 
     best_path, best_mtime = None, None
     for c in candidates:
