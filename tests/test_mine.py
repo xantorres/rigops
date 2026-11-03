@@ -97,9 +97,9 @@ class CollectTests(unittest.TestCase):
 
     def test_text_is_first_line_capped(self):
         f = self.root / "-work-alpha" / "s1.jsonl"
-        _write(f, _user("s1", "no, " + "x" * 600 + "\nsecond line"))
+        _write(f, _user("s1", "no, " + "x" * 1200 + "\nsecond line"))
         kept = mine.collect(None, self.root).kept
-        self.assertEqual(len(kept[0].text), mine.MAX_TEXT)
+        self.assertEqual(len(kept[0].text), mine.KEEP_TEXT)
         self.assertNotIn("second", kept[0].text)
 
     def test_unreadable_lines_are_skipped(self):
@@ -263,6 +263,60 @@ class DedupeTests(unittest.TestCase):
         mine.run(None, self.tmp / "tr", self.registry, max_rank=0.0)
         after = {p: p.read_bytes() for p in self.memory_root.rglob("*") if p.is_file()}
         self.assertEqual(before, after)
+
+
+class HardeningTests(DedupeTests):
+    def test_render_masks_path_and_snippet_highlights(self):
+        registry = _registry(self.tmp, {"client_tokens": ["globex inc"], "roots": []})
+        hit = mine.search.Hit(
+            path="/x/-Users-jane-projects-globex/memory/f.md", line=3, section="", title="",
+            realm="client", scope="memory", repo="", verified="",
+            snippet="ask [Globex] [Inc] at dev@[example].com", rank=-20.0)
+        grp = mine.Group(members=[], representative=mine.Correction("s", "p", NOW, "no, x"),
+                         sessions=2)
+        out = mine.render(mine.Report({k: 0 for k in (
+            "files", "prompts", "detected", "spanish_filtered", "remaining", "groups", "deduped",
+            "dedupe_skipped")}, [mine.Entry(grp, hit)], []), registry, "90d")
+        for leaked in ("jane", "Globex", "example"):
+            self.assertNotIn(leaked, out)
+
+    def test_archived_memory_is_not_a_duplicate(self):
+        live = next(self.memory_root.rglob("lint.md"))
+        archive = live.parent / "archive"
+        archive.mkdir()
+        live.rename(archive / "lint.md")
+        index.build(self.registry)
+        self.assertIsNone(mine.nearest_memory(
+            self.registry, "always run the lint step before opening a pull request", ["personal"]))
+
+    def test_missing_index_is_reported_not_silent(self):
+        projects = self.tmp / "tr" / roots.encode_project(self.repo)
+        _write(projects / "a.jsonl", _user("s1", "no, always run the lint step first today"))
+        _write(projects / "b.jsonl", _user("s2", "no, always run the lint step first please"))
+        self.registry.raw["index"]["db"] = str(self.tmp / "absent.sqlite")
+        report = mine.run(None, self.tmp / "tr", self.registry)
+        self.assertEqual(report.stats["dedupe_skipped"], 1)
+
+    def test_naive_timestamp_and_bad_session_id_do_not_crash(self):
+        row = _user("s1", "no, use the other flag")
+        row["timestamp"] = "2026-11-01T10:00:00"
+        row["sessionId"] = ["x"]
+        _write(self.tmp / "tr" / "-p" / "a.jsonl", row)
+        self.assertEqual(len(mine.collect(None, self.tmp / "tr").kept), 1)
+
+
+class CliGuardTests(unittest.TestCase):
+    def test_missing_registry_is_an_error(self):
+        proc = subprocess.run(
+            [str(MINE), "mine", "--dry-run", "--registry", "/nonexistent/roots.json"],
+            capture_output=True, text=True, check=False, timeout=60)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("registry", proc.stderr)
+
+    def test_absurd_since_is_an_error(self):
+        proc = subprocess.run([str(MINE), "mine", "--dry-run", "--since", "99999999999d"],
+                              capture_output=True, text=True, check=False, timeout=60)
+        self.assertEqual(proc.returncode, 2)
 
 
 class SinceTests(unittest.TestCase):

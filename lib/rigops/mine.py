@@ -6,10 +6,12 @@ prints a report for a human to judge.
 
 from __future__ import annotations
 
+import base64
 import datetime as dt
 import json
 import os
 import re
+import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -17,6 +19,7 @@ from rigops import transcripts
 from rigops.retrieval import roots, search
 
 MAX_TEXT = 300
+KEEP_TEXT = 1000
 MIN_TOKENS = 3
 JACCARD = 0.4
 MIN_SESSIONS = 2
@@ -37,11 +40,16 @@ STOPWORDS = frozenset(
     "este esta son era ser hay nos les mis tus sus the tio tío mate man".split()
 )
 GENERIC_RULES = (
+    (re.compile(r"\bBearer\s+\S+", re.IGNORECASE), "[token]"),
+    (re.compile(r"\b(?:ghs|github_pat|glpat)[-_A-Za-z0-9]{8,}"), "[key]"),
+    (re.compile(r"-Users-[A-Za-z0-9-]+"), "[path]"),
+    (re.compile(r"(?:/private|/var|/root|/etc|/opt|/tmp)/\S*"), "[path]"),
+    (re.compile(r"\bwww\.[\w.-]+"), "[url]"),
     (re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"), "[email]"),
     (re.compile(r"https?://\S+"), "[url]"),
     (re.compile(r"(?:/Users|/home)/[^/\s]+(?:/\S*)?"), "[path]"),
     (re.compile(r"\b(?:sk|ghp|gho|xox[a-z]|AKIA)[-_A-Za-z0-9]{12,}"), "[key]"),
-    (re.compile(r"\b[A-Za-z]{2,10}-\d{2,6}\b"), "[ticket]"),
+    (re.compile(r"\b[A-Za-z0-9_]{1,10}-\d{1,6}\b"), "[ticket]"),
     (re.compile(r"\b[0-9a-fA-F]{24,}\b"), "[hex]"),
 )
 PUBLIC_PATTERNS = (Path(__file__).resolve().parent.parent.parent / "tools"
@@ -92,7 +100,10 @@ def parse_since(value: str, now: dt.datetime) -> dt.datetime:
     m = re.fullmatch(r"-?(\d+)d", value.strip())
     if not m:
         raise ValueError(f"--since expects a day count such as 90d, got {value!r}")
-    return now - dt.timedelta(days=int(m.group(1)))
+    try:
+        return now - dt.timedelta(days=int(m.group(1)))
+    except OverflowError:
+        raise ValueError(f"--since {value!r} is out of range") from None
 
 
 def spanish_false_positive(text: str) -> bool:
@@ -125,7 +136,7 @@ def collect(since, transcripts_dir=None, until=None) -> Harvest:
                     continue
                 try:
                     obj = json.loads(line)
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, RecursionError):
                     continue
                 if not isinstance(obj, dict) or obj.get("type") != "user":
                     continue
@@ -136,6 +147,8 @@ def collect(since, transcripts_dir=None, until=None) -> Harvest:
                     ts = transcripts.parse_ts(ts_raw)
                 except ValueError:
                     continue
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=dt.timezone.utc)
                 if (since is not None and ts < since) or (until is not None and ts >= until):
                     continue
                 message = obj.get("message")
@@ -157,9 +170,10 @@ def collect(since, transcripts_dir=None, until=None) -> Harvest:
                     if not transcripts.is_correction(text):
                         continue
                     harvest.detected += 1
+                    sid = obj.get("sessionId")
                     found = Correction(
-                        session=obj.get("sessionId") or Path(path).stem,
-                        project=project, ts=ts, text=first[:MAX_TEXT],
+                        session=sid if isinstance(sid, str) and sid else Path(path).stem,
+                        project=project, ts=ts, text=first[:KEEP_TEXT],
                     )
                     bucket = harvest.filtered if spanish_false_positive(text) else harvest.kept
                     bucket.append(found)
@@ -213,23 +227,34 @@ def group(items, threshold: float = JACCARD, min_sessions: int = MIN_SESSIONS) -
     return out
 
 
-def _rule_patterns(files) -> list:
-    compiled = []
+def _rule_lines(files) -> list:
+    lines = []
     for path in files:
         try:
-            lines = Path(path).expanduser().read_text(encoding="utf-8").splitlines()
-        except OSError:
+            lines += Path(path).expanduser().read_text(encoding="utf-8").splitlines()
+        except (OSError, ValueError):
             continue
-        for raw in lines:
-            if not raw.strip() or raw.startswith("#"):
-                continue
-            flag, _, pattern = raw.partition(" ")
-            if flag not in ("i", "s") or not pattern:
-                continue
-            try:
-                compiled.append(re.compile(pattern, re.IGNORECASE if flag == "i" else 0))
-            except re.error:
-                continue
+    packed = os.environ.get("RIGOPS_REDACTION_PATTERNS_B64")
+    if packed:
+        try:
+            lines += base64.b64decode(packed).decode("utf-8").splitlines()
+        except ValueError:
+            pass
+    return lines
+
+
+def _rule_patterns(files) -> list:
+    compiled = []
+    for raw in _rule_lines(files):
+        if not raw.strip() or raw.startswith("#"):
+            continue
+        flag, _, pattern = raw.partition(" ")
+        if flag not in ("i", "s") or not pattern:
+            continue
+        try:
+            compiled.append(re.compile(pattern, re.IGNORECASE if flag == "i" else 0))
+        except re.error:
+            continue
     return compiled
 
 
@@ -279,10 +304,13 @@ def nearest_memory(registry, text: str, realms):
         cwd = _realm_cwd(registry, realm)
         if cwd is None:
             continue
-        result = search.query(registry, text, cwd=cwd, scopes=["memory"], top=1)
-        for hit in result.hits:
-            if best is None or hit.rank < best.rank:
-                best = hit
+        try:
+            result = search.query(registry, text, cwd=cwd, scopes=["memory"], top=5)
+        except sqlite3.DatabaseError:
+            continue
+        live = [h for h in result.hits if search.ARCHIVE_MARKER not in h.path]
+        if live and (best is None or live[0].rank < best.rank):
+            best = live[0]
     return best
 
 
@@ -295,14 +323,24 @@ def _label_realms(registry, g: Group) -> None:
         g.realm += "+unmapped"
 
 
-def run(since, transcripts_dir, registry, max_rank: float = DEDUPE_MAX_RANK) -> Report:
+def dedupe_gate(registry) -> float:
+    return float(registry.raw.get("prefetch", {}).get("min_score", DEDUPE_MAX_RANK))
+
+
+def run(since, transcripts_dir, registry, max_rank=None) -> Report:
+    max_rank = dedupe_gate(registry) if max_rank is None else max_rank
+    index_ready = Path(registry.db_path).exists()
     harvest = collect(since, transcripts_dir)
     groups = group(harvest.kept)
-    kept, discarded = [], []
+    kept, discarded, skipped = [], [], 0
     for g in groups:
         _label_realms(registry, g)
         realms = g.realms or ("personal",)
-        hit = nearest_memory(registry, g.representative.text, realms)
+        if not index_ready or not any(_realm_cwd(registry, r) for r in realms):
+            skipped += 1
+            hit = None
+        else:
+            hit = nearest_memory(registry, g.representative.text, realms)
         entry = Entry(group=g, hit=hit)
         (discarded if hit is not None and hit.rank <= max_rank else kept).append(entry)
     stats = {
@@ -313,19 +351,21 @@ def run(since, transcripts_dir, registry, max_rank: float = DEDUPE_MAX_RANK) -> 
         "remaining": len(harvest.kept),
         "groups": len(groups),
         "deduped": len(discarded),
+        "dedupe_skipped": skipped,
     }
     return Report(stats=stats, kept=kept, discarded=discarded)
 
 
 def _entry_lines(registry, entry: Entry, n: int) -> list:
     g = entry.group
-    text = redact(g.representative.text, registry)
+    text = redact(g.representative.text, registry)[:MAX_TEXT]
     if entry.hit is None:
         nearest = "none"
     else:
-        snippet = redact(entry.hit.snippet, registry)
         hit = entry.hit
-        nearest = f"{hit.short_path}:{hit.line} score {hit.rank:.2f} | {snippet}"
+        snippet = redact(hit.snippet.replace("[", "").replace("]", ""), registry)
+        where = redact(f"{hit.short_path}:{hit.line}", registry)
+        nearest = f"{where} score {hit.rank:.2f} | {snippet}"
     return [f"### {n}. {text}", f"- sessions: {g.sessions}", f"- realm: {g.realm}",
             f"- nearest memory: {nearest}", ""]
 
@@ -338,9 +378,10 @@ def render(report: Report, registry, since_label: str) -> str:
         f"- human prompts: {s['prompts']}",
         f"- corrections detected: {s['detected']}",
         f"- filtered by the Spanish filter: {s['spanish_filtered']}",
-        f"- corrections grouped: {s['remaining']}",
+        f"- corrections after the filter: {s['remaining']}",
         f"- groups: {s['groups']}",
         f"- groups dropped by memory dedupe: {s['deduped']}",
+        f"- groups not checked against memory (no index or realm cwd): {s['dedupe_skipped']}",
         f"- groups kept: {len(report.kept)}", "",
         "## New candidates", "",
     ]
@@ -375,7 +416,15 @@ def main(argv=None) -> int:
     except ValueError as exc:
         print(f"rigops mine: {exc}", file=sys.stderr)
         return 2
-    registry = roots.load(args.registry)
+    try:
+        registry = roots.load(args.registry)
+    except (OSError, ValueError, AttributeError) as exc:
+        print(f"rigops mine: unreadable registry: {exc}", file=sys.stderr)
+        return 2
+    if not registry.path.is_file():
+        print(f"rigops mine: registry not found: {registry.path}", file=sys.stderr)
+        return 2
     report = run(since, args.transcripts_dir, registry)
+    sys.stdout.reconfigure(errors="replace")
     print(render(report, registry, args.since))
     return 0
