@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/opt/job/build.py", line 41, in fetch
+    return self._sslobj.read(len, buffer)
+socket.gaierror: [Errno 8] nodename nor servname provided, or not known

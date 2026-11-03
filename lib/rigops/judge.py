@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 STATUSES = ("ok", "stale", "hung", "failing", "unknown")
-ACTIONS = ("none", "kill", "kickstart", "notify")
+ACTIONS = ("none", "kill", "kickstart", "notify", "hold")
 
 
 def judge_job(
@@ -12,6 +12,8 @@ def judge_job(
     evidence_age_h,
     expected_interval_h,
     heal_cooldown_active,
+    cause=None,
+    hold_release=False,
 ):
     """Judge one job's health from point-in-time signals. No I/O, no side effects.
 
@@ -41,6 +43,11 @@ def judge_job(
     boundaries are strict `>`: runtime_h == max_runtime_h is still "ok", and
     evidence_age_h == expected_interval_h * 1.5 is still not stale.
 
+    cause (from rigops.cause, None when unclassified or the policy is off)
+    only rewrites a kickstart: auth, quota and network hold instead, unless
+    hold_release says the hold has run its course; deterministic never
+    kickstarts and notifies instead. Other causes keep the table above.
+
     A live runtime_h always wins over exit status and evidence age: launchd
     never starts a scheduled job whose previous run is still alive, so a hung
     run must be judged -- and killed -- before anything else is considered.
@@ -59,6 +66,11 @@ def judge_job(
     if exit_fail or stale:
         status = "failing" if exit_fail else "stale"
         action = "notify" if heal_cooldown_active else "kickstart"
+        if exit_fail and cause is not None:
+            if cause == "deterministic":
+                action = "notify"
+            elif cause in ("auth", "quota", "network") and not hold_release:
+                action = "hold"
         return status, action
 
     if last_exit_status is None and evidence_age_h is None:

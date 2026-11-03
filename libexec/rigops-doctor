@@ -16,6 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
+from rigops import cause as rigops_cause  # noqa: E402
 from rigops import config as rigops_config  # noqa: E402
 from rigops import core as rigops_core  # noqa: E402
 from rigops import doctor as config_checks  # noqa: E402
@@ -155,7 +156,9 @@ def _label_for_item(item: dict, prefixes: list):
     return None
 
 
-def _judge_launchd_item(item: dict, prefixes: list, heal_cooldown_active: bool) -> dict:
+def _judge_launchd_item(
+    item: dict, prefixes: list, heal_cooldown_active: bool, cause_ctx: dict | None = None,
+) -> dict:
     job_id = item.get("id", "unknown")
     label = _label_for_item(item, prefixes)
     if label is None:
@@ -179,10 +182,56 @@ def _judge_launchd_item(item: dict, prefixes: list, heal_cooldown_active: bool) 
         evidence_age_h=evidence_age_h, expected_interval_h=interval_h,
         heal_cooldown_active=heal_cooldown_active,
     )
-    return {
+    job = {
         "id": job_id, "status": status, "action": action, "runtime_h": runtime_h,
         "evidence_age_h": evidence_age_h, "label": label, "pid": pid,
     }
+    if cause_ctx and runtime_h is None and status == "failing":
+        _apply_cause(job, item, label, last_exit, interval_h, cause_ctx, heal_cooldown_active)
+    return job
+
+
+def _apply_cause(job, item, label, last_exit, interval_h, ctx, heal_cooldown_active) -> None:
+    """Classify a failing job and judge it again with the cause.
+
+    Shadow records the verdict as job["would"] and leaves job["action"] alone;
+    on adopts it.
+    """
+    plist = item.get("plist") or f"~/Library/LaunchAgents/{label}.plist"
+    window_h = interval_h * 1.5 if interval_h else 24.0
+    tail = "\n".join(
+        rigops_cause.tail_of(path, now=ctx["now"], max_age_h=window_h)
+        for path in rigops_cause.log_paths(plist)
+    )
+    cause = rigops_cause.classify(last_exit, tail)
+    release = False
+    if cause in rigops_cause.HELD_CAUSES:
+        release = rigops_cause.update_hold(
+            ctx["holds"], job["id"], cause, ctx["now"], ctx["probe"],
+        )
+    _, would = rigops_judge.judge_job(
+        runtime_h=None, max_runtime_h=item["max_runtime_h"], last_exit_status=last_exit,
+        evidence_age_h=job["evidence_age_h"], expected_interval_h=interval_h,
+        heal_cooldown_active=heal_cooldown_active, cause=cause, hold_release=release,
+    )
+    job["cause"] = cause
+    if ctx["policy"] == "on":
+        job["action"] = would
+    else:
+        job["would"] = would
+
+
+def _run_probe(command: str):
+    """A probe passes on exit 0; any other outcome keeps the hold."""
+    def probe() -> bool:
+        try:
+            return subprocess.run(
+                shlex.split(command), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                timeout=120,
+            ).returncode == 0
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return False
+    return probe
 
 
 def _judge_evidence_only_item(item: dict, heal_cooldown_active: bool) -> dict:
@@ -296,8 +345,15 @@ def notify_due(stamps: dict, keys: set, now: float, window_h: float) -> tuple:
 
 # A kick is not a finding: the failing row it answers already carries the key,
 # and a stale row is a trend to read, so neither pages on its own.
-def _notify_keys(jobs: list, checks: list) -> set:
-    keys = {f"job:{j['id']}:{j['status']}" for j in jobs if j["status"] in ("failing", "hung")}
+def _notify_keys(jobs: list, checks: list, holds: dict | None = None, now: float = 0.0) -> set:
+    keys = {
+        f"job:{j['id']}:{j['status']}" for j in jobs
+        if j["status"] in ("failing", "hung")
+        and not (
+            holds is not None and j.get("action") == "hold"
+            and rigops_cause.hold_is_silent(holds, j["id"], j.get("cause"), now)
+        )
+    }
     keys |= {f"check:{c['name']}" for c in checks if c["status"] == "fail"}
     return keys
 
@@ -497,6 +553,17 @@ def main(argv=None) -> int:
     prefixes = rigops_config.get(cfg, "doctor.label_prefix", ["local."])
 
     now = time.time()
+    cause_policy = rigops_config.get(cfg, "doctor.cause_policy", "off")
+    holds_path = doctor_state_dir / "holds.json"
+    cause_ctx = None
+    if cause_policy in ("shadow", "on") and args.supervisor == "launchd":
+        loaded_holds = _load_json(holds_path, {})
+        probe_command = rigops_config.get(cfg, "doctor.cause_probe_command", "")
+        cause_ctx = {
+            "policy": cause_policy, "now": now,
+            "holds": loaded_holds if isinstance(loaded_holds, dict) else {},
+            "probe": _run_probe(probe_command) if probe_command else None,
+        }
     jobs = []
     for item in items:
         job_id = item.get("id", "unknown")
@@ -504,8 +571,22 @@ def main(argv=None) -> int:
         if args.supervisor == "none":
             job = _judge_evidence_only_item(item, cooldown_active)
         else:
-            job = _judge_launchd_item(item, prefixes, cooldown_active)
+            job = _judge_launchd_item(item, prefixes, cooldown_active, cause_ctx)
         jobs.append(job)
+
+    would_log = []
+    if cause_ctx:
+        live = {j["id"]: j.get("cause") for j in jobs if j["status"] == "failing"}
+        cause_ctx["holds"] = {
+            k: v for k, v in cause_ctx["holds"].items()
+            if live.get(k) is not None and live[k] == (v or {}).get("cause")
+        }
+        _save_json(holds_path, cause_ctx["holds"])
+        if cause_policy == "shadow":
+            would_log = [
+                {"id": j["id"], "cause": j["cause"], "action": j["action"], "would": j["would"]}
+                for j in jobs if "would" in j
+            ]
 
     heal_log = []
     kicked_labels = set()
@@ -547,17 +628,25 @@ def main(argv=None) -> int:
 
     notify_command = rigops_config.get(cfg, "doctor.notify_command", "")
     notify_stamps_path = doctor_state_dir / "notified.json"
-    notify_keys = _notify_keys(jobs, checks) if notify_command else set()
+    notify_keys = (
+        _notify_keys(
+            jobs, checks, cause_ctx["holds"] if cause_policy == "on" and cause_ctx else None, now,
+        )
+        if notify_command else set()
+    )
     stamps = _load_json(notify_stamps_path, {})
     due, stamps = notify_due(
         stamps if isinstance(stamps, dict) else {}, notify_keys, now, NOTIFY_WINDOW_H,
     )
 
-    state.append_jsonl(events_path, {
+    event = {
         "ts": ts, "jobs_checked": len(jobs), "fail_count": fail_count,
         "stale_count": stale_count, "healed": heal_log,
         "notified": sorted(notify_keys) if due else [],
-    })
+    }
+    if cause_policy == "shadow":
+        event["would"] = would_log
+    state.append_jsonl(events_path, event)
 
     notify_error = ""
     if due:

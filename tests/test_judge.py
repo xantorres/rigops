@@ -46,6 +46,20 @@ CASES = [
 ]
 
 
+# (name, cause, hold_release, last_exit, cooldown, expected_action)
+CAUSE_CASES = [
+    ("auth_holds", "auth", False, 1, False, "hold"),
+    ("quota_holds", "quota", False, 1, False, "hold"),
+    ("network_holds", "network", False, 1, False, "hold"),
+    ("held_cause_released_kicks", "auth", True, 1, False, "kickstart"),
+    ("held_cause_released_in_cooldown_notifies", "auth", True, 1, True, "notify"),
+    ("deterministic_never_kicks", "deterministic", False, 127, False, "notify"),
+    ("deterministic_ignores_release", "deterministic", True, 127, False, "notify"),
+    ("unknown_keeps_current_behaviour", "unknown", False, 1, False, "kickstart"),
+    ("no_cause_keeps_current_behaviour", None, False, 1, False, "kickstart"),
+]
+
+
 class JudgeJobDecisionTableTests(unittest.TestCase):
     def test_decision_table(self):
         for (
@@ -65,8 +79,36 @@ class JudgeJobDecisionTableTests(unittest.TestCase):
         self.assertEqual(statuses, set(STATUSES))
 
     def test_every_action_reachable(self):
-        actions = {c[8] for c in CASES}
+        actions = {c[8] for c in CASES} | {c[5] for c in CAUSE_CASES}
         self.assertEqual(actions, set(ACTIONS))
+
+    def test_cause_table(self):
+        for name, cause, release, last_exit, cooldown, expected in CAUSE_CASES:
+            with self.subTest(name):
+                status, action = judge_job(
+                    runtime_h=None, max_runtime_h=6.0, last_exit_status=last_exit,
+                    evidence_age_h=None, expected_interval_h=None,
+                    heal_cooldown_active=cooldown, cause=cause, hold_release=release,
+                )
+                self.assertEqual((status, action), ("failing", expected))
+
+    def test_cause_never_overrides_a_live_run(self):
+        self.assertEqual(
+            judge_job(
+                runtime_h=3.0, max_runtime_h=2.0, last_exit_status=1, evidence_age_h=None,
+                expected_interval_h=None, heal_cooldown_active=False, cause="auth",
+            ),
+            ("hung", "kill"),
+        )
+
+    def test_cause_leaves_a_healthy_job_alone(self):
+        self.assertEqual(
+            judge_job(
+                runtime_h=None, max_runtime_h=2.0, last_exit_status=0, evidence_age_h=1.0,
+                expected_interval_h=24.0, heal_cooldown_active=False, cause="auth",
+            ),
+            ("ok", "none"),
+        )
 
 
 if __name__ == "__main__":

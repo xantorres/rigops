@@ -18,6 +18,8 @@ DEFAULTS = {
         "heal_cooldown_h": 12,
         "checks": {"custom": [], "disk_free": None},
         "notify_command": "",
+        "cause_policy": "off",
+        "cause_probe_command": "",
     },
     "reaper": {
         "roots": ["~/projects"],

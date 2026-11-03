@@ -722,6 +722,133 @@ class SharedLabelKickTests(EnvIsolatedTestCase):
         self.assertEqual(set(stamps), {"job-a", "job-b"})
 
 
+class CausePolicyTests(EnvIsolatedTestCase):
+    def setUp(self):
+        super().setUp()
+        self.state = Path(self.tmp) / "state" / "doctor"
+        self.log = Path(self.tmp) / "job.err.log"
+        plist = Path(self.tmp) / "local.job-failing.plist"
+        import plistlib
+        plist.write_bytes(plistlib.dumps({"StandardErrorPath": str(self.log)}))
+        self.registry = _write_registry(
+            self.tmp, FAILING_ITEM.replace("/fake/local.job-failing.plist", str(plist))
+        )
+
+    def _config(self, policy, **doctor_extra):
+        doctor_cfg = {"cause_policy": policy, **doctor_extra}
+        Path(os.environ["RIGOPS_CONFIG"]).write_text(json.dumps({"doctor": doctor_cfg}))
+
+    def _run(self, exit_status=1):
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, None, exit_status)),
+            mock.patch.object(launchd, "kickstart", return_value=True) as m_kick,
+        ):
+            _, out = _run_doctor(["--heal", "--json", "--registry", str(self.registry)])
+        return json.loads(out), m_kick
+
+    def _log(self, name):
+        self.log.write_text((REPO_ROOT / "tests" / "fixtures" / "cause" / name).read_text())
+
+    def _holds(self):
+        return json.loads((self.state / "holds.json").read_text())
+
+    def _events(self):
+        return [json.loads(x) for x in (self.state / "events.jsonl").read_text().splitlines()]
+
+    def test_off_ignores_the_log(self):
+        self._log("auth.txt")
+        payload, m_kick = self._run()
+        m_kick.assert_called_once()
+        self.assertNotIn("cause", payload["jobs"][0])
+        self.assertFalse((self.state / "holds.json").exists())
+        self.assertNotIn("would", self._events()[0])
+
+    def test_shadow_changes_nothing_and_records_would(self):
+        self._config("shadow")
+        self._log("auth.txt")
+        payload, m_kick = self._run()
+        m_kick.assert_called_once()
+        self.assertEqual(payload["jobs"][0]["action"], "kickstart")
+        self.assertEqual(
+            self._events()[0]["would"],
+            [{"id": "job-failing", "cause": "auth", "action": "kickstart", "would": "hold"}],
+        )
+
+    def test_on_holds_an_auth_failure(self):
+        self._config("on")
+        self._log("auth.txt")
+        payload, m_kick = self._run()
+        m_kick.assert_not_called()
+        self.assertEqual(payload["jobs"][0]["action"], "hold")
+        self.assertEqual(self._holds()["job-failing"]["cause"], "auth")
+        self.assertEqual(payload["healed"], [])
+
+    def test_on_never_kicks_a_deterministic_failure(self):
+        self._config("on")
+        self._log("deterministic.txt")
+        payload, m_kick = self._run()
+        m_kick.assert_not_called()
+        self.assertEqual(payload["jobs"][0]["action"], "notify")
+
+    def test_on_unknown_cause_keeps_current_behaviour(self):
+        self._config("on")
+        self._log("unknown.txt")
+        _, m_kick = self._run()
+        m_kick.assert_called_once()
+
+    def test_on_releases_one_kick_after_the_retry_interval(self):
+        self._config("on")
+        self._log("auth.txt")
+        self.state.mkdir(parents=True)
+        (self.state / "holds.json").write_text(json.dumps({"job-failing": {
+            "cause": "auth", "since": time.time() - 8 * 3600,
+            "last_try": time.time() - 7 * 3600, "releases": [],
+        }}))
+        _, m_kick = self._run()
+        m_kick.assert_called_once()
+
+    def test_on_failing_probe_keeps_the_hold(self):
+        self._config("on", cause_probe_command="sh -c 'exit 1' probe")
+        self._log("auth.txt")
+        self.state.mkdir(parents=True)
+        (self.state / "holds.json").write_text(json.dumps({"job-failing": {
+            "cause": "auth", "since": time.time() - 8 * 3600,
+            "last_try": time.time() - 7 * 3600, "releases": [],
+        }}))
+        _, m_kick = self._run()
+        m_kick.assert_not_called()
+
+    def test_stale_log_is_not_this_runs_cause(self):
+        self._config("on")
+        self._log("auth.txt")
+        old = time.time() - 3 * 86400
+        os.utime(self.log, (old, old))
+        _, m_kick = self._run()
+        m_kick.assert_called_once()
+
+    def test_hold_clears_when_the_job_recovers(self):
+        self._config("on")
+        self._log("auth.txt")
+        self._run()
+        self.assertIn("job-failing", self._holds())
+        self._run(exit_status=0)
+        self.assertEqual(self._holds(), {})
+
+    def test_quiet_hold_does_not_page_until_24h(self):
+        job = {"id": "j", "status": "failing", "cause": "quota", "action": "hold"}
+        holds = {"j": {"cause": "quota", "since": 100.0}}
+        self.assertEqual(doctor._notify_keys([job], [], holds, 100.0 + 3600), set())
+        self.assertEqual(
+            doctor._notify_keys([job], [], holds, 100.0 + 25 * 3600), {"job:j:failing"}
+        )
+
+    def test_auth_hold_pages_at_once(self):
+        job = {"id": "j", "status": "failing", "cause": "auth", "action": "hold"}
+        holds = {"j": {"cause": "auth", "since": 100.0}}
+        self.assertEqual(doctor._notify_keys([job], [], holds, 101.0), {"job:j:failing"})
+
+
 class StaleCountTests(EnvIsolatedTestCase):
     def _stale_registry(self) -> Path:
         evidence = Path(self.tmp) / "evidence.log"

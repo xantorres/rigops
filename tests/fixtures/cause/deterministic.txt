@@ -1,0 +1,2 @@
+preflight: 1 error(s), 0 warning(s) (profile client, tree /srv/tree)
+ERROR commit.subject-type: subject must be '<type>(scope)?: description'

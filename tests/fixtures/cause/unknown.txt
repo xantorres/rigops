@@ -1,0 +1,4 @@
+# synthetic: generic failure with no known signal
+Traceback (most recent call last):
+  File "/opt/job/run.py", line 9, in main
+ValueError: unexpected value
