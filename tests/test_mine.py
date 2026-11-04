@@ -48,14 +48,14 @@ def _registry(tmp: Path, raw: dict) -> roots.Registry:
 
 class SpanishFilterTests(unittest.TestCase):
     def test_statements_are_not_corrections(self):
-        for text in ("no se como hacerlo", "No hay nada de eso", "no es lo que pedi, vale",
-                     "no tengo tiempo", "no puedo abrirlo"):
+        for text in ("no se como hacerlo", "No hay nada de eso", "no tengo tiempo",
+                     "no puedo abrirlo"):
             with self.subTest(text=text):
                 self.assertTrue(mine.spanish_false_positive(text))
 
     def test_real_corrections_survive(self):
         for text in ("no, es otra cosa", "no pero usa la otra", "no digas eso", "nope, wrong file",
-                     "no mucho mas breve"):
+                     "no mucho mas breve", "no es lo que pedi, vale"):
             with self.subTest(text=text):
                 self.assertFalse(mine.spanish_false_positive(text))
 
@@ -181,7 +181,7 @@ class RealmTests(unittest.TestCase):
         self.client = self.tmp / "clientwork" / "svc"
         self.mine_dir = self.tmp / "mine" / "tool"
         self.client.mkdir(parents=True)
-        self.mine_dir.mkdir(parents=True)
+        (self.mine_dir / "sub").mkdir(parents=True)
         self.registry = _registry(self.tmp, {"roots": [
             {"path": str(self.client), "realm": "client", "scope": "repo", "repo": True},
             {"path": str(self.mine_dir), "realm": "personal", "scope": "repo", "repo": True},
@@ -275,7 +275,8 @@ class HardeningTests(DedupeTests):
         grp = mine.Group(members=[], representative=mine.Correction("s", "p", NOW, "no, x"),
                          sessions=2)
         out = mine.render(mine.Report({k: 0 for k in (
-            "files", "prompts", "detected", "spanish_filtered", "remaining", "groups", "deduped",
+            "files", "prompts", "detected", "spanish_added", "spanish_filtered", "remaining",
+            "groups", "deduped",
             "dedupe_skipped")}, [mine.Entry(grp, hit)], []), registry, "90d")
         for leaked in ("jane", "Globex", "example"):
             self.assertNotIn(leaked, out)
