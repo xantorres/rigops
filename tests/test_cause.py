@@ -181,6 +181,13 @@ class UpdateHoldTests(unittest.TestCase):
                     for i in range(5)]
         self.assertEqual(released, [True, True, True, False, False])
 
+    def test_one_kick_seen_as_a_release_and_a_label_stamp_counts_once(self):
+        holds = {"j": {"cause": "network", "since": 0.0, "last_try": 0.0,
+                       "releases": [10 * H, 15 * H]}}
+        self.assertTrue(update_hold(
+            holds, "j", "network", 20 * H, probe=lambda: True, label_kicks=[10 * H, 15 * H],
+        ))
+
     def test_network_without_probe_still_waits_the_interval(self):
         holds = {}
         update_hold(holds, "j", "network", 0.0)

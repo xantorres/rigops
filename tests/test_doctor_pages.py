@@ -50,7 +50,7 @@ class PagingBase(EnvIsolatedTestCase):
 
     def run_doctor(self, registry, snapshot=(True, None, 1), heal=True, runtime=None):
         with (
-            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "is_loaded", return_value=True) as self.is_loaded,
             mock.patch.object(launchd, "job_snapshot", return_value=snapshot),
             mock.patch.object(launchd, "kickstart", return_value=True) as kick,
             mock.patch.object(launchd, "runtime_hours", return_value=runtime),
@@ -226,6 +226,12 @@ class KillCeilingTests(unittest.TestCase):
         self.assertEqual((due, held), (True, ["check:c"]))
         self.assertNotIn("check:c", out)
 
+    def test_a_check_named_like_a_kill_is_not_exempt(self):
+        stamps = {rigops_notify.PAGES_KEY: {"day": time.strftime(
+            "%Y-%m-%d", time.localtime(NOW)), "n": 2}}
+        due, _, held = rigops_notify.notify_due(stamps, {"check:x:hung"}, NOW)
+        self.assertEqual((due, held), (False, ["check:x:hung"]))
+
     def test_a_kill_that_flaps_inside_recovery_stays_silent(self):
         _, stamps, _ = rigops_notify.notify_due({}, {"job:j:hung"}, NOW)
         _, stamps, _ = rigops_notify.notify_due(stamps, set(), NOW + 2 * H)
@@ -249,6 +255,29 @@ class HugeStampTests(unittest.TestCase):
         junk = {"sent": NOW - H, "seen": NOW - H}
         _, out, _ = rigops_notify.notify_due({rigops_notify.PAGES_KEY: junk}, set(), NOW)
         self.assertNotIn(rigops_notify.PAGES_KEY, out)
+
+
+class CorruptStateFileTests(PagingBase):
+    def test_a_state_file_with_a_huge_integer_falls_back_to_the_default(self):
+        self.state.mkdir(parents=True, exist_ok=True)
+        big = "1" + "0" * 5000
+        for name in ("notified.json", "kicked.json", "holds.json", "heal-stamps.json"):
+            (self.state / name).write_text(big)
+        self.run_doctor(_write_registry(self.tmp, FAILING_ITEM))
+        self.assertEqual(len(self.events()), 1)
+
+    def test_a_marker_list_of_unhashable_items_is_ignored(self):
+        self.state.mkdir(parents=True, exist_ok=True)
+        (self.state / "kicked.json").write_text(json.dumps([["a"], {"b": 1}, "job-failing"]))
+        self.run_doctor(_write_registry(self.tmp, FAILING_ITEM))
+        self.assertEqual(len(self.events()), 1)
+
+
+class LabelLookupTests(PagingBase):
+    def test_the_cause_policy_looks_a_label_up_once_per_item(self):
+        self._write_config(cause_policy="shadow")
+        self.run_doctor(_write_registry(self.tmp, FAILING_ITEM))
+        self.assertEqual(self.is_loaded.call_count, 1)
 
 
 class KickMarkTests(unittest.TestCase):

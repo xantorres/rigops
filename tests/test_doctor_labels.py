@@ -93,6 +93,14 @@ class KillCooldownTests(LabelBase):
         self.assertEqual(json.loads((self.state / "holds.json").read_text())[
             "job-failing"]["releases"], [])
 
+    def test_a_kill_stamp_alone_blocks_a_release_the_label_pacing_would_allow(self):
+        self._write_config(cause_policy="on", cause_probe_command="true")
+        registry = self.registry("job-failing")
+        self.seed_json("heal-stamps.json", {"kill:job-failing": time.time() - 1.5 * H})
+        self.seed_json("holds.json", {"job-failing": self.hold()})
+        _, kick = self.run_doctor(registry)
+        kick.assert_not_called()
+
     def test_the_release_kicks_once_the_kills_cooldown_is_over(self):
         self._write_config(cause_policy="on", cause_probe_command="true")
         registry = self.registry("job-failing", extra="    max_runtime_h: 1\n")

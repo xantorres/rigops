@@ -120,7 +120,7 @@ def _load_json(path: Path, default):
         return default
     try:
         return json.loads(path.read_text())
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+    except (ValueError, OSError):  # JSONDecodeError and UnicodeDecodeError are ValueErrors
         return default
 
 
@@ -165,7 +165,8 @@ def _judge_launchd_item(
     item: dict, prefixes: list, heal_cooldown_active: bool, cause_ctx: dict | None = None,
 ) -> dict:
     job_id = item.get("id", "unknown")
-    label = _label_for_item(item, prefixes)
+    seen = cause_ctx["labels"] if cause_ctx else {}
+    label = seen[id(item)] if id(item) in seen else _label_for_item(item, prefixes)
     if label is None:
         # No label is not "no information": the item's own evidence file still
         # says whether it ran. Unknown means neither a label nor evidence.
@@ -519,7 +520,10 @@ def main(argv=None) -> int:
     ap.add_argument("--registry", help="registry file path (default: config doctor.registry)")
     ap.add_argument(
         "--config-only", action="store_true",
-        help="run only the config checks (pointers, budget, plans, imports, render, rtk, levers)",
+        help=(
+            "run only the config checks (pointers, budget, plans, imports, render, rtk, "
+            "levers) and skip the fleet"
+        ),
     )
     ap.add_argument(
         "--no-config", action="store_true", help="skip the config checks",
@@ -595,14 +599,14 @@ def main(argv=None) -> int:
                 _run_probe(probe_command, probe_warnings)
                 if probe_command and cause_policy == "on" and args.heal else None
             ),
-            "heal_stamps": heal_stamps, "label_ids": {},
+            "heal_stamps": heal_stamps, "label_ids": {}, "labels": {},
             "killed": {
                 k[len(KILL_PREFIX):] for k in heal_stamps
                 if k.startswith(KILL_PREFIX) and _cooldown_active(heal_stamps, k, cooldown_h, now)
             },
         }
         for item in items:
-            label = _label_for_item(item, prefixes)
+            label = cause_ctx["labels"][id(item)] = _label_for_item(item, prefixes)
             if label:
                 cause_ctx["label_ids"].setdefault(label, []).append(item.get("id", "unknown"))
     jobs = []
@@ -692,7 +696,7 @@ def main(argv=None) -> int:
     kicked_path = doctor_state_dir / "kicked.json"
     marked = _load_json(kicked_path, {})
     if isinstance(marked, list):  # the shape before kicks were timed
-        marked = dict.fromkeys(marked, now)
+        marked = dict.fromkeys([m for m in marked if isinstance(m, str)], now)
     silenced, marked = rigops_notify.kick_suppressed(
         {k: v for k, v in marked.items() if isinstance(k, str)} if isinstance(marked, dict) else {},
         kicked_ids, now,

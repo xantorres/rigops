@@ -62,7 +62,7 @@ def notify_due(
         or now - e["seen"] >= recovery_h * 3600 or now - e["sent"] >= window_h * 3600
     }
     used = _pages_today(stamps, now)
-    kills = {k for k in fresh if k.endswith(":hung")}
+    kills = {k for k in fresh if k.startswith("job:") and k.endswith(":hung")}
     room = bool(fresh - kills) and used < max_pages
     paged = set(keys) if room else kills
     out = {

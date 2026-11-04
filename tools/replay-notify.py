@@ -28,9 +28,9 @@ LIMITS = (
     "the count holds; of the kicked ids, stale_count are assumed stale, not failing); checks are "
     "known only when they paged (notified keys); anonymous slots reuse ids, so real "
     "identity churn can page more than 'uncapped' shows. The ceiling holds regardless. "
-    "Only the first kicked id of a label is in the healed lines, so the replay silences fewer "
-    "siblings than production does (it undercounts silence and overcounts pages). The day is "
-    "the local one, as in production."
+    "A healed line can name fewer ids than the label's kick silenced, so the replay may silence "
+    "fewer siblings than production does (it can undercount silence and overcount pages). "
+    "The day is the local one, as in production."
 )
 
 
