@@ -113,6 +113,8 @@ def update_hold(holds: dict, job_id: str, cause: str, now: float, probe=None) ->
     Mutates holds. A new hold, or one for a different cause, starts held. After
     the cause's retry interval the optional probe decides: a failing probe waits
     a full interval again, a passing one (or none) releases a single kick.
+    A network hold with a probe skips the wait: the probe runs every call, a
+    failing one costs nothing, and the interval only spaces the kicks it releases.
     Network releases are capped per day.
     """
     entry = holds.get(job_id)
@@ -120,10 +122,13 @@ def update_hold(holds: dict, job_id: str, cause: str, now: float, probe=None) ->
         holds[job_id] = {"cause": cause, "since": now, "last_try": now, "releases": []}
         return False
     entry["cause"] = cause  # a flapping cause keeps its clock, or the hold never expires
-    if now - entry["last_try"] < HOLD_RETRY_H[cause] * 3600:
-        return False
     recent = [t for t in entry.get("releases", []) if now - t < 86400]
     entry["releases"] = recent
+    # A network hold with a probe asks it every run; the interval only spaces the kicks.
+    spaced_by_release = cause == "network" and probe is not None
+    last = max(recent, default=None) if spaced_by_release else entry["last_try"]
+    if last is not None and now - last < HOLD_RETRY_H[cause] * 3600:
+        return False
     if cause == "network" and len(recent) >= NETWORK_MAX_RELEASES_PER_DAY:
         return False
     entry["last_try"] = now

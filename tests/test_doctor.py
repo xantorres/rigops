@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import core, launchd  # noqa: E402
+from rigops import notify as rigops_notify  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DOCTOR_SCRIPT = REPO_ROOT / "libexec" / "rigops-doctor"
@@ -565,7 +567,7 @@ class EventsJsonlTests(EnvIsolatedTestCase):
         event = json.loads(lines[0])
         self.assertEqual(
             set(event),
-            {"ts", "jobs_checked", "fail_count", "stale_count", "healed", "notified"},
+            {"ts", "jobs_checked", "fail_count", "stale_count", "healed", "failing", "notified"},
         )
         self.assertEqual(event["jobs_checked"], 1)
         self.assertEqual(event["fail_count"], 0)
@@ -632,15 +634,24 @@ class NotifyDedupeTests(EnvIsolatedTestCase):
         ))
         self.notified_path = Path(self.tmp) / "state" / "doctor" / "notified.json"
 
-    def _run(self, *items: str, exit_code: int = 1) -> dict:
+    def _run(
+        self, *items: str, exit_code: int = 1, heal: bool = False, kick_ok: bool = True,
+    ) -> dict:
         registry_path = _write_registry(self.tmp, *items)
+        flags = ["--heal"] if heal else []
         with (
             mock.patch.object(launchd, "is_loaded", return_value=True),
             mock.patch.object(launchd, "job_snapshot", return_value=(True, None, exit_code)),
+            mock.patch.object(launchd, "kickstart", return_value=kick_ok),
         ):
-            code, out = _run_doctor(["--json", "--registry", str(registry_path)])
+            code, out = _run_doctor([*flags, "--json", "--registry", str(registry_path)])
         self.assertEqual(code, 0)
         return json.loads(out)
+
+    def _age_stamps(self, hours: float) -> None:
+        stamps = json.loads(self.notified_path.read_text())
+        aged = {k: {f: v - hours * 3600 for f, v in e.items()} for k, e in stamps.items()}
+        self.notified_path.write_text(json.dumps(aged))
 
     def _sent(self) -> int:
         return len(self.sink.read_text().splitlines()) if self.sink.exists() else 0
@@ -662,16 +673,60 @@ class NotifyDedupeTests(EnvIsolatedTestCase):
 
     def test_failure_notifies_again_after_24h(self):
         self._run(FAILING_ITEM)
-        stamps = json.loads(self.notified_path.read_text())
-        self.notified_path.write_text(json.dumps({k: v - 25 * 3600 for k, v in stamps.items()}))
+        self._age_stamps(25)
         self._run(FAILING_ITEM)
         self.assertEqual(self._sent(), 2)
 
-    def test_recovered_failure_notifies_again_when_it_returns(self):
+    def test_failure_that_flaps_inside_recovery_is_one_finding(self):
         self._run(FAILING_ITEM)
         self._run(FAILING_ITEM, exit_code=0)
         self._run(FAILING_ITEM)
+        self._run(FAILING_ITEM, exit_code=0)
+        self._run(FAILING_ITEM)
+        self.assertEqual(self._sent(), 1)
+
+    def test_failure_that_stayed_clear_pages_again_when_it_returns(self):
+        self._run(FAILING_ITEM)
+        self._run(FAILING_ITEM, exit_code=0)
+        self._age_stamps(7)
+        self._run(FAILING_ITEM)
         self.assertEqual(self._sent(), 2)
+
+    def test_new_finding_pages_while_a_flapping_one_is_suppressed(self):
+        other = FAILING_ITEM.replace("job-failing", "job-other").replace(
+            "local.job-failing", "local.job-other"
+        )
+        self._run(FAILING_ITEM)
+        self._run(FAILING_ITEM, exit_code=0)
+        self._run(FAILING_ITEM, other)
+        self.assertEqual(self._sent(), 2)
+        events_path = Path(self.tmp) / "state" / "doctor" / "events.jsonl"
+        last = json.loads(events_path.read_text().splitlines()[-1])
+        self.assertIn("job:job-other:failing", last["notified"])
+
+    def test_job_the_doctor_just_kicked_does_not_page(self):
+        out = self._run(FAILING_ITEM, heal=True)
+        self.assertEqual(len(out["healed"]), 1)
+        self.assertEqual(self._sent(), 0)
+
+    def test_kicked_job_that_keeps_failing_pages_next_run(self):
+        self._run(FAILING_ITEM, heal=True)
+        self._run(FAILING_ITEM, heal=True)
+        self.assertEqual(self._sent(), 1)
+
+    def test_failed_kick_still_pages(self):
+        self._run(FAILING_ITEM, heal=True, kick_ok=False)
+        self.assertEqual(self._sent(), 1)
+
+    def test_report_only_run_pages_a_failure(self):
+        self._run(FAILING_ITEM)
+        self.assertEqual(self._sent(), 1)
+
+    def test_legacy_float_stamps_still_dedupe(self):
+        now = time.time()
+        due, out = rigops_notify.notify_due({"k": now - 3600}, {"k"}, now)
+        self.assertFalse(due)
+        self.assertEqual(out["k"]["sent"], now - 3600)
 
     def test_event_records_the_notified_keys(self):
         self._run(FAILING_ITEM)
@@ -819,6 +874,31 @@ class CausePolicyTests(EnvIsolatedTestCase):
         _, m_kick = self._run()
         m_kick.assert_not_called()
 
+    def _dns_probe(self, host):
+        code = f"import socket; socket.getaddrinfo({host!r}, 443)"
+        return shlex.join([sys.executable, "-c", code])
+
+    def test_network_hold_is_released_by_the_probe_once_dns_resolves(self):
+        self._config("on", cause_probe_command=self._dns_probe("host.invalid"))
+        self._log("network-dns.txt")
+        _, m_kick = self._run()
+        m_kick.assert_not_called()
+        _, m_kick = self._run()
+        m_kick.assert_not_called()
+        self.assertEqual(self._holds()["job-failing"]["releases"], [])
+        self._config("on", cause_probe_command=self._dns_probe("localhost"))
+        payload, m_kick = self._run()
+        m_kick.assert_called_once()
+        self.assertEqual(len(payload["healed"]), 1)
+        self.assertEqual(len(self._holds()["job-failing"]["releases"]), 1)
+
+    def test_shadow_with_a_probe_configured_holds_and_kicks_as_before(self):
+        self._config("shadow", cause_probe_command=self._dns_probe("localhost"))
+        self._log("network-dns.txt")
+        payload, m_kick = self._run()
+        m_kick.assert_called_once()
+        self.assertEqual(self._events()[0]["would"][0]["would"], "hold")
+
     def test_stale_log_is_not_this_runs_cause(self):
         self._config("on")
         self._log("auth.txt")
@@ -911,20 +991,20 @@ class CausePolicyTests(EnvIsolatedTestCase):
     def test_release_tick_inside_quiet_period_does_not_page(self):
         job = {"id": "j", "status": "failing", "cause": "quota", "action": "kickstart"}
         holds = {"j": {"cause": "quota", "since": 0.0}}
-        self.assertEqual(doctor._notify_keys([job], [], holds, 5 * 3600), set())
+        self.assertEqual(rigops_notify.notify_keys([job], [], holds, 5 * 3600), set())
 
     def test_quiet_hold_does_not_page_until_24h(self):
         job = {"id": "j", "status": "failing", "cause": "quota", "action": "hold"}
         holds = {"j": {"cause": "quota", "since": 100.0}}
-        self.assertEqual(doctor._notify_keys([job], [], holds, 100.0 + 3600), set())
+        self.assertEqual(rigops_notify.notify_keys([job], [], holds, 100.0 + 3600), set())
         self.assertEqual(
-            doctor._notify_keys([job], [], holds, 100.0 + 25 * 3600), {"job:j:failing"}
+            rigops_notify.notify_keys([job], [], holds, 100.0 + 25 * 3600), {"job:j:failing"}
         )
 
     def test_auth_hold_pages_at_once(self):
         job = {"id": "j", "status": "failing", "cause": "auth", "action": "hold"}
         holds = {"j": {"cause": "auth", "since": 100.0}}
-        self.assertEqual(doctor._notify_keys([job], [], holds, 101.0), {"job:j:failing"})
+        self.assertEqual(rigops_notify.notify_keys([job], [], holds, 101.0), {"job:j:failing"})
 
 
 class StaleCountTests(EnvIsolatedTestCase):

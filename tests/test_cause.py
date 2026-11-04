@@ -157,6 +157,42 @@ class UpdateHoldTests(unittest.TestCase):
         update_hold(holds, "j", "auth", 1 * H, probe=lambda: calls.append(1) or True)
         self.assertEqual(calls, [])
 
+    def test_network_probe_runs_every_call_and_a_failure_costs_nothing(self):
+        holds, calls = {}, []
+        update_hold(holds, "j", "network", 0.0)
+        for minute in (30, 60, 90):
+            self.assertFalse(update_hold(
+                holds, "j", "network", minute * 60.0, probe=lambda: calls.append(1) or False,
+            ))
+        self.assertEqual(len(calls), 3)
+        self.assertTrue(update_hold(holds, "j", "network", 100 * 60.0, probe=lambda: True))
+
+    def test_network_release_spaces_the_next_kick_by_the_interval(self):
+        holds = {}
+        update_hold(holds, "j", "network", 0.0)
+        self.assertTrue(update_hold(holds, "j", "network", 0.5 * H, probe=lambda: True))
+        self.assertFalse(update_hold(holds, "j", "network", 1.0 * H, probe=lambda: True))
+        self.assertTrue(update_hold(holds, "j", "network", 1.5 * H, probe=lambda: True))
+
+    def test_network_probe_release_still_capped_per_day(self):
+        holds = {}
+        update_hold(holds, "j", "network", 0.0)
+        released = [update_hold(holds, "j", "network", (0.5 + 1.0 * i) * H, probe=lambda: True)
+                    for i in range(5)]
+        self.assertEqual(released, [True, True, True, False, False])
+
+    def test_network_without_probe_still_waits_the_interval(self):
+        holds = {}
+        update_hold(holds, "j", "network", 0.0)
+        self.assertFalse(update_hold(holds, "j", "network", 0.5 * H))
+        self.assertTrue(update_hold(holds, "j", "network", 1.0 * H))
+
+    def test_auth_probe_still_waits_the_interval(self):
+        holds, calls = {}, []
+        update_hold(holds, "j", "auth", 0.0)
+        update_hold(holds, "j", "auth", 3 * H, probe=lambda: calls.append(1) or True)
+        self.assertEqual(calls, [])
+
     def test_cause_change_keeps_the_clock(self):
         holds = {}
         update_hold(holds, "j", "quota", 0.0)

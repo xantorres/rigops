@@ -23,6 +23,7 @@ from rigops import core as rigops_core  # noqa: E402
 from rigops import doctor as config_checks  # noqa: E402
 from rigops import fmt, launchd, state  # noqa: E402
 from rigops import judge as rigops_judge  # noqa: E402
+from rigops import notify as rigops_notify  # noqa: E402
 from rigops import registry as rigops_registry  # noqa: E402
 
 CADENCE_EVENT_RE = re.compile(r"\bevent\b", re.IGNORECASE)
@@ -36,7 +37,6 @@ CADENCE_ONDEMAND_RE = re.compile(r"on-demand|manual|deadline", re.IGNORECASE)
 HEALTH_TRAILING_NOTE_RE = re.compile(r"\s*\([^)]*\)\s*$")
 EVIDENCE_LINE_RE = re.compile(r":\d+$")
 GLOB_CHARS_RE = re.compile(r"[*?\[]")
-NOTIFY_WINDOW_H = 24
 
 
 def cadence_interval_hours(cadence: str):
@@ -347,34 +347,6 @@ def _notify(command: str, report_path: Path) -> str:
     return ""
 
 
-def notify_due(stamps: dict, keys: set, now: float, window_h: float) -> tuple:
-    """Returns (due, stamps'). Due when any key is new or last sent over window_h
-    ago; stamps' keeps only live keys, so a failure that clears and returns is new."""
-    window_s = window_h * 3600
-    due = any(
-        not isinstance(stamps.get(k), (int, float)) or now - stamps[k] >= window_s
-        for k in keys
-    )
-    if not due:
-        return False, {k: stamps[k] for k in keys}
-    return True, {k: now for k in keys}
-
-
-# A kick is not a finding: the failing row it answers already carries the key,
-# and a stale row is a trend to read, so neither pages on its own.
-def _notify_keys(jobs: list, checks: list, holds: dict | None = None, now: float = 0.0) -> set:
-    keys = {
-        f"job:{j['id']}:{j['status']}" for j in jobs
-        if j["status"] in ("failing", "hung")
-        and not (
-            holds is not None and j.get("cause") in rigops_cause.HELD_CAUSES
-            and rigops_cause.hold_is_silent(holds, j["id"], j.get("cause"), now)
-        )
-    }
-    keys |= {f"check:{c['name']}" for c in checks if c["status"] == "fail"}
-    return keys
-
-
 def _is_unjudged(job: dict) -> bool:
     """No label and no evidence: the row would carry nothing but its own id."""
     return (
@@ -605,6 +577,7 @@ def main(argv=None) -> int:
     heal_log = []
     kicked_labels = set()
     kicked_ids = set()
+    healed_ids = set()
     if args.heal and args.supervisor == "launchd":
         for job in jobs:
             if job["action"] == "kill" and job["pid"]:
@@ -613,6 +586,7 @@ def main(argv=None) -> int:
                     heal_log.append(f"pid changed for {job['id']}, skip kill")
                 elif launchd.terminate_process_group(job["pid"], kill_grace_s):
                     heal_stamps[job["id"]] = now
+                    healed_ids.add(job["id"])
                     heal_log.append(f"terminated hung job {job['id']} (pid {job['pid']})")
                     _save_json(heal_stamps_path, heal_stamps)
             elif job["action"] == "kickstart" and job["label"]:
@@ -624,6 +598,7 @@ def main(argv=None) -> int:
                 elif launchd.kickstart(job["label"]):
                     kicked_labels.add(job["label"])
                     kicked_ids.add(job["id"])
+                    healed_ids.add(job["id"])
                     heal_stamps[job["id"]] = now
                     heal_log.append(f"kickstarted {job['id']} ({job['label']})")
                     _save_json(heal_stamps_path, heal_stamps)
@@ -663,19 +638,21 @@ def main(argv=None) -> int:
     notify_command = rigops_config.get(cfg, "doctor.notify_command", "")
     notify_stamps_path = doctor_state_dir / "notified.json"
     notify_keys = (
-        _notify_keys(
+        rigops_notify.notify_keys(
             jobs, checks, cause_ctx["holds"] if cause_policy == "on" and cause_ctx else None, now,
+            frozenset(healed_ids),
         )
         if notify_command else set()
     )
     stamps = _load_json(notify_stamps_path, {})
-    due, stamps = notify_due(
-        stamps if isinstance(stamps, dict) else {}, notify_keys, now, NOTIFY_WINDOW_H,
+    due, stamps = rigops_notify.notify_due(
+        stamps if isinstance(stamps, dict) else {}, notify_keys, now,
     )
 
     event = {
         "ts": ts, "jobs_checked": len(jobs), "fail_count": fail_count,
         "stale_count": stale_count, "healed": heal_log,
+        "failing": sorted(j["id"] for j in jobs if j["status"] in ("failing", "hung")),
         "notified": sorted(notify_keys) if due else [],
     }
     if cause_policy == "shadow":
