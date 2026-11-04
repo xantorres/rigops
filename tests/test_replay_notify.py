@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -41,6 +43,39 @@ class ReplayTests(unittest.TestCase):
         uncapped, _ = replay.replay(events, "uncapped")
         self.assertEqual((sum(capped.values()), held), (2, 1))
         self.assertEqual(sum(uncapped.values()), 3)
+
+    def test_the_day_is_the_local_one(self):
+        old_tz = os.environ.get("TZ")
+        os.environ["TZ"] = "Etc/GMT-7"
+        time.tzset()
+        try:
+            per_day, _ = replay.replay(
+                [event("2026-11-01T20:00:00Z", notified=["check:disk"])], "current"
+            )
+        finally:
+            if old_tz is None:
+                os.environ.pop("TZ")
+            else:
+                os.environ["TZ"] = old_tz
+            time.tzset()
+        self.assertEqual(dict(per_day), {"2026-11-02": 1})
+
+    def test_the_window_counts_its_check_pages(self):
+        events = [
+            event("2026-11-01T10:00:00Z", notified=["check:disk", "job:a:failing"]),
+            event("2026-11-01T11:00:00Z", notified=["check:net"]),
+        ]
+        self.assertEqual(replay.check_pages(events), 2)
+        self.assertEqual(replay.check_pages([event("2026-11-01T10:00:00Z")]), 0)
+
+    def test_a_longer_recovery_window_keeps_a_flapping_failure_silent(self):
+        events = [
+            event("2026-11-01T10:00:00Z", fail=1), event("2026-11-01T10:30:00Z"),
+            event("2026-11-01T13:00:00Z", fail=1),
+        ]
+        short, _ = replay.replay(events, "uncapped", recovery_h=1)
+        long, _ = replay.replay(events, "uncapped", recovery_h=6)
+        self.assertEqual((sum(short.values()), sum(long.values())), (2, 1))
 
 
 if __name__ == "__main__":

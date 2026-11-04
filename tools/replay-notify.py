@@ -8,11 +8,12 @@ they are. Run with no pipe to read the model limits it prints.
 from __future__ import annotations
 
 import argparse
+import calendar
 import collections
 import json
 import re
 import sys
-from datetime import datetime
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
@@ -26,7 +27,10 @@ LIMITS = (
     "so failing ids are rebuilt (kicked ids first, the rest anonymous slots that persist while "
     "the count holds; of the kicked ids, stale_count are assumed stale, not failing); checks are "
     "known only when they paged (notified keys); anonymous slots reuse ids, so real "
-    "identity churn can page more than 'uncapped' shows. The ceiling holds regardless."
+    "identity churn can page more than 'uncapped' shows. The ceiling holds regardless. "
+    "Only the first kicked id of a label is in the healed lines, so the replay silences fewer "
+    "siblings than production does (it undercounts silence and overcounts pages). The day is "
+    "the local one, as in production."
 )
 
 
@@ -50,11 +54,13 @@ def failing_of(e: dict) -> tuple:
     return failing_kicked + killed + [f"anon{i}" for i in range(slots)], kicked, killed
 
 
-def replay(events: list, rule: str, with_checks: bool = True) -> tuple:
+def replay(
+    events: list, rule: str, with_checks: bool = True, recovery_h: float = notify.RECOVERY_H,
+) -> tuple:
     """(pages per day, passes held by the ceiling). Runs the production functions."""
     per_day, stamps, marked, held = collections.Counter(), {}, set(), 0
     for e in events:
-        now = datetime.strptime(e["ts"], "%Y-%m-%dT%H:%M:%SZ").timestamp()
+        now = calendar.timegm(time.strptime(e["ts"], "%Y-%m-%dT%H:%M:%SZ"))
         ids, kicked, killed = failing_of(e)
         jobs = [{"id": i, "status": "hung" if i in killed else "failing"} for i in ids]
         checks = [
@@ -67,11 +73,17 @@ def replay(events: list, rule: str, with_checks: bool = True) -> tuple:
             silenced, marked = notify.kick_suppressed(marked, set(kicked), set(ids))
             keys = notify.notify_keys(jobs, checks, healed_ids=frozenset(silenced))
             cap = float("inf") if rule == "uncapped" else notify.MAX_PAGES_PER_DAY
-            due, stamps, over = notify.notify_due(stamps, keys, now, max_pages=cap)
+            due, stamps, over = notify.notify_due(
+                stamps, keys, now, recovery_h=recovery_h, max_pages=cap,
+            )
             held += bool(over)
         if due:
-            per_day[e["ts"][:10]] += 1
+            per_day[time.strftime("%Y-%m-%d", time.localtime(now))] += 1
     return per_day, held
+
+
+def check_pages(events: list) -> int:
+    return sum(k.startswith("check:") for e in events for k in e.get("notified", []))
 
 
 def line(name: str, per_day: collections.Counter, extra: str = "") -> str:
@@ -84,15 +96,24 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("events", type=Path)
     ap.add_argument("--until", default="9999", help="ignore events at or after this ISO timestamp")
+    ap.add_argument(
+        "--recovery-h", type=float, default=notify.RECOVERY_H,
+        help="hours a failure must stay clear to count as new again (default: production)",
+    )
     args = ap.parse_args()
     events = [
         e for e in (json.loads(line) for line in args.events.read_text().splitlines() if line)
         if "fail_count" in e and e["ts"] < args.until
     ]
+    print(f"window: {len(events)} events, {check_pages(events)} check pages in it "
+          "(checks share the daily ceiling; 0 makes 'jobs only' identical to 'current')")
+    print(f"recovery_h {args.recovery_h:g}")
+    r = args.recovery_h
     print(line("legacy", replay(events, "legacy")[0]))
-    print(line("uncapped (upper bound before the ceiling)", replay(events, "uncapped")[0]))
-    print(line("jobs only (no checks, ceiling)", replay(events, "current", with_checks=False)[0]))
-    per_day, held = replay(events, "current")
+    print(line("uncapped (upper bound before the ceiling)",
+               replay(events, "uncapped", recovery_h=r)[0]))
+    print(line("jobs only (no checks, ceiling)", replay(events, "current", False, r)[0]))
+    per_day, held = replay(events, "current", recovery_h=r)
     print(line("current (ceiling)", per_day, f", passes the ceiling delays {held}"))
     print(LIMITS)
     return 0
