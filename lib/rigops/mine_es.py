@@ -15,25 +15,41 @@ ES_STATEMENT_RE = re.compile(
     r"|es\b(?!\s+(?:eso|esto|ese|esa|lo\s+que|asi|así|lo\s+mismo|correcto|ahi|ahí)\b)"
     r"|hay\b(?!\s+que\b)"
     r"|hace\b(?!\s+falta\b)"
+    r"|(?:hiciste|has\s+hecho)\s+nada\s+(?:mal|raro|malo)\b"
     r"|lo\s+puedes\b(?!.*\bo\s+qu[eé]\W*$)"
     r"|lo\s+(?:se|sé|tengo|puedo|sabes|encuentro|veo|entiendo|consigo|recuerdo)\b)",
     re.IGNORECASE,
 )
+# A bare cue is not enough: each family needs the words that make it a rebuke, not a statement.
+_ORDERS = r"(?:hagas|uses|toques|borres|cambies|muevas|pongas|digas|inventes|escribas)"
+_DEJA_VERBS = (r"(?:resumir|repetir|explicar|preguntar|hacer|inventar|a[nñ]adir|agregar|borrar|"
+               r"tocar|usar|cambiar|escribir|poner|mover|comentar|decir|narrar|listar|pedir|"
+               r"confirmar|formatear|romper|ignorar|asumir|suponer|simplificar|reescribir|editar|"
+               r"crear|generar)")
 ES_CORRECTION_RE = re.compile(
     r"^\s*(?:"
-    r"(?P<demo>(?:eso|esto|as[ií])\s+no\b)"
+    r"(?P<demo>(?:(?:eso|esto)\s+no(?=\s*[,.!:;]|\s*$)"
+    r"|(?:eso|esto)\s+no\s+(?:(?:es|era)\s+(?:lo\s+que|eso|esto|as[ií]|correcto|lo\s+mismo)"
+    r"|funciona|sirve|vale|compila|quiero|(?:lo\s+)?" + _ORDERS + r")"
+    r"|as[ií]\s+no)\b)"
     r"|(?P<mal>mal(?=\s*[,.!:;]|\s*$))"
-    r"|(?P<esta_mal>est[aá]\s+(?:mal|incorrecto)\b|(?:incorrecto|falso)(?=\s*[,.!:;]|\s*$))"
-    r"|(?P<te_dije>(?:ya\s+)?te\s+(?:dije|he\s+dicho)\s+que\b)"
-    r"|(?P<deja_de>deja\s+de\b)"
-    r"|(?P<nunca_mas>(?:nunca|jam[aá]s)\s+m[aá]s\b)"
-    r"|(?P<ojo>ojo(?=\s*[,.!:;])|cuidado(?=\s*[,.!:;]))"
+    r"|(?P<esta_mal>(?:(?:eso|esto)\s+)?est[aá]\s+(?:mal|incorrecto)\b|(?:incorrecto|falso)(?=\s*[,.!:;]|\s*$))"
+    r"|(?P<otra_vez>otra\s+vez\s+(?:lo\s+mismo|igual|mal)\b)"
+    r"|(?P<te_dije>(?:ya\s+)?te\s+(?:dije|he\s+dicho)\s+que\s+(?:no|nunca|jam[aá]s|sin|ni)\b)"
+    r"|(?P<deja_de>deja\s+de\s+" + _DEJA_VERBS + r"\b)"
+    r"|(?P<nunca_mas>(?:nunca|jam[aá]s)\s+m[aá]s\s+(?:me\s+|lo\s+|la\s+)?\w{3,}(?:es|as)\b)"
+    r"|(?P<ojo>(?:ojo|cuidado)\s*[,.!:;]\s*(?:que\s+)?(?:eso|esto|as[ií]|rompe|otra\s+vez"
+    r"|no\s+(?:me|lo|la|te)\b|no\s+" + _ORDERS + r"|te\s+(?:has|olvid)|(?:lo\s+)?has\b))"
     r")",
     re.IGNORECASE,
 )
-BARE_NO_RE = re.compile(r"^\s*(?:eso|esto|as[ií])\s+no\s*[.!]*\s*$", re.IGNORECASE)
+BARE_NO_RE = re.compile(
+    r"^\s*(?:(?:eso|esto|as[ií])\s+no|(?:ya\s+)?te\s+(?:dije|he\s+dicho)\s+que\s+no|para(?:\s+ya)?)\s*[.!]*\s*$",
+    re.IGNORECASE,
+)
 REPROACH_RE = re.compile(
-    r"(?<!\bsi\s)(?<!\bhasta\sque\s)\bno\s+(?:has|hiciste|pusiste|arreglaste|entendiste)\s+\w+",
+    r"(?:^|[,;:.!?]\s*|\b(?:pero|y|porque|oye|vale|mira)\s+|\bpor\s*qu[eé]\s+)"
+    r"no\s+(?:has|hiciste|pusiste|arreglaste|entendiste)\s+(?!(?:\w+\s+)?nada\s+(?:mal|raro|malo)\b)\w+",
     re.IGNORECASE,
 )
 REPROACH_WINDOW = 160
