@@ -24,3 +24,17 @@ i co-authored-by:.*(claude|anthropic|gpt|copilot|gemini|cursor)
 i generated with .{0,10}(claude|chatgpt|copilot|cursor)
 s 🤖
 i claude\.com/claude-code
+# Personal-data shapes: tax ids, IBAN, phone with country code, street
+# addresses. Word boundaries keep hex digests, uuids and versions clear.
+s (^|[^A-Za-z0-9])[0-9]{8}[A-Z]($|[^A-Za-z0-9])
+s (^|[^A-Za-z0-9])[XYZ][0-9]{7}[A-Z]($|[^A-Za-z0-9])
+s (^|[^A-Za-z0-9])[A-Z]{2}[0-9]{2}( ?[0-9A-Z]{4}){3,7}( ?[0-9A-Z]{1,4})?($|[^A-Za-z0-9])
+s (^|[^[:alnum:]+-])(\+|00)[1-9][0-9]{0,2}[ .(][0-9 .()-]{7,14}[0-9]
+# The char before a compact or dashed plus keeps a diff's added-line marker clear.
+s [^[:alnum:]+-]\+[1-9][0-9]{8,13}($|[^[:alnum:]])
+s [^[:alnum:]+-]\+[1-9][0-9]{0,2}-[0-9]{2,4}-[0-9]{3,4}(-[0-9]{2,4})?($|[^[:alnum:]])
+# Street word, up to four name words, then a house number.
+i (^|[^[:alnum:]])(calle|carrer|avenida|avinguda|avda\.?|passeig|paseo|plaza|plaça|placa|carretera|ctra\.?|camino|travessera|travesia|passatge|rambla|ronda|glorieta|c/|cl\.|av\.|pg\.|pl\.)( +[[:alpha:]'.-]+){1,4}[ ,]+(n[ºo°.]? *)?[0-9]{1,4}($|[^0-9A-Za-z])
+s (^|[^[:alnum:]])[0-9]{1,4},? +[A-Z][[:alpha:]'-]+( +[A-Z][[:alpha:]'-]+){0,2} +(Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Drive|Boulevard|Blvd)($|[^[:alnum:]])
+# Capitalised name, number, then a floor word and number: "Name Name 12, Piso 3".
+s [A-Z][[:alpha:]]+ (d[eel]l? |la |les |dels )?[A-Z][[:alpha:]]+ [0-9]{1,3}, [[:alpha:]]{2,6}\.? ?[0-9]
