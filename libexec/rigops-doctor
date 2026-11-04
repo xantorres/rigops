@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import copy
 import glob
+import hashlib
 import json
 import os
 import re
@@ -130,6 +131,9 @@ def _save_json(path: Path, data) -> None:
     os.replace(tmp, path)
 
 
+KILL_PREFIX = "kill:"
+
+
 def _cooldown_active(heal_stamps: dict, job_id: str, cooldown_h: float, now: float) -> bool:
     last = heal_stamps.get(job_id)
     return last is not None and (now - last) < cooldown_h * 3600
@@ -198,6 +202,8 @@ def _apply_cause(job, item, label, last_exit, interval_h, ctx, heal_cooldown_act
     except Exception as exc:  # advisory: a classifier fault must never stop the supervisor
         job.pop("cause", None)
         job.pop("would", None)
+        for key in ("exit", "tail_sha", "log"):
+            job.pop(key, None)
         print(f"warning: cause classification skipped for {job['id']}: {exc}", file=sys.stderr)
 
 
@@ -209,17 +215,22 @@ def _apply_cause_unsafe(job, item, label, last_exit, interval_h, ctx, heal_coold
     """
     plist = item.get("plist") or f"~/Library/LaunchAgents/{label}.plist"
     window_h = interval_h * 1.5 if interval_h else 24.0
-    tail = "\n".join(
-        rigops_cause.tail_of(path, now=ctx["now"], max_age_h=window_h)
+    tails = [
+        (path, rigops_cause.tail_of(path, now=ctx["now"], max_age_h=window_h))
         for path in rigops_cause.log_paths(plist)
-    )
+    ]
+    tail = "\n".join(t for _, t in tails)
     cause = rigops_cause.classify(last_exit, tail)
     release = False
     before = copy.deepcopy(ctx["holds"].get(job["id"]))
     if cause in rigops_cause.HELD_CAUSES:
         release = rigops_cause.update_hold(
             ctx["holds"], job["id"], cause, ctx["now"], ctx["probe"],
+            _label_kicks(ctx, label, job["id"]),
         )
+        if release and job["id"] in ctx["killed"]:
+            release = False  # a kill's cooldown outranks a released hold
+            ctx["undo"][job["id"]] = before
     _, would = rigops_judge.judge_job(
         runtime_h=None, max_runtime_h=item["max_runtime_h"], last_exit_status=last_exit,
         evidence_age_h=job["evidence_age_h"], expected_interval_h=interval_h,
@@ -233,6 +244,25 @@ def _apply_cause_unsafe(job, item, label, last_exit, interval_h, ctx, heal_coold
         job["action"] = would
     else:
         job["would"] = would
+        # Never the raw tail: it can carry secrets. The hash lets two reviews compare tails.
+        shown = next((p for p, t in tails if t), tails[0][0] if tails else "")
+        home = str(Path.home())
+        job["exit"] = last_exit
+        job["tail_sha"] = hashlib.sha256(tail.encode()).hexdigest()[:12]
+        job["log"] = "~" + str(shown)[len(home):] if str(shown).startswith(home) else str(shown)
+
+
+def _label_kicks(ctx: dict, label: str, job_id: str) -> list:
+    """When this label was last kicked: every id's heal stamp, and the siblings' released holds."""
+    times = []
+    for member in ctx["label_ids"].get(label, ()):
+        times.append(ctx["heal_stamps"].get(member))
+        if member != job_id:
+            times += ctx["holds"].get(member, {}).get("releases", [])
+    return [
+        t for t in times
+        if isinstance(t, (int, float)) and not isinstance(t, bool) and t <= ctx["now"]
+    ]
 
 
 def _run_probe(command: str, warnings: list):
@@ -489,7 +519,7 @@ def main(argv=None) -> int:
     ap.add_argument("--registry", help="registry file path (default: config doctor.registry)")
     ap.add_argument(
         "--config-only", action="store_true",
-        help="run only the config checks (pointers, budget, plans, imports, render, rtk, levers) and skip the fleet",
+        help="run only the config checks (pointers, budget, plans, imports, render, rtk, levers)",
     )
     ap.add_argument(
         "--no-config", action="store_true", help="skip the config checks",
@@ -551,6 +581,10 @@ def main(argv=None) -> int:
     probe_warnings = []
     if cause_policy in ("shadow", "on") and args.supervisor == "launchd":
         probe_command = rigops_config.get(cfg, "doctor.cause_probe_command", "")
+        if not isinstance(probe_command, str):
+            probe_warnings.append(
+                f"cause_probe_command ignored: not a string ({type(probe_command).__name__})"
+            )
         probe_command = probe_command.strip() if isinstance(probe_command, str) else ""
         # A run that cannot kick must not spend a hold's retry, and a shadow run must not
         # run the probe: it would be work the unchanged supervisor never did.
@@ -561,7 +595,16 @@ def main(argv=None) -> int:
                 _run_probe(probe_command, probe_warnings)
                 if probe_command and cause_policy == "on" and args.heal else None
             ),
+            "heal_stamps": heal_stamps, "label_ids": {},
+            "killed": {
+                k[len(KILL_PREFIX):] for k in heal_stamps
+                if k.startswith(KILL_PREFIX) and _cooldown_active(heal_stamps, k, cooldown_h, now)
+            },
         }
+        for item in items:
+            label = _label_for_item(item, prefixes)
+            if label:
+                cause_ctx["label_ids"].setdefault(label, []).append(item.get("id", "unknown"))
     jobs = []
     for item in items:
         job_id = item.get("id", "unknown")
@@ -575,7 +618,8 @@ def main(argv=None) -> int:
     would_log = []
     if cause_ctx and cause_policy == "shadow":
         would_log = [
-            {"id": j["id"], "cause": j["cause"], "action": j["action"], "would": j["would"]}
+            {"id": j["id"], "cause": j["cause"], "action": j["action"], "would": j["would"],
+             "exit": j["exit"], "tail_sha": j["tail_sha"], "log": j["log"]}
             for j in jobs if "would" in j
         ]
 
@@ -589,7 +633,7 @@ def main(argv=None) -> int:
                 if current_pid != job["pid"]:
                     heal_log.append(f"pid changed for {job['id']}, skip kill")
                 elif launchd.terminate_process_group(job["pid"], kill_grace_s):
-                    heal_stamps[job["id"]] = now
+                    heal_stamps[job["id"]] = heal_stamps[KILL_PREFIX + job["id"]] = now
                     heal_log.append(f"terminated hung job {job['id']} (pid {job['pid']})")
                     _save_json(heal_stamps_path, heal_stamps)
             elif job["action"] == "kickstart" and job["label"]:
@@ -600,7 +644,12 @@ def main(argv=None) -> int:
                     _save_json(heal_stamps_path, heal_stamps)
                 elif launchd.kickstart(job["label"]):
                     kicked_labels.add(job["label"])
-                    kicked_ids.add(job["id"])
+                    sharing = [j["id"] for j in jobs if j["label"] == job["label"]]
+                    kicked_ids.update(sharing)
+                    for sibling in sharing:
+                        hold = cause_ctx["holds"].get(sibling) if cause_ctx else None
+                        if hold and now not in hold["releases"]:
+                            hold["releases"].append(now)
                     heal_stamps[job["id"]] = now
                     heal_log.append(f"kickstarted {job['id']} ({job['label']})")
                     _save_json(heal_stamps_path, heal_stamps)
@@ -628,7 +677,8 @@ def main(argv=None) -> int:
     disk_free_cfg = rigops_config.get(cfg, "doctor.checks.disk_free")
     if disk_free_cfg:
         checks.append(run_disk_free_check(disk_free_cfg))
-    findings = [] if args.no_config else config_checks.run_checks(cfg, only=set(args.check or []) or None)
+    only = set(args.check or []) or None
+    findings = [] if args.no_config else config_checks.run_checks(cfg, only=only)
 
     fail_count = sum(1 for j in jobs if j["status"] in ("failing", "hung"))
     # Reported, never paged: a stale row is a trend to read in the events log,
@@ -661,7 +711,7 @@ def main(argv=None) -> int:
         "ts": ts, "jobs_checked": len(jobs), "fail_count": fail_count,
         "stale_count": stale_count, "healed": heal_log,
         "failing": sorted(j["id"] for j in jobs if j["status"] in ("failing", "hung")),
-        "notified": sorted(notify_keys) if due else [],
+        "notified": [k for k in sorted(notify_keys) if k not in held] if due else [],
     }
     if held:
         event["held"] = held
@@ -670,6 +720,10 @@ def main(argv=None) -> int:
     state.append_jsonl(events_path, event)
     for message in probe_warnings:
         state.append_jsonl(events_path, {"ts": ts, "event": message})
+
+    # Saved before the send: a failed send must not hand the next kick a free silence.
+    if notify_command:
+        _save_json(kicked_path, sorted(marked))
 
     notify_error = ""
     if due:
@@ -681,7 +735,6 @@ def main(argv=None) -> int:
     # A failed send leaves the keys unstamped so the next tick tries again.
     if notify_command and not notify_error:
         _save_json(notify_stamps_path, stamps)
-        _save_json(kicked_path, sorted(marked))
 
     # Written every run, gates or none: an empty list still proves the doctor ran,
     # which is what a card reading it needs to tell "clean" from "never checked".

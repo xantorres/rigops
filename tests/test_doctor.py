@@ -833,9 +833,11 @@ class CausePolicyTests(EnvIsolatedTestCase):
         payload, m_kick = self._run()
         m_kick.assert_called_once()
         self.assertEqual(payload["jobs"][0]["action"], "kickstart")
+        [entry] = self._events()[0]["would"]
         self.assertEqual(
-            self._events()[0]["would"],
-            [{"id": "job-failing", "cause": "auth", "action": "kickstart", "would": "hold"}],
+            {k: entry[k] for k in ("id", "cause", "action", "would", "exit")},
+            {"id": "job-failing", "cause": "auth", "action": "kickstart", "would": "hold",
+             "exit": 1},
         )
 
     def test_on_holds_an_auth_failure(self):
@@ -946,7 +948,8 @@ class CausePolicyTests(EnvIsolatedTestCase):
         self._config("on")
         self._log("auth.txt")
         self._seed_hold()
-        (self.state / "heal-stamps.json").write_text(json.dumps({"job-failing": time.time() - 60}))
+        stamp = {"job-failing": time.time() - 7 * 3600}
+        (self.state / "heal-stamps.json").write_text(json.dumps(stamp))
         payload, m_kick = self._run()
         m_kick.assert_called_once()
         self.assertEqual(payload["jobs"][0]["action"], "kickstart")

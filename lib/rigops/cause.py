@@ -107,7 +107,9 @@ def log_paths(plist_path) -> list:
     return [data[k] for k in keys if isinstance(data.get(k), str)]
 
 
-def update_hold(holds: dict, job_id: str, cause: str, now: float, probe=None) -> bool:
+def update_hold(
+    holds: dict, job_id: str, cause: str, now: float, probe=None, label_kicks=(),
+) -> bool:
     """Advance one job's hold and say whether it may be kicked now.
 
     Mutates holds. A new hold, or one for a different cause, starts held. After
@@ -115,7 +117,9 @@ def update_hold(holds: dict, job_id: str, cause: str, now: float, probe=None) ->
     a full interval again, a passing one (or none) releases a single kick.
     A network hold with a probe skips the wait: the probe runs every call, a
     failing one costs nothing, and the interval only spaces the kicks it releases.
-    Network releases are capped per day.
+    Network releases are capped per day. label_kicks are the times the other jobs
+    on this launchd label were kicked: one label runs them all, so the spacing and
+    the cap count its kicks, not the job's own.
     """
     entry = holds.get(job_id)
     if not isinstance(entry, dict):
@@ -124,12 +128,13 @@ def update_hold(holds: dict, job_id: str, cause: str, now: float, probe=None) ->
     entry["cause"] = cause  # a flapping cause keeps its clock, or the hold never expires
     recent = [t for t in entry.get("releases", []) if now - t < 86400]
     entry["releases"] = recent
+    kicks = recent + [t for t in label_kicks if now - t < 86400]
     # A network hold with a probe asks it every run; the interval only spaces the kicks.
     spaced_by_release = cause == "network" and probe is not None
-    last = max(recent, default=None) if spaced_by_release else entry["last_try"]
+    last = max(kicks, default=None) if spaced_by_release else max([entry["last_try"], *kicks])
     if last is not None and now - last < HOLD_RETRY_H[cause] * 3600:
         return False
-    if cause == "network" and len(recent) >= NETWORK_MAX_RELEASES_PER_DAY:
+    if cause == "network" and len(set(kicks)) >= NETWORK_MAX_RELEASES_PER_DAY:
         return False
     entry["last_try"] = now
     if probe is not None and not probe():

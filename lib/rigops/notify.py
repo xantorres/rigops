@@ -11,17 +11,22 @@ MAX_PAGES_PER_DAY = 2
 PAGES_KEY = "_pages"
 
 
+def _valid(v, now: float) -> bool:
+    try:
+        return (
+            isinstance(v, (int, float)) and not isinstance(v, bool)
+            and math.isfinite(v) and v <= now
+        )
+    except OverflowError:  # an integer too large for a float is no stamp
+        return False
+
+
 def _entry(raw, now: float) -> dict | None:
     """A stamp as {sent, seen}; a bare number is the legacy shape. A stamp that is
     not a finite time in the past cannot be trusted, so it counts as no stamp."""
-    num = (int, float)
-
-    def ok(v) -> bool:
-        return isinstance(v, num) and not isinstance(v, bool) and math.isfinite(v) and v <= now
-
-    if ok(raw):
+    if _valid(raw, now):
         return {"sent": raw, "seen": raw}
-    if isinstance(raw, dict) and ok(raw.get("sent")) and ok(raw.get("seen")):
+    if isinstance(raw, dict) and _valid(raw.get("sent"), now) and _valid(raw.get("seen"), now):
         return {"sent": raw["sent"], "seen": raw["seen"]}
     return None
 
@@ -45,33 +50,38 @@ def notify_due(
     window_h ago, or came back after being absent for recovery_h; a failure that flaps
     inside recovery_h is the same finding, not a new one. At most max_pages pages go
     out per local day: fresh keys over that ceiling are held, left unstamped so they
-    page the next day if still failing."""
-    entries = {k: e for k, v in stamps.items() if (e := _entry(v, now)) is not None}
+    page the next day if still failing. A hung job (a kill) is exempt: it pages past
+    the ceiling, never counts against it and is never held."""
+    entries = {
+        k: e for k, v in stamps.items() if k != PAGES_KEY and (e := _entry(v, now)) is not None
+    }
     fresh = {
         k for k in keys
         if (e := entries.get(k)) is None
         or now - e["seen"] >= recovery_h * 3600 or now - e["sent"] >= window_h * 3600
     }
     used = _pages_today(stamps, now)
-    due = bool(fresh) and used < max_pages
+    kills = {k for k in fresh if k.endswith(":hung")}
+    room = bool(fresh - kills) and used < max_pages
+    paged = set(keys) if room else kills
     out = {
         k: e for k, e in entries.items()
         if k not in keys and now - e["seen"] < recovery_h * 3600
     }
     for k in keys:
         e = entries.get(k)
-        if due:
+        if k in paged:
             out[k] = {"sent": now, "seen": now}
         elif k in fresh:
             if e is not None:
                 out[k] = e
         else:
             out[k] = {"sent": e["sent"], "seen": now}
-    if due or used:
+    if room or used:
         out[PAGES_KEY] = {
-            "day": time.strftime("%Y-%m-%d", time.localtime(now)), "n": used + (1 if due else 0),
+            "day": time.strftime("%Y-%m-%d", time.localtime(now)), "n": used + (1 if room else 0),
         }
-    return due, out, (sorted(fresh) if fresh and not due else [])
+    return bool(paged), out, sorted(fresh - paged)
 
 
 def kick_suppressed(marked: set, kicked: set, failing: set) -> tuple:

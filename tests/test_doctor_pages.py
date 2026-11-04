@@ -189,6 +189,53 @@ class CorruptStampTests(unittest.TestCase):
                 self.assertTrue(due)
 
 
+class KillCeilingTests(unittest.TestCase):
+    def test_a_kill_pages_past_the_ceiling_and_is_never_held(self):
+        stamps = {rigops_notify.PAGES_KEY: {"day": time.strftime(
+            "%Y-%m-%d", time.localtime(NOW)), "n": 2}}
+        due, out, held = rigops_notify.notify_due(stamps, {"job:j:hung"}, NOW)
+        self.assertEqual((due, held), (True, []))
+        self.assertIn("job:j:hung", out)
+        self.assertEqual(out[rigops_notify.PAGES_KEY]["n"], 2)
+
+    def test_a_kill_does_not_use_up_the_ceiling(self):
+        _, stamps, _ = rigops_notify.notify_due({}, {"job:j:hung"}, NOW)
+        due, stamps, _ = rigops_notify.notify_due(stamps, {"a"}, NOW + 60)
+        due_b, _, _ = rigops_notify.notify_due(stamps, {"b"}, NOW + 120)
+        self.assertEqual((due, due_b), (True, True))
+
+    def test_other_keys_over_the_ceiling_are_still_held_beside_a_kill(self):
+        stamps = {rigops_notify.PAGES_KEY: {"day": time.strftime(
+            "%Y-%m-%d", time.localtime(NOW)), "n": 2}}
+        due, out, held = rigops_notify.notify_due(stamps, {"job:j:hung", "check:c"}, NOW)
+        self.assertEqual((due, held), (True, ["check:c"]))
+        self.assertNotIn("check:c", out)
+
+    def test_a_kill_that_flaps_inside_recovery_stays_silent(self):
+        _, stamps, _ = rigops_notify.notify_due({}, {"job:j:hung"}, NOW)
+        _, stamps, _ = rigops_notify.notify_due(stamps, set(), NOW + 2 * H)
+        due, _, held = rigops_notify.notify_due(stamps, {"job:j:hung"}, NOW + 4 * H)
+        self.assertEqual((due, held), (False, []))
+
+
+class HugeStampTests(unittest.TestCase):
+    BIG = int("1" + "0" * 400)
+
+    def test_an_integer_too_big_for_a_float_counts_as_no_stamp(self):
+        shapes = (
+            self.BIG, {"sent": self.BIG, "seen": NOW - H}, {"sent": NOW - H, "seen": self.BIG},
+        )
+        for raw in shapes:
+            with self.subTest(raw=str(raw)[:20]):
+                due, _, _ = rigops_notify.notify_due({"k": raw}, {"k"}, NOW)
+                self.assertTrue(due)
+
+    def test_a_pages_ledger_is_never_read_as_a_stamp(self):
+        junk = {"sent": NOW - H, "seen": NOW - H}
+        _, out, _ = rigops_notify.notify_due({rigops_notify.PAGES_KEY: junk}, set(), NOW)
+        self.assertNotIn(rigops_notify.PAGES_KEY, out)
+
+
 class KickMarkTests(unittest.TestCase):
     def test_second_kick_of_a_standing_failure_is_not_silenced(self):
         silenced, marked = rigops_notify.kick_suppressed(set(), {"a"}, {"a"})
