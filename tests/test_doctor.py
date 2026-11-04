@@ -650,7 +650,10 @@ class NotifyDedupeTests(EnvIsolatedTestCase):
 
     def _age_stamps(self, hours: float) -> None:
         stamps = json.loads(self.notified_path.read_text())
-        aged = {k: {f: v - hours * 3600 for f, v in e.items()} for k, e in stamps.items()}
+        aged = {
+            k: {f: v - hours * 3600 for f, v in e.items()}
+            for k, e in stamps.items() if k != rigops_notify.PAGES_KEY
+        }
         self.notified_path.write_text(json.dumps(aged))
 
     def _sent(self) -> int:
@@ -703,6 +706,10 @@ class NotifyDedupeTests(EnvIsolatedTestCase):
         events_path = Path(self.tmp) / "state" / "doctor" / "events.jsonl"
         last = json.loads(events_path.read_text().splitlines()[-1])
         self.assertIn("job:job-other:failing", last["notified"])
+        self._run(FAILING_ITEM, other)
+        last = json.loads(events_path.read_text().splitlines()[-1])
+        self.assertEqual(last["notified"], [])
+        self.assertNotIn("held", last)
 
     def test_job_the_doctor_just_kicked_does_not_page(self):
         out = self._run(FAILING_ITEM, heal=True)
@@ -711,6 +718,7 @@ class NotifyDedupeTests(EnvIsolatedTestCase):
 
     def test_kicked_job_that_keeps_failing_pages_next_run(self):
         self._run(FAILING_ITEM, heal=True)
+        self.assertEqual(self._sent(), 0)
         self._run(FAILING_ITEM, heal=True)
         self.assertEqual(self._sent(), 1)
 
@@ -724,7 +732,7 @@ class NotifyDedupeTests(EnvIsolatedTestCase):
 
     def test_legacy_float_stamps_still_dedupe(self):
         now = time.time()
-        due, out = rigops_notify.notify_due({"k": now - 3600}, {"k"}, now)
+        due, out, _ = rigops_notify.notify_due({"k": now - 3600}, {"k"}, now)
         self.assertFalse(due)
         self.assertEqual(out["k"]["sent"], now - 3600)
 
@@ -895,6 +903,7 @@ class CausePolicyTests(EnvIsolatedTestCase):
     def test_shadow_with_a_probe_configured_holds_and_kicks_as_before(self):
         self._config("shadow", cause_probe_command=self._dns_probe("localhost"))
         self._log("network-dns.txt")
+        self._seed_hold(cause="network", since_h=3, try_h=0.5)
         payload, m_kick = self._run()
         m_kick.assert_called_once()
         self.assertEqual(self._events()[0]["would"][0]["would"], "hold")
@@ -933,15 +942,14 @@ class CausePolicyTests(EnvIsolatedTestCase):
             _run_doctor(["--heal", "--json", "--registry", str(self.registry)])
         self.assertIn("job-failing", self._holds())
 
-    def test_cooldown_swallowed_release_is_not_spent(self):
+    def test_release_kicks_through_the_heal_cooldown(self):
         self._config("on")
         self._log("auth.txt")
         self._seed_hold()
-        before = self._holds()["job-failing"]["last_try"]
         (self.state / "heal-stamps.json").write_text(json.dumps({"job-failing": time.time() - 60}))
-        _, m_kick = self._run()
-        m_kick.assert_not_called()
-        self.assertEqual(self._holds()["job-failing"]["last_try"], before)
+        payload, m_kick = self._run()
+        m_kick.assert_called_once()
+        self.assertEqual(payload["jobs"][0]["action"], "kickstart")
 
     def test_run_without_heal_does_not_spend_the_release(self):
         self._config("on")

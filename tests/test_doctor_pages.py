@@ -1,0 +1,322 @@
+from __future__ import annotations
+
+import json
+import os
+import plistlib
+import subprocess
+import sys
+import time
+import unittest
+from pathlib import Path
+from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+
+from rigops import launchd  # noqa: E402
+from rigops import notify as rigops_notify  # noqa: E402
+
+from tests.test_doctor import (
+    FAILING_ITEM,
+    HUNG_ITEM,
+    REPO_ROOT,
+    SHARED_LABEL_ITEMS,
+    EnvIsolatedTestCase,
+    _run_doctor,
+    _write_registry,
+    doctor,
+)
+
+NOW = 1_800_000_000.0
+H = 3600
+
+
+class PagingBase(EnvIsolatedTestCase):
+    def setUp(self):
+        super().setUp()
+        self.sink = Path(self.tmp) / "sink.txt"
+        self.state = Path(self.tmp) / "state" / "doctor"
+        self.config = {"notify_command": f"sh -c 'echo x >> {self.sink}' notify"}
+        self._write_config()
+
+    def _write_config(self, **extra):
+        self.config.update(extra)
+        Path(os.environ["RIGOPS_CONFIG"]).write_text(json.dumps({"doctor": self.config}))
+
+    def sent(self) -> int:
+        return len(self.sink.read_text().splitlines()) if self.sink.exists() else 0
+
+    def events(self) -> list:
+        return [json.loads(x) for x in (self.state / "events.jsonl").read_text().splitlines()]
+
+    def run_doctor(self, registry, snapshot=(True, None, 1), heal=True, runtime=None):
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=snapshot),
+            mock.patch.object(launchd, "kickstart", return_value=True) as kick,
+            mock.patch.object(launchd, "runtime_hours", return_value=runtime),
+            mock.patch.object(launchd, "job_pid", return_value=snapshot[1]),
+            mock.patch.object(launchd, "terminate_process_group", return_value=True),
+        ):
+            flags = ["--heal"] if heal else []
+            _, out = _run_doctor([*flags, "--json", "--registry", str(registry)])
+        return json.loads(out), kick
+
+    def age(self, hours: float) -> None:
+        for name in ("notified.json", "heal-stamps.json"):
+            path = self.state / name
+            if not path.exists():
+                continue
+            data = json.loads(path.read_text())
+            shift = hours * H
+            data = {
+                k: (v if k == rigops_notify.PAGES_KEY else
+                    {f: t - shift for f, t in v.items()} if isinstance(v, dict) else v - shift)
+                for k, v in data.items()
+            }
+            path.write_text(json.dumps(data))
+
+
+class KickPagingTests(PagingBase):
+    def test_every_id_of_a_kicked_shared_label_is_kicked(self):
+        registry = _write_registry(self.tmp, SHARED_LABEL_ITEMS)
+        payload, kick = self.run_doctor(registry)
+        kick.assert_called_once_with("local.shared")
+        self.assertEqual(self.sent(), 0)
+        self.assertEqual(self.events()[-1]["notified"], [])
+
+    def test_job_kicked_on_every_pass_pages_after_the_first(self):
+        registry = _write_registry(self.tmp, FAILING_ITEM)
+        kicks = []
+        for _ in range(5):
+            _, kick = self.run_doctor(registry)
+            kicks.append(kick.call_count)
+            self.age(25)
+        self.assertEqual(kicks, [1] * 5)
+        self.assertGreaterEqual(self.sent(), 2)
+
+    def test_zero_cooldown_kick_pages_on_the_second_pass(self):
+        self._write_config(heal_cooldown_h=0)
+        registry = _write_registry(self.tmp, FAILING_ITEM)
+        self.run_doctor(registry)
+        self.assertEqual(self.sent(), 0)
+        _, kick = self.run_doctor(registry)
+        kick.assert_called_once()
+        self.assertEqual(self.sent(), 1)
+
+    def test_recovery_ends_the_episode(self):
+        registry = _write_registry(self.tmp, FAILING_ITEM)
+        self.run_doctor(registry)
+        self.run_doctor(registry, snapshot=(True, None, 0))
+        self.age(25)
+        self.run_doctor(registry)
+        self.assertEqual(self.sent(), 0)
+
+    def test_a_kill_pages_even_when_the_next_pass_is_ok(self):
+        registry = _write_registry(self.tmp, HUNG_ITEM)
+        payload, _ = self.run_doctor(registry, snapshot=(True, 4242, 0), runtime=5.0)
+        self.assertTrue(payload["healed"][0].startswith("terminated hung job"))
+        self.assertEqual(self.sent(), 1)
+        self.run_doctor(registry, snapshot=(True, 4243, 0), runtime=0.2)
+        self.assertEqual(self.sent(), 1)
+
+
+class CeilingTests(unittest.TestCase):
+    def test_third_page_of_a_day_is_held_and_unstamped(self):
+        stamps = {}
+        pages = []
+        for i, key in enumerate(("a", "b", "c")):
+            due, stamps, held = rigops_notify.notify_due(stamps, {key}, NOW + i * 60)
+            pages.append((due, held))
+        self.assertEqual(pages, [(True, []), (True, []), (False, ["c"])])
+        self.assertNotIn("c", stamps)
+
+    def test_held_key_pages_the_next_day_if_still_failing(self):
+        stamps = {}
+        for i, key in enumerate(("a", "b", "c")):
+            _, stamps, _ = rigops_notify.notify_due(stamps, {key}, NOW + i * 60)
+        due, stamps, held = rigops_notify.notify_due(stamps, {"c"}, NOW + 25 * H)
+        self.assertEqual((due, held), (True, []))
+        self.assertIn("c", stamps)
+
+    def test_expired_stamp_held_keeps_its_old_sent(self):
+        stamps = {}
+        _, stamps, _ = rigops_notify.notify_due(stamps, {"x"}, NOW)
+        for i, key in enumerate(("a", "b")):
+            _, stamps, _ = rigops_notify.notify_due(stamps, {key}, NOW + 25 * H + i * 60)
+        due, stamps, held = rigops_notify.notify_due(stamps, {"x"}, NOW + 25 * H + 600)
+        self.assertEqual((due, held), (False, ["x"]))
+
+
+class DoctorCeilingTests(PagingBase):
+    def test_event_names_the_held_keys(self):
+        items = [
+            FAILING_ITEM.replace("job-failing", f"job-{n}").replace(
+                "local.job-failing", f"local.job-{n}")
+            for n in "abc"
+        ]
+        for n in range(len(items)):
+            registry = _write_registry(self.tmp, *items[: n + 1])
+            self.run_doctor(registry, heal=False)
+        self.assertEqual(self.sent(), 2)
+        self.assertEqual(self.events()[-1]["held"], ["job:job-c:failing"])
+
+
+class CorruptStampTests(unittest.TestCase):
+    def due(self, raw):
+        return rigops_notify.notify_due({"k": raw}, {"k"}, NOW)[0]
+
+    def test_untrusted_stamps_count_as_no_stamp(self):
+        bad = [
+            float("nan"), float("inf"), -float("inf"), NOW + 99 * H, True, "x", None, [1],
+            {"sent": float("nan"), "seen": NOW - H}, {"sent": NOW - H, "seen": float("inf")},
+            {"sent": NOW + 99 * H, "seen": NOW + 99 * H}, {"sent": NOW - H},
+            {"sent": "a", "seen": NOW}, {"sent": True, "seen": True},
+        ]
+        for raw in bad:
+            with self.subTest(raw=raw):
+                self.assertTrue(self.due(raw))
+
+    def test_trusted_stamps_still_dedupe(self):
+        for raw in (NOW - H, {"sent": NOW - H, "seen": NOW - H}):
+            with self.subTest(raw=raw):
+                self.assertFalse(self.due(raw))
+
+    def test_bad_pages_ledger_counts_as_zero(self):
+        today = time.strftime("%Y-%m-%d", time.localtime(NOW))
+        for raw in ({"day": "x", "n": 9}, {"n": 9}, "z", {"day": today, "n": "9"}):
+            with self.subTest(raw=raw):
+                due, _, _ = rigops_notify.notify_due({rigops_notify.PAGES_KEY: raw}, {"k"}, NOW)
+                self.assertTrue(due)
+
+
+class KickMarkTests(unittest.TestCase):
+    def test_second_kick_of_a_standing_failure_is_not_silenced(self):
+        silenced, marked = rigops_notify.kick_suppressed(set(), {"a"}, {"a"})
+        self.assertEqual(silenced, {"a"})
+        silenced, marked = rigops_notify.kick_suppressed(marked, {"a"}, {"a"})
+        self.assertEqual(silenced, set())
+        self.assertEqual(marked, {"a"})
+        _, marked = rigops_notify.kick_suppressed(marked, set(), set())
+        self.assertEqual(marked, set())
+
+
+class HoldReleaseTests(PagingBase):
+    def setUp(self):
+        super().setUp()
+        plist = Path(self.tmp) / "local.job-failing.plist"
+        self.log = Path(self.tmp) / "job.err.log"
+        plist.write_bytes(plistlib.dumps({"StandardErrorPath": str(self.log)}))
+        self.log.write_text(
+            (REPO_ROOT / "tests" / "fixtures" / "cause" / "network-dns.txt").read_text()
+        )
+        self.registry = _write_registry(
+            self.tmp, FAILING_ITEM.replace("/fake/local.job-failing.plist", str(plist))
+        )
+        self.marker = Path(self.tmp) / "probes"
+
+    def seed(self, releases_h=(), try_h=2, kicked_h=None):
+        self.state.mkdir(parents=True, exist_ok=True)
+        now = time.time()
+        (self.state / "holds.json").write_text(json.dumps({"job-failing": {
+            "cause": "network", "since": now - 5 * H, "last_try": now - try_h * H,
+            "releases": [now - h * H for h in releases_h],
+        }}))
+        if kicked_h is not None:
+            (self.state / "heal-stamps.json").write_text(
+                json.dumps({"job-failing": now - kicked_h * H})
+            )
+
+    def holds(self):
+        return json.loads((self.state / "holds.json").read_text())["job-failing"]
+
+    def test_release_kicks_while_the_heal_cooldown_is_active(self):
+        self._write_config(cause_policy="on", cause_probe_command="true")
+        self.seed(releases_h=(2,), kicked_h=2)
+        payload, kick = self.run_doctor(self.registry)
+        kick.assert_called_once()
+        self.assertEqual(payload["jobs"][0]["action"], "kickstart")
+        self.assertEqual(len(self.holds()["releases"]), 2)
+
+    def test_release_is_still_capped_at_three_a_day(self):
+        self._write_config(cause_policy="on", cause_probe_command="true")
+        self.seed(releases_h=(2, 5, 8), kicked_h=2)
+        _, kick = self.run_doctor(self.registry)
+        kick.assert_not_called()
+
+    def test_release_is_still_spaced_by_one_hour(self):
+        self._write_config(cause_policy="on", cause_probe_command="true")
+        self.seed(releases_h=(0.5,), try_h=0.5, kicked_h=0.5)
+        _, kick = self.run_doctor(self.registry)
+        kick.assert_not_called()
+
+    def test_whitespace_only_probe_means_unset(self):
+        self._write_config(cause_policy="on", cause_probe_command="   ")
+        self.seed()
+        payload, kick = self.run_doctor(self.registry)
+        kick.assert_called_once()
+        self.assertEqual(payload["jobs"][0]["cause"], "network")
+        self.assertFalse(any("probe" in e.get("event", "") for e in self.events()))
+
+    def test_probe_that_cannot_run_keeps_the_hold_and_leaves_a_warning(self):
+        for command in ("/no/such/binary arg", "probe 'unclosed"):
+            with self.subTest(command=command):
+                self._write_config(cause_policy="on", cause_probe_command=command)
+                self.seed()
+                _, kick = self.run_doctor(self.registry)
+                kick.assert_not_called()
+                self.assertTrue(
+                    any("cause probe could not run" in e.get("event", "") for e in self.events())
+                )
+
+    def test_probe_runs_once_for_a_fleet(self):
+        items = ""
+        holds = {}
+        for n in "abc":
+            plist = Path(self.tmp) / f"local.job-{n}.plist"
+            plist.write_bytes(plistlib.dumps({"StandardErrorPath": str(self.log)}))
+            items += FAILING_ITEM.replace(
+                "/fake/local.job-failing.plist", str(plist)).replace("job-failing", f"job-{n}")
+            holds[f"job-{n}"] = {
+                "cause": "network", "since": time.time() - 5 * H,
+                "last_try": time.time() - 2 * H, "releases": [],
+            }
+        registry = _write_registry(self.tmp, items)
+        self.state.mkdir(parents=True, exist_ok=True)
+        (self.state / "holds.json").write_text(json.dumps(holds))
+        self._write_config(
+            cause_policy="on", cause_probe_command=f"sh -c 'echo x >> {self.marker}; exit 1' p",
+        )
+        self.run_doctor(registry)
+        self.assertEqual(len(self.marker.read_text().splitlines()), 1)
+
+
+class ProbeRunnerTests(unittest.TestCase):
+    def test_every_failure_is_closed_and_recorded(self):
+        for exc in (
+            subprocess.TimeoutExpired("p", 120), FileNotFoundError(), ValueError("x"),
+            RuntimeError("boom"),
+        ):
+            with self.subTest(exc=type(exc).__name__):
+                warnings = []
+                with mock.patch.object(subprocess, "run", side_effect=exc):
+                    self.assertFalse(doctor._run_probe("p arg", warnings)())
+                self.assertEqual(len(warnings), 1)
+
+    def test_a_nonzero_exit_is_not_a_warning(self):
+        warnings = []
+        done = subprocess.CompletedProcess([], 1)
+        with mock.patch.object(subprocess, "run", return_value=done):
+            self.assertFalse(doctor._run_probe("p", warnings)())
+        self.assertEqual(warnings, [])
+
+    def test_result_is_memoized(self):
+        done = subprocess.CompletedProcess([], 0)
+        with mock.patch.object(subprocess, "run", return_value=done) as run:
+            probe = doctor._run_probe("p", [])
+            self.assertTrue(probe())
+            self.assertTrue(probe())
+        run.assert_called_once()
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -223,14 +223,11 @@ def _apply_cause_unsafe(job, item, label, last_exit, interval_h, ctx, heal_coold
     _, would = rigops_judge.judge_job(
         runtime_h=None, max_runtime_h=item["max_runtime_h"], last_exit_status=last_exit,
         evidence_age_h=job["evidence_age_h"], expected_interval_h=interval_h,
-        heal_cooldown_active=heal_cooldown_active, cause=cause, hold_release=release,
+        heal_cooldown_active=heal_cooldown_active and not release, cause=cause,
+        hold_release=release,
     )
     if release:
-        if would == "kickstart":
-            ctx["undo"][job["id"]] = before
-        elif before is not None:
-            # A release the heal cooldown swallowed is not a spent retry.
-            ctx["holds"][job["id"]] = before
+        ctx["undo"][job["id"]] = before
     job["cause"] = cause
     if ctx["policy"] == "on":
         job["action"] = would
@@ -238,16 +235,22 @@ def _apply_cause_unsafe(job, item, label, last_exit, interval_h, ctx, heal_coold
         job["would"] = would
 
 
-def _run_probe(command: str):
-    """A probe passes on exit 0; any other outcome keeps the hold."""
+def _run_probe(command: str, warnings: list):
+    """A probe passes on exit 0; any other outcome keeps the hold. It runs at most once
+    per doctor run, and a probe that cannot run is recorded in warnings."""
+    outcome = []
+
     def probe() -> bool:
-        try:
-            return subprocess.run(
-                shlex.split(command), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                timeout=120,
-            ).returncode == 0
-        except (OSError, subprocess.SubprocessError, ValueError):
-            return False
+        if not outcome:
+            try:
+                outcome.append(subprocess.run(
+                    shlex.split(command), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    timeout=120,
+                ).returncode == 0)
+            except Exception as exc:
+                warnings.append(f"cause probe could not run: {type(exc).__name__}")
+                outcome.append(False)
+        return outcome[0]
     return probe
 
 
@@ -545,15 +548,17 @@ def main(argv=None) -> int:
     cause_policy = rigops_config.get(cfg, "doctor.cause_policy", "off")
     holds_path = doctor_state_dir / "holds.json"
     cause_ctx = None
+    probe_warnings = []
     if cause_policy in ("shadow", "on") and args.supervisor == "launchd":
         probe_command = rigops_config.get(cfg, "doctor.cause_probe_command", "")
+        probe_command = probe_command.strip() if isinstance(probe_command, str) else ""
         # A run that cannot kick must not spend a hold's retry, and a shadow run must not
         # run the probe: it would be work the unchanged supervisor never did.
         cause_ctx = {
             "policy": cause_policy, "now": now, "undo": {},
             "holds": rigops_cause.clean_holds(_load_json(holds_path, {})),
             "probe": (
-                _run_probe(probe_command)
+                _run_probe(probe_command, probe_warnings)
                 if probe_command and cause_policy == "on" and args.heal else None
             ),
         }
@@ -577,7 +582,6 @@ def main(argv=None) -> int:
     heal_log = []
     kicked_labels = set()
     kicked_ids = set()
-    healed_ids = set()
     if args.heal and args.supervisor == "launchd":
         for job in jobs:
             if job["action"] == "kill" and job["pid"]:
@@ -586,7 +590,6 @@ def main(argv=None) -> int:
                     heal_log.append(f"pid changed for {job['id']}, skip kill")
                 elif launchd.terminate_process_group(job["pid"], kill_grace_s):
                     heal_stamps[job["id"]] = now
-                    healed_ids.add(job["id"])
                     heal_log.append(f"terminated hung job {job['id']} (pid {job['pid']})")
                     _save_json(heal_stamps_path, heal_stamps)
             elif job["action"] == "kickstart" and job["label"]:
@@ -598,7 +601,6 @@ def main(argv=None) -> int:
                 elif launchd.kickstart(job["label"]):
                     kicked_labels.add(job["label"])
                     kicked_ids.add(job["id"])
-                    healed_ids.add(job["id"])
                     heal_stamps[job["id"]] = now
                     heal_log.append(f"kickstarted {job['id']} ({job['label']})")
                     _save_json(heal_stamps_path, heal_stamps)
@@ -637,15 +639,21 @@ def main(argv=None) -> int:
 
     notify_command = rigops_config.get(cfg, "doctor.notify_command", "")
     notify_stamps_path = doctor_state_dir / "notified.json"
+    kicked_path = doctor_state_dir / "kicked.json"
+    marked = _load_json(kicked_path, [])
+    silenced, marked = rigops_notify.kick_suppressed(
+        {m for m in marked if isinstance(m, str)} if isinstance(marked, list) else set(),
+        kicked_ids, {j["id"] for j in jobs if j["status"] in ("failing", "hung")},
+    )
     notify_keys = (
         rigops_notify.notify_keys(
             jobs, checks, cause_ctx["holds"] if cause_policy == "on" and cause_ctx else None, now,
-            frozenset(healed_ids),
+            frozenset(silenced),
         )
         if notify_command else set()
     )
     stamps = _load_json(notify_stamps_path, {})
-    due, stamps = rigops_notify.notify_due(
+    due, stamps, held = rigops_notify.notify_due(
         stamps if isinstance(stamps, dict) else {}, notify_keys, now,
     )
 
@@ -655,9 +663,13 @@ def main(argv=None) -> int:
         "failing": sorted(j["id"] for j in jobs if j["status"] in ("failing", "hung")),
         "notified": sorted(notify_keys) if due else [],
     }
+    if held:
+        event["held"] = held
     if cause_policy == "shadow":
         event["would"] = would_log
     state.append_jsonl(events_path, event)
+    for message in probe_warnings:
+        state.append_jsonl(events_path, {"ts": ts, "event": message})
 
     notify_error = ""
     if due:
@@ -669,6 +681,7 @@ def main(argv=None) -> int:
     # A failed send leaves the keys unstamped so the next tick tries again.
     if notify_command and not notify_error:
         _save_json(notify_stamps_path, stamps)
+        _save_json(kicked_path, sorted(marked))
 
     # Written every run, gates or none: an empty list still proves the doctor ran,
     # which is what a card reading it needs to tell "clean" from "never checked".
