@@ -62,7 +62,7 @@ class PagingBase(EnvIsolatedTestCase):
         return json.loads(out), kick
 
     def age(self, hours: float) -> None:
-        for name in ("notified.json", "heal-stamps.json"):
+        for name in ("notified.json", "heal-stamps.json", "kicked.json"):
             path = self.state / name
             if not path.exists():
                 continue
@@ -103,13 +103,28 @@ class KickPagingTests(PagingBase):
         kick.assert_called_once()
         self.assertEqual(self.sent(), 1)
 
-    def test_recovery_ends_the_episode(self):
+    def test_a_recovery_does_not_clear_the_kick_mark(self):
         registry = _write_registry(self.tmp, FAILING_ITEM)
         self.run_doctor(registry)
         self.run_doctor(registry, snapshot=(True, None, 0))
         self.age(25)
         self.run_doctor(registry)
+        self.assertEqual(self.sent(), 1)
+
+    def test_a_kick_after_seven_days_is_silent_again(self):
+        registry = _write_registry(self.tmp, FAILING_ITEM)
+        self.run_doctor(registry)
+        self.run_doctor(registry, snapshot=(True, None, 0))
+        self.age(7 * 24 + 1)
+        self.run_doctor(registry)
         self.assertEqual(self.sent(), 0)
+
+    def test_the_old_list_marker_still_loads(self):
+        registry = _write_registry(self.tmp, FAILING_ITEM)
+        self.state.mkdir(parents=True, exist_ok=True)
+        (self.state / "kicked.json").write_text(json.dumps(["job-failing"]))
+        self.run_doctor(registry)
+        self.assertEqual(self.sent(), 1)
 
     def test_a_kill_pages_even_when_the_next_pass_is_ok(self):
         registry = _write_registry(self.tmp, HUNG_ITEM)
@@ -237,14 +252,26 @@ class HugeStampTests(unittest.TestCase):
 
 
 class KickMarkTests(unittest.TestCase):
-    def test_second_kick_of_a_standing_failure_is_not_silenced(self):
-        silenced, marked = rigops_notify.kick_suppressed(set(), {"a"}, {"a"})
+    WEEK = 7 * 24 * H
+
+    def test_a_key_gets_one_silent_kick_a_week(self):
+        silenced, marks = rigops_notify.kick_suppressed({}, {"a"}, NOW)
         self.assertEqual(silenced, {"a"})
-        silenced, marked = rigops_notify.kick_suppressed(marked, {"a"}, {"a"})
-        self.assertEqual(silenced, set())
-        self.assertEqual(marked, {"a"})
-        _, marked = rigops_notify.kick_suppressed(marked, set(), set())
-        self.assertEqual(marked, set())
+        silenced, marks = rigops_notify.kick_suppressed(marks, {"a"}, NOW + 25 * H)
+        self.assertEqual((silenced, marks), (set(), {"a": NOW}))
+        silenced, _ = rigops_notify.kick_suppressed(marks, {"a"}, NOW + self.WEEK + 1)
+        self.assertEqual(silenced, {"a"})
+
+    def test_the_mark_outlives_a_run_without_that_kick(self):
+        _, marks = rigops_notify.kick_suppressed({}, {"a"}, NOW)
+        _, marks = rigops_notify.kick_suppressed(marks, set(), NOW + 2 * H)
+        self.assertEqual(marks, {"a": NOW})
+
+    def test_an_expired_or_untrusted_mark_is_dropped(self):
+        marks = {"old": NOW - self.WEEK - 1, "nan": float("nan"), "future": NOW + H,
+                 "big": int("1" + "0" * 400), "ok": NOW - H}
+        _, kept = rigops_notify.kick_suppressed(marks, set(), NOW)
+        self.assertEqual(kept, {"ok": NOW - H})
 
 
 class HoldReleaseTests(PagingBase):

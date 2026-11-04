@@ -9,6 +9,7 @@ NOTIFY_WINDOW_H = 24
 RECOVERY_H = 6
 MAX_PAGES_PER_DAY = 2
 PAGES_KEY = "_pages"
+KICK_QUIET_H = 168
 
 
 def _valid(v, now: float) -> bool:
@@ -84,11 +85,13 @@ def notify_due(
     return bool(paged), out, sorted(fresh - paged)
 
 
-def kick_suppressed(marked: set, kicked: set, failing: set) -> tuple:
-    """Returns (ids this run's kick may silence, ids to remember). A kick silences a
-    job's page once per failing episode: kicked again while still marked, it pages."""
-    silenced = set(kicked) - set(marked)
-    return silenced, (set(marked) & set(failing)) | silenced
+def kick_suppressed(marks: dict, kicked: set, now: float, quiet_h: float = KICK_QUIET_H) -> tuple:
+    """Returns (ids this run's kick may silence, marks to keep). A key gets one silent
+    kick per quiet_h, and the mark outlives a recovery: kicked again inside the window
+    it pages by the normal rules."""
+    live = {k: t for k, t in marks.items() if _valid(t, now) and now - t < quiet_h * 3600}
+    silenced = set(kicked) - set(live)
+    return silenced, {**live, **dict.fromkeys(silenced, now)}
 
 
 def notify_keys(

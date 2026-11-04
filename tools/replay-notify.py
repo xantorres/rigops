@@ -58,7 +58,7 @@ def replay(
     events: list, rule: str, with_checks: bool = True, recovery_h: float = notify.RECOVERY_H,
 ) -> tuple:
     """(pages per day, passes held by the ceiling). Runs the production functions."""
-    per_day, stamps, marked, held = collections.Counter(), {}, set(), 0
+    per_day, stamps, marked, held = collections.Counter(), {}, {}, 0
     for e in events:
         now = calendar.timegm(time.strptime(e["ts"], "%Y-%m-%dT%H:%M:%SZ"))
         ids, kicked, killed = failing_of(e)
@@ -70,7 +70,7 @@ def replay(
         if rule == "legacy":
             due, stamps = legacy_due(stamps, notify.notify_keys(jobs, checks), now)
         else:
-            silenced, marked = notify.kick_suppressed(marked, set(kicked), set(ids))
+            silenced, marked = notify.kick_suppressed(marked, set(kicked), now)
             keys = notify.notify_keys(jobs, checks, healed_ids=frozenset(silenced))
             cap = float("inf") if rule == "uncapped" else notify.MAX_PAGES_PER_DAY
             due, stamps, over = notify.notify_due(

@@ -690,10 +690,12 @@ def main(argv=None) -> int:
     notify_command = rigops_config.get(cfg, "doctor.notify_command", "")
     notify_stamps_path = doctor_state_dir / "notified.json"
     kicked_path = doctor_state_dir / "kicked.json"
-    marked = _load_json(kicked_path, [])
+    marked = _load_json(kicked_path, {})
+    if isinstance(marked, list):  # the shape before kicks were timed
+        marked = dict.fromkeys(marked, now)
     silenced, marked = rigops_notify.kick_suppressed(
-        {m for m in marked if isinstance(m, str)} if isinstance(marked, list) else set(),
-        kicked_ids, {j["id"] for j in jobs if j["status"] in ("failing", "hung")},
+        {k: v for k, v in marked.items() if isinstance(k, str)} if isinstance(marked, dict) else {},
+        kicked_ids, now,
     )
     notify_keys = (
         rigops_notify.notify_keys(
@@ -723,7 +725,7 @@ def main(argv=None) -> int:
 
     # Saved before the send: a failed send must not hand the next kick a free silence.
     if notify_command:
-        _save_json(kicked_path, sorted(marked))
+        _save_json(kicked_path, marked)
 
     notify_error = ""
     if due:
