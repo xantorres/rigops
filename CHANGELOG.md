@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other, with the model, version and request-shape changes and entry types
   around each. Ledger rows record the EIT share per class, and a built-in lever
   rule watches the total.
+- ledger: `rigops ledger diff` lists commits that touched always-loaded config
+  in the repos under `ledger.derive_interventions`, tagged as derived, beside
+  the manual notes.
 
 ## [0.8.0] - 2026-10-04
 

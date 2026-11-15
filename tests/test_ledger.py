@@ -672,10 +672,77 @@ class LedgerDiffTests(EnvIsolatedTestCase):
             result = _run_ledger(["diff", "--json"], env)
             payload = json.loads(result.stdout)
             self.assertEqual(
-                set(payload), {"baseline", "latest", "deltas", "interventions"}
+                set(payload), {"baseline", "latest", "deltas", "interventions", "derived"}
             )
             for delta in payload["deltas"].values():
                 self.assertEqual(set(delta), {"old", "new", "delta", "pct"})
+
+
+def _git(repo: Path, *argv: str, env: dict | None = None) -> None:
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@example.com",
+         "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", *argv],
+        check=True, capture_output=True, env=env,
+    )
+
+
+def _commit(repo: Path, name: str, subject: str, when: str) -> None:
+    path = repo / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(subject + "\n")
+    _git(repo, "add", "-f", name)
+    env = {**os.environ, "GIT_AUTHOR_DATE": when, "GIT_COMMITTER_DATE": when}
+    _git(repo, "commit", "-q", "-m", subject, env=env)
+
+
+class DerivedInterventionsTests(EnvIsolatedTestCase):
+    def _setup(self, tmp: str, spec) -> dict:
+        repo = Path(tmp) / "rig"
+        repo.mkdir()
+        _git(repo, "init", "-q")
+        _commit(repo, "CLAUDE.md", "baseline-day edit", "2026-08-08T12:00:00+00:00")
+        _commit(repo, "CLAUDE.md", "trim the always-loaded rules", "2026-08-10T12:00:00+00:00")
+        _commit(repo, "README.md", "readme only", "2026-08-11T12:00:00+00:00")
+        _commit(repo, "tools/settings.json", "drop a server", "2026-08-12T12:00:00+00:00")
+        _commit(repo, "CLAUDE.md", "after the window", "2026-08-16T12:00:00+00:00")
+        cfg = {"ledger": {"derive_interventions": [spec(repo)]}}
+        (Path(tmp) / "config.json").write_text(json.dumps(cfg))
+        env = {**os.environ, "RIGOPS_CONFIG": str(Path(tmp) / "config.json"),
+               "RIGOPS_STATE_DIR": str(Path(tmp) / "state"), "TZ": "UTC"}
+        jsonl_path = Path(tmp) / "state" / "ledger.jsonl"
+        state.append_jsonl(jsonl_path, {"date": "2026-08-08", "eit_per_turn": 1200})
+        state.append_jsonl(jsonl_path, {"date": "2026-08-15", "eit_per_turn": 900})
+        return env
+
+    def test_commits_touching_always_loaded_files_show_beside_notes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._setup(tmp, str)
+            _run_ledger(["note", "manual-note", "--at", "2026-08-11"], env)
+            payload = json.loads(_run_ledger(["diff", "--json"], env).stdout)
+            self.assertEqual([e["text"] for e in payload["derived"]],
+                             ["trim the always-loaded rules", "drop a server"])
+            self.assertEqual(payload["derived"][1]["files"], ["tools/settings.json"])
+            self.assertEqual([e["text"] for e in payload["interventions"]], ["manual-note"])
+            lines = _run_ledger(["diff"], env).stdout.splitlines()
+            notes = lines[lines.index("Interventions in this window:") + 1:]
+            self.assertEqual([ln.split("  ")[1] for ln in notes],
+                             ["trim the always-loaded rules", "manual-note", "drop a server"])
+            self.assertIn("[derived rig@", notes[0])
+            self.assertNotIn("[derived", notes[1])
+
+    def test_paths_narrow_what_counts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._setup(tmp, lambda repo: {"repo": str(repo), "paths": ["README.md"]})
+            payload = json.loads(_run_ledger(["diff", "--json"], env).stdout)
+            self.assertEqual([e["text"] for e in payload["derived"]], ["readme only"])
+
+    def test_a_missing_repo_warns_and_the_diff_still_prints(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._setup(tmp, lambda repo: str(repo.parent / "absent"))
+            result = _run_ledger(["diff"], env)
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("derived interventions skipped", result.stderr)
+            self.assertIn("none recorded", result.stdout)
 
 
 if __name__ == "__main__":

@@ -76,7 +76,7 @@ Appends `{ts, date, text}` to `interventions.jsonl` (`ts` is a UTC, second-preci
 - `--since YYYY-MM-DD` - pick an explicit baseline.
 - `--json`.
 
-Needs at least 2 ledger rows total; with fewer it prints "not enough ledger rows to diff yet (need at least 2)" and exits `0`. Baseline selection: without `--since`, the baseline is the second-to-last row (the previous run). With `--since`, the baseline is the latest row on or before that date - an error if no row qualifies, and an error if the selected baseline turns out to be the same row as the latest one (a baseline can't be its own comparison point). The diff prints every numeric column's old/new/delta/percent, plus every intervention noted strictly after the baseline date and on or before the latest date.
+Needs at least 2 ledger rows total; with fewer it prints "not enough ledger rows to diff yet (need at least 2)" and exits `0`. Baseline selection: without `--since`, the baseline is the second-to-last row (the previous run). With `--since`, the baseline is the latest row on or before that date - an error if no row qualifies, and an error if the selected baseline turns out to be the same row as the latest one (a baseline can't be its own comparison point). The diff prints every numeric column's old/new/delta/percent, plus every intervention noted strictly after the baseline date and on or before the latest date. Commits in the repos listed under `ledger.derive_interventions` ([CONFIG.md](CONFIG.md)) that touch always-loaded config in the same window print in date order among the notes, tagged `[derived <repo>@<sha>]`; `--json` returns them under `derived`, with the files each commit touched.
 
 ### `rigops eit`
 
@@ -160,6 +160,7 @@ turns                412       397       -15       -3.6%
 Interventions in this window:
 2026-08-12  pruned always-loaded rules: moved the code-search runbook to an on-demand reference
 2026-08-13  turned on ctx-nudge tiers; long sessions now get restarted at the 350k nudge
+2026-08-13  drop the docs server from the default settings  [derived dotfiles@3f9c2a1]
 2026-08-14  mechanical multi-file edits now go to a cheap-model subagent by default
 ```
 

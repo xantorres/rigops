@@ -7,6 +7,7 @@ import datetime as dt
 import fcntl
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -154,6 +155,43 @@ def _interventions_between(baseline_date: str, latest_date: str) -> list:
     return window
 
 
+DERIVE_GLOBS = ["**/CLAUDE.md", "**/AGENTS.md", "**/settings.json", "**/settings.local.json",
+                "**/.mcp.json", "**/SKILL.md", "rules/**"]
+
+
+def _git_log(repo: Path, since: str, globs: list) -> str | None:
+    cmd = ["git", "-C", str(repo), "log", "--no-merges", f"--since={since} 00:00",
+           "--date=format-local:%Y-%m-%d", "--format=%x1e%h%x1f%cd%x1f%s", "--name-only",
+           "--", *(f":(glob){g}" for g in globs)]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"warning: derived interventions skipped for {repo}: {exc}", file=sys.stderr)
+        return None
+    if proc.returncode != 0:
+        reason = (proc.stderr.strip().splitlines() or ["git log failed"])[0]
+        print(f"warning: derived interventions skipped for {repo}: {reason}", file=sys.stderr)
+        return None
+    return proc.stdout
+
+
+def _derived_between(cfg: dict, baseline_date: str, latest_date: str) -> list:
+    found = []
+    for spec in rigops_config.get(cfg, "ledger.derive_interventions", []) or []:
+        spec = spec if isinstance(spec, dict) else {"repo": spec}
+        repo = rigops_config.expand(spec.get("repo", ""))
+        out = _git_log(repo, baseline_date, spec.get("paths") or DERIVE_GLOBS)
+        for block in (out or "").split("\x1e")[1:]:
+            head, _, names = block.partition("\n")
+            sha, date, subject = head.split("\x1f", 2)
+            if baseline_date < date <= latest_date:
+                files = [n for n in names.splitlines() if n]
+                found.append({"date": date, "text": subject, "repo": repo.name, "commit": sha,
+                              "files": files, "derived": True})
+    found.sort(key=lambda e: e["date"])
+    return found
+
+
 def cmd_diff(args) -> int:
     jsonl_path = state.state_dir() / "ledger.jsonl"
     rows = sorted(_load_ledger_rows(jsonl_path), key=lambda r: r.get("date", ""))
@@ -184,6 +222,8 @@ def cmd_diff(args) -> int:
 
     deltas = levers.compute_deltas(baseline, latest)
     interventions = _interventions_between(baseline.get("date", ""), latest.get("date", ""))
+    derived = _derived_between(rigops_config.load(), baseline.get("date", ""),
+                               latest.get("date", ""))
 
     if args.json:
         payload = {
@@ -191,6 +231,7 @@ def cmd_diff(args) -> int:
             "latest": latest["date"],
             "deltas": deltas,
             "interventions": interventions,
+            "derived": derived,
         }
         print(json.dumps(payload, indent=2, default=str))
         return 0
@@ -209,10 +250,11 @@ def cmd_diff(args) -> int:
     print(fmt.table(table_rows, ["column", "old", "new", "delta", "pct"]))
     print()
     print("Interventions in this window:")
-    if interventions:
-        for entry in interventions:
-            print(f"{entry.get('date')}  {entry.get('text')}{_accept_suffix(entry)}")
-    else:
+    entries = sorted([*interventions, *derived], key=lambda e: (e.get("date", ""), "derived" in e))
+    for entry in entries:
+        tag = f"  [derived {entry['repo']}@{entry['commit']}]" if entry.get("derived") else ""
+        print(f"{entry.get('date')}  {entry.get('text')}{_accept_suffix(entry)}{tag}")
+    if not entries:
         print("none recorded")
     return 0
 

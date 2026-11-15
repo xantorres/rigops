@@ -51,6 +51,19 @@ Per-project turn-1 tracking on top of the fleet-wide ledger row. Type: object ma
 {"ledger": {"watch_projects": {"myapp": "projects/myapp"}}}
 ```
 
+## `ledger.derive_interventions`
+
+Git repositories whose commits `rigops ledger diff` lists as derived interventions, beside the manual notes. Type: array, default `[]` (none). Each entry is a repo path string, or `{repo, paths}`:
+
+- `repo` (`string`) - the repository, `~` expanded.
+- `paths` (`array<string>`) - git glob pathspecs, relative to the repo root, that count as always-loaded config. Default: `**/CLAUDE.md`, `**/AGENTS.md`, `**/settings.json`, `**/settings.local.json`, `**/.mcp.json`, `**/SKILL.md` and `rules/**`.
+
+A commit counts when it is not a merge, touches at least one of those paths and its committer date (local time) falls inside the diff window. Derived entries are computed on every diff and never written to `interventions.jsonl`. A repo that is missing or not a git repository prints a warning on stderr and is skipped.
+
+```json
+{"ledger": {"derive_interventions": ["~/dotfiles", {"repo": "~/rig", "paths": ["rules/**", "law/**"]}]}}
+```
+
 ## `fixed_tax`
 
 Always-loaded config counted toward the "fixed tax" - bytes that reload on every turn no matter what the turn is about. Feeds the `fixed tax` ledger column and `rigops tax`.

@@ -9,7 +9,7 @@ Check the CLI is reachable first: `command -v rigops` or `$HOME/.local/bin/rigop
 Run these in order:
 
 1. `rigops ledger write` - writes this week's row.
-2. `rigops ledger diff` - week-over-week deltas plus every intervention noted since the baseline row. **Read this before step 6** - it's what tells you whether last week's interventions moved anything.
+2. `rigops ledger diff` - week-over-week deltas plus every intervention noted since the baseline row, and config commits tagged `[derived ...]` when `ledger.derive_interventions` lists repos. **Read this before step 6** - it's what tells you whether last week's interventions moved anything.
 3. `rigops tax --history` - fixed-context-tax trend; flags regrowth in always-loaded config.
 4. `rigops doctor --report` (add `--supervisor=none` off macOS) - job fleet health.
 5. Optional: `rigops backlog lint`, only if that subcommand exists on this install (see the `backlog` command doc - skip silently if it's missing).
