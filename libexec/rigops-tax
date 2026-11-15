@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import sys
 from pathlib import Path
@@ -11,7 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from rigops import config as rigops_config  # noqa: E402
 from rigops import fmt  # noqa: E402
 from rigops import levers  # noqa: E402
+from rigops import starts  # noqa: E402
 from rigops import state  # noqa: E402
+from rigops import transcripts  # noqa: E402
 
 
 def cmd_current(cfg, as_json: bool) -> int:
@@ -73,13 +76,99 @@ def cmd_history(as_json: bool) -> int:
     return 0
 
 
+def _k(chars) -> str:
+    return f"{chars / 1000:.1f}k"
+
+
+def _print_session(start: dict, top: int) -> None:
+    print(
+        f"{start['session']}  {start['ts'].isoformat()}  {start['surface']}  "
+        f"project {start['project']}"
+    )
+    print(
+        f"tools {start['tools']}, tool schemas {_k(start['tool_chars'])} chars, "
+        f"system {_k(start['system_chars'])} chars"
+    )
+    groups = sorted(start["groups"].items(), key=lambda kv: (-kv[1]["chars"], kv[0]))
+    print(fmt.table(
+        [[g, str(v["tools"]), _k(v["chars"])] for g, v in groups], ["group", "tools", "chars"],
+    ))
+    largest = sorted(start["tool_sizes"].items(), key=lambda kv: (-kv[1], kv[0]))[:top]
+    print(f"largest {len(largest)} tools:")
+    print(fmt.table([[n, _k(c)] for n, c in largest], ["tool", "chars"]))
+
+
+def _jsonable(start: dict) -> dict:
+    return {**start, "ts": start["ts"].isoformat()}
+
+
+def cmd_starts(args) -> int:
+    now = dt.datetime.now(dt.timezone.utc)
+    since_raw = args.since or (None if args.session else "-7d")
+    since = transcripts.parse_bound(since_raw, now)
+    until = transcripts.parse_bound(args.until, now) if args.until else None
+    tdir = rigops_config.expand(args.transcripts_dir) if args.transcripts_dir else None
+    found = starts.collect_starts(
+        since, until, transcripts_dir=tdir, subagents=args.subagents, session=args.session,
+    )
+    if args.session:
+        if not found:
+            print(f"no session start matching {args.session} in the window", file=sys.stderr)
+            return 1
+        if args.json:
+            print(json.dumps([_jsonable(s) for s in found], indent=2))
+            return 0
+        for i, start in enumerate(found):
+            if i:
+                print()
+            _print_session(start, args.top)
+        return 0
+    summary = starts.summarize(found)
+    if args.json:
+        print(json.dumps(summary, indent=2))
+        return 0
+    if not found:
+        print("no session starts with a recorded request shape in the window")
+        return 0
+    print(f"session starts since {since.date().isoformat()}: {summary['starts']}")
+    print(fmt.table(
+        [
+            [name, str(v["starts"]), f"{v['tools_p50']:g}", _k(v["tool_chars_p50"]),
+             _k(v["system_chars_p50"])]
+            for name, v in summary["surfaces"].items()
+        ],
+        ["surface", "starts", "tools p50", "tool chars p50", "system chars p50"],
+    ))
+    print("tool groups, ranked by chars x starts:")
+    print(fmt.table(
+        [[g["group"], str(g["starts"]), _k(g["chars_p50"])] for g in summary["groups"][:args.top]],
+        ["group", "starts", "chars p50"],
+    ))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Fixed context tax: always-loaded config bytes.")
     ap.add_argument("--history", action="store_true", help="fixed_tax_b trend across the ledger")
+    ap.add_argument(
+        "--starts", action="store_true",
+        help="what session starts load: tool schemas and system prompt, per surface",
+    )
+    ap.add_argument(
+        "--since", default=None,
+        help="with --starts: ISO date, 'today' or '-Nd' (default -7d; unbounded with --session)",
+    )
+    ap.add_argument("--until", default=None, help="with --starts: ISO date")
+    ap.add_argument("--session", default=None, help="with --starts: one session id (prefix)")
+    ap.add_argument("--subagents", action="store_true", help="with --starts: count subagents too")
+    ap.add_argument("--top", type=int, default=15, help="rows per ranked table")
+    ap.add_argument("--dir", dest="transcripts_dir", default=None, help="transcripts root")
     ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
+    args = ap.parse_args(transcripts.attach_dash_values(sys.argv[1:]))
 
     cfg = rigops_config.load()
+    if args.starts:
+        return cmd_starts(args)
     if args.history:
         return cmd_history(args.json)
     return cmd_current(cfg, args.json)

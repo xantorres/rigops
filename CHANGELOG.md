@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `doctor.levers.defaults: false` drops them all, and `{group}` in a rule key
   expands over the watch groups. Each warning names the command that shows the
   cause. `tools/replay-levers.py` replays a ledger through the rules.
+- tax: `rigops tax --starts` attributes session-start context to surface,
+  system prompt and tool group, from the request shapes transcripts record;
+  `--session ID` shows one start's largest tools. Ledger rows record
+  `start_tools` and `start_tool_chars`, and a built-in lever rule watches the
+  latter.
 
 ## [0.8.0] - 2026-10-04
 

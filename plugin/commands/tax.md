@@ -11,3 +11,5 @@ description: Show the rigops fixed context tax (always-loaded config bytes) and 
 3. `rigops tax --history` prints the `fixed_tax_b` trend across every ledger row (sparkline plus first/last/delta). This is the regrowth gauge: fixed tax is context every session pays before the first prompt, whether or not that turn needs it, so an upward trend here is pure overhead creeping back in (a CLAUDE.md that grew, a new always-loaded doc). Add `--json` for the raw series.
 
 4. `--history` reads only from the ledger's state file (`ledger.jsonl`, in the rigops state dir), not a fresh file scan - if the user wants the current number, not the trend, use plain `rigops tax` instead.
+
+5. `rigops tax --starts` breaks down what session starts load before the first prompt: per surface the median tool count, tool-schema size and system-prompt size, then the tool groups (`builtin`, one `mcp__<server>` row per server) ranked by size times how many starts loaded them. `--session ID` shows one session's start with its largest tools. Use it when the doctor flags a turn-1 or `start_tool_chars` rise: the group that grew is the cause.

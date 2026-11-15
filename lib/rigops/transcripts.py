@@ -108,6 +108,22 @@ def parse_bound(value, now):
     return parsed.astimezone(dt.timezone.utc)
 
 
+def attach_dash_values(argv: list, options=("--since", "--until")) -> list:
+    """Rewrite '--since -7d' to '--since=-7d': Python 3.9's argparse reads '-7d' as an option."""
+    out = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        nxt = argv[i + 1] if i + 1 < len(argv) else None
+        if arg in options and nxt and re.match(r"^-\d+d$", nxt):
+            out.append(f"{arg}={nxt}")
+            i += 2
+            continue
+        out.append(arg)
+        i += 1
+    return out
+
+
 def parse_ts(value):
     return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
 

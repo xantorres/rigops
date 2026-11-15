@@ -51,12 +51,14 @@ DEFAULT_RULES = {
     "eit_per_turn": {"rise_pct": 20},
     "cache_hit_pct": {"drop_pct": 3},
     "fixed_tax_b": {"rise_pct": 10},
+    "start_tool_chars": {"rise_pct": 10},
     "corrections": {"rise_pct": 150},
     "tool_err_per_100": {"rise_pct": 50},
 }
 
 HINTS = (
-    ("turn1_", "compare what session starts load with `rigops tax` and `rigops ledger diff`"),
+    ("turn1_", "`rigops tax --starts` shows what session starts load, per surface and tool group"),
+    ("start_tool", "`rigops tax --starts` shows which tool groups session starts load"),
     ("fixed_tax_b", "`rigops tax` lists the always-loaded files by size"),
     ("eit_per_turn", "`rigops eit --by session` shows which sessions carry the cost"),
     ("cache_hit_pct", "`rigops eit --by session` shows which sessions lost cache reuse"),
