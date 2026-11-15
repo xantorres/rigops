@@ -68,3 +68,10 @@ def correction(text: str) -> bool:
     if QUESTION_END_RE.search(line):
         return False
     return bool(ES_CORRECTION_RE.match(line) or REPROACH_RE.search(line[:REPROACH_WINDOW]))
+
+
+def counted(text: str) -> bool:
+    """The miner's kept rule: shared pattern minus Spanish statements, plus Spanish rebukes."""
+    if transcripts.is_correction(text):
+        return not statement(text)
+    return correction(text)

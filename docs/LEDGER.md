@@ -43,7 +43,7 @@ EIT = input + 1.25 * cache_creation + 0.1 * cache_read
 | `main_default_model_pct` (`ledger.jsonl` only) | Share of main-thread EIT on the model family that `settings.json` beside `transcripts_dir` names as `model` at write time, recorded in `default_model`. Empty when settings name no single model (unset, `default`, or a `*plan` alias). |
 | `denials` | Permission-denial tool-result rows across the window's user turns. |
 | `denials hl` | Same, restricted to transcript paths matching a `friction.headless_projects` substring - see [CONFIG.md](CONFIG.md#friction). |
-| `corrections` | User text turns whose first line reads as a correction (at most one counted per turn). |
+| `corrections` | User text turns whose first line reads as a correction (at most one counted per turn), by the same rule `rigops mine` keeps: Spanish statements that open with "no" drop, Spanish rebukes count. |
 | `tier3 sess` | Main-thread sessions with at least one turn at or above the third `context.nudge_tiers` threshold. |
 | `tool err/100` | `is_error` tool-result rows per 100 main-thread turns (subagent transcripts excluded from the denominator). |
 | `<name> turn-1 p10` | One column per `ledger.watch_projects` entry: turn-1 p10 restricted to sessions whose transcript path (relative to `transcripts_dir`) contains that entry's configured substring. |

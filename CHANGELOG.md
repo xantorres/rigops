@@ -49,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- ledger: `corrections` counted Spanish questions and statements that open
+  with "no" as corrections and missed Spanish rebukes; it now applies the
+  Spanish rule `rigops mine` already keeps.
 - eit: `--dir` naming one project directory read only its subagent files and
   labelled them by session; it now reads every session file under the
   project's own label.

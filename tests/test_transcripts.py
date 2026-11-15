@@ -221,6 +221,32 @@ class CollectFrictionWindowTests(unittest.TestCase):
         self.assertEqual(wide["denials"], 3)
 
 
+class SpanishFrictionTests(unittest.TestCase):
+    def test_spanish_statements_drop_and_spanish_corrections_count(self):
+        prompts = (
+            "no tengo ni toggl",
+            "no es el 7 de noviembre tio?",
+            "eso no es lo que pedí",
+            "no, just one for each",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "-work-alpha" / "s1.jsonl"
+            for i, text in enumerate(prompts):
+                _write_line(path, {
+                    "type": "user",
+                    "timestamp": f"2026-11-03T12:0{i}:00Z",
+                    "sessionId": "s1",
+                    "message": {"role": "user", "content": text},
+                })
+            fr = transcripts.collect_friction(
+                transcripts.parse_ts("2026-11-03T00:00:00Z"),
+                transcripts.parse_ts("2026-11-04T00:00:00Z"),
+                transcripts_dir=tmp,
+            )
+        self.assertEqual(fr["prompts"], 4)
+        self.assertEqual(fr["corrections"], 2)
+
+
 class WindowBoundaryTests(EnvIsolatedTestCase):
     def test_7day_windows_do_not_overlap_at_boundary(self):
         with tempfile.TemporaryDirectory() as tmp:

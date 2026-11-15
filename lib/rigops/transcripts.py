@@ -287,6 +287,9 @@ def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -
     window filter but keeps "user" rows; subagent transcripts are excluded since
     subagent tool errors are not user friction.
     """
+    # Lazy: mine_es imports this module.
+    from rigops import mine_es
+
     root = _resolve_dir(transcripts_dir)
     headless = tuple(headless_projects)
     denials = 0
@@ -359,7 +362,7 @@ def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -
                         if not prompted:
                             prompts += 1
                             prompted = True
-                        if is_correction(text):
+                        if mine_es.counted(text):
                             corrections += 1
                             break
     return {
