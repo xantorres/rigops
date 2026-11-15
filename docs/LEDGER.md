@@ -88,6 +88,9 @@ Ad hoc usage report, independent of the ledger (no row is written).
 - `--by {project,model,session}` - grouping for the top-N breakdown (default `project`).
 - `--top N` - how many groups to show (default `10`).
 - `--dir PATH` - override `transcripts_dir` for this run.
+- `--rebuilds` - cache rebuilds instead of the usage report: main-thread turns where at least 10k tokens of the previous turn's context (input, cache creation and cache read) came back uncached and under half of it was read. Each is classed `compaction` (a compact boundary sat between the turns), `quick` (within 5 minutes of the previous turn, so the short cache lifetime should still hold: a prefix change such as a model, tool-list or system-prompt switch), `idle` (more than an hour later, past the long lifetime) or `other`. Per class: turns, share of main-thread EIT, median gap, how many changed model, harness version or request shape, and the entry types most often found between the two turns. `--top N` lists the costliest rebuilds.
+
+Each ledger row records `rebuild_eit_pct` (all rebuild turns' share of main-thread EIT) and `rebuild_<class>_eit_pct` per class, and a built-in doctor lever watches the total.
 
 ### `rigops tax` / `rigops tax --history` / `rigops tax --starts` / `rigops tax --dead`
 

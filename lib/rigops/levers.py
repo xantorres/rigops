@@ -10,7 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from rigops import config as rigops_config
-from rigops import fmt, starts, transcripts
+from rigops import fmt, rebuilds, starts, transcripts
 from rigops.sources import ccusage, command, rtk
 
 WINDOW_DAYS = 7
@@ -262,6 +262,7 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
     )
     row["fixed_tax_b"] = fixed_tax_bytes(cfg)
     row.update(starts.ledger_fields(starts.collect_starts(since, until, transcripts_dir)))
+    row.update(rebuilds.ledger_fields(*rebuilds.collect(since, until, transcripts_dir)))
     row["sources"] = source_annotations(cfg, since, until)
     return row
 

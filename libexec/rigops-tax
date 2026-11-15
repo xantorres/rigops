@@ -130,7 +130,7 @@ def cmd_starts(args) -> int:
     if not found:
         print("no session starts with a recorded request shape in the window")
         return 0
-    print(f"session starts since {since.date().isoformat()}: {summary['starts']}")
+    print(f"session starts since {since.astimezone().date().isoformat()}: {summary['starts']}")
     print(fmt.table(
         [
             [name, str(v["starts"]), f"{v['tools_p50']:g}", _k(v["tool_chars_p50"]),
@@ -162,7 +162,7 @@ def cmd_dead(args) -> int:
         print("no session starts with a recorded request shape in the window")
         return 0
     print(
-        f"session starts since {since.date().isoformat()}: {report['starts']}; "
+        f"session starts since {since.astimezone().date().isoformat()}: {report['starts']}; "
         f"loaded but called at most {args.max_per_100:g} times per 100 loads:"
     )
     head = ["sessions", "calls", "chars p50", "carried"]

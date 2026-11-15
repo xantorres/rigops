@@ -52,6 +52,7 @@ DEFAULT_RULES = {
     "cache_hit_pct": {"drop_pct": 3},
     "fixed_tax_b": {"rise_pct": 10},
     "start_tool_chars": {"rise_pct": 10},
+    "rebuild_eit_pct": {"rise_pct": 30},
     "corrections": {"rise_pct": 150},
     "tool_err_per_100": {"rise_pct": 50},
 }
@@ -62,6 +63,7 @@ HINTS = (
     ("fixed_tax_b", "`rigops tax` lists the always-loaded files by size"),
     ("eit_per_turn", "`rigops eit --by session` shows which sessions carry the cost"),
     ("cache_hit_pct", "`rigops eit --by session` shows which sessions lost cache reuse"),
+    ("rebuild_", "`rigops eit --rebuilds` classes each cache rebuild by cause"),
     ("corrections", "`rigops ledger diff` pairs the jump with the interventions around it"),
     ("tool_err_per_100", "`rigops ledger diff` pairs the jump with the interventions around it"),
 )

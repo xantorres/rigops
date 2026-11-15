@@ -12,6 +12,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import config as rigops_config  # noqa: E402
+from rigops import fmt  # noqa: E402
+from rigops import rebuilds  # noqa: E402
 from rigops import transcripts  # noqa: E402
 
 
@@ -106,6 +108,30 @@ def print_human(r) -> None:
     print("\n".join(out))
 
 
+def print_rebuilds(summary: dict, found: list, since, top_n: int) -> None:
+    head = f"cache rebuilds since {since.astimezone().date().isoformat()}: " if since else "cache rebuilds: "
+    print(f"{head}{summary['count']} turns, {summary['eit_pct'] or 0:.1f}% of main-thread EIT")
+    if not found:
+        return
+    rows = [
+        [cls, str(c["count"]), f"{c['eit_pct']:.1f}%", f"{c['gap_p50_s']}s",
+         str(c["model_change"]), str(c["version_change"]), str(c["shape_change"]),
+         ", ".join(f"{name} {n}" for name, n in c["before"]) or "-"]
+        for cls, c in summary["classes"].items()
+    ]
+    print(fmt.table(rows, ["class", "turns", "EIT share", "gap p50", "model chg",
+                           "version chg", "shape chg", "entries before"]))
+    worst = sorted(found, key=lambda h: -h["eit"])[:top_n]
+    if not worst:
+        return
+    print(f"largest {len(worst)}:")
+    print(fmt.table(
+        [[h["ts"].isoformat(timespec="seconds"), h["session"][:8], h["project"], h["class"],
+          f"{h['lost']:,}", f"{h['eit']:,.0f}"] for h in worst],
+        ["ts", "session", "project", "class", "lost", "EIT"],
+    ))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="EIT usage report for session transcripts.")
     parser.add_argument("--since", default="-7d", help="ISO date/time, 'today', or '-Nd'")
@@ -113,6 +139,10 @@ def main() -> int:
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--by", choices=["project", "model", "session"], default="project")
     parser.add_argument("--top", type=int, default=10)
+    parser.add_argument(
+        "--rebuilds", action="store_true",
+        help="main-thread turns that re-created a cached prefix, classed by cause",
+    )
     parser.add_argument(
         "--dir", dest="transcripts_dir", default=None,
         help="transcripts root directory (default: config transcripts_dir)",
@@ -129,6 +159,16 @@ def main() -> int:
     now = dt.datetime.now(dt.timezone.utc)
     since = transcripts.parse_bound(args.since, now)
     until = transcripts.parse_bound(args.until, now) if args.until else None
+
+    if args.rebuilds:
+        found, main_eit = rebuilds.collect(since, until, transcripts_dir=transcripts_dir)
+        summary = rebuilds.summarize(found, main_eit)
+        if args.json:
+            worst = sorted(found, key=lambda h: -h["eit"])[:args.top]
+            print(json.dumps({**summary, "largest": worst}, indent=2, default=str))
+        else:
+            print_rebuilds(summary, found, since, args.top)
+        return 0
 
     turns = transcripts.collect_turns(since, until, transcripts_dir=transcripts_dir)
     report = build_report(turns, args.by, args.top)

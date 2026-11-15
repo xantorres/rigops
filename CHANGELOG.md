@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - tax: `rigops tax --dead` joins start-time tool schemas with tool-call counts
   over 30 days and ranks the tools and server groups that load but go unused
   by characters carried.
+- eit: `rigops eit --rebuilds` finds main-thread turns that re-created a
+  cached prefix and classes them as compaction, quick restart, idle resume or
+  other, with the model, version and request-shape changes and entry types
+  around each. Ledger rows record the EIT share per class, and a built-in lever
+  rule watches the total.
 
 ## [0.8.0] - 2026-10-04
 
