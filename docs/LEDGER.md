@@ -89,12 +89,13 @@ Ad hoc usage report, independent of the ledger (no row is written).
 - `--top N` - how many groups to show (default `10`).
 - `--dir PATH` - override `transcripts_dir` for this run.
 
-### `rigops tax` / `rigops tax --history` / `rigops tax --starts`
+### `rigops tax` / `rigops tax --history` / `rigops tax --starts` / `rigops tax --dead`
 
 - `rigops tax` - current `fixed_tax` file-by-file breakdown and total (or a "not configured" / "no matching files" message if empty).
 - `--history` - sparkline plus first/last/delta across every ledger row's `fixed_tax_b`, the regrowth gauge for always-loaded config.
 - `--starts` - what session starts send before the first prompt, read from the request-shape entries transcripts record: per surface (desktop, cli, headless) the start count and median tool count, tool-schema characters and system-prompt characters, then tool groups (`builtin`, or `mcp__<server>` for every server tool) ranked by median characters times starts. A tool's size is `len(json.dumps(tool))`. Window `--since` (default `-7d`) and `--until`; `--subagents` counts subagent transcripts too; `--top N` caps the ranked tables.
 - `--starts --session ID` - one session's start: its surface, totals, every group and the largest tools. The window is unbounded unless `--since` is given.
+- `--dead` - dead weight: tools and tool groups loaded at session start but called at most `--max-per-100` times (default 1) per 100 starts that loaded them, ranked by characters carried (schema size summed over every loading start). Calls are counted across main and subagent transcripts; loads across main starts (`--subagents` adds subagent starts). Window `--since` (default `-30d`) and `--until`. A group row lists a server whose tools all go unused: the candidate to disable or defer.
 - `--json` on any of them.
 
 Each ledger row also records `start_tools` and `start_tool_chars`: medians over the window's main-session starts that sent at least one tool (a headless run with no tools would otherwise drag the median to zero whenever the surface mix shifts). Older rows lack them; transcripts carry request shapes only from the harness version that began writing them.

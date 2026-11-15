@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import os
 import statistics
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from rigops import transcripts
 
@@ -168,6 +168,77 @@ def summarize(starts: list[dict]) -> dict:
         key=lambda g: (-g["chars_p50"] * g["starts"], g["group"]),
     )
     return {"starts": len(starts), "surfaces": surfaces, "groups": groups}
+
+
+def count_calls(since, until, transcripts_dir=None) -> Counter:
+    """tool_use blocks per tool name inside the window, subagent transcripts included."""
+    root = transcripts._resolve_dir(transcripts_dir)
+    floor = since.timestamp() if since is not None else None
+    calls: Counter = Counter()
+    for path in transcripts.find_transcripts(root):
+        try:
+            if floor is not None and os.stat(path).st_mtime < floor:
+                continue
+            fh = open(path)
+        except OSError:
+            continue
+        with fh:
+            for line in fh:
+                if '"tool_use"' not in line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    ts = transcripts.parse_ts(obj.get("timestamp") or "")
+                except (json.JSONDecodeError, ValueError, AttributeError):
+                    continue
+                if obj.get("type") != "assistant":
+                    continue
+                if (since is not None and ts < since) or (until is not None and ts >= until):
+                    continue
+                for item in (obj.get("message") or {}).get("content") or []:
+                    if isinstance(item, dict) and item.get("type") == "tool_use":
+                        calls[str(item.get("name") or "?")] += 1
+    return calls
+
+
+def _usage(name: str, sizes: list, sessions: int, calls: int, **extra) -> dict:
+    return {
+        "name": name, **extra, "sessions": sessions, "calls": calls,
+        "per_100": round(calls / sessions * 100, 1) if sessions else 0.0,
+        "chars_p50": round(statistics.median(sizes)), "carried": sum(sizes),
+    }
+
+
+def dead_weight(starts: list[dict], calls: Counter, max_per_100: float = 1.0) -> dict:
+    """Tools and tool groups loaded at start yet called at most max_per_100 times per 100 loads.
+
+    Ranked by carried chars: schema size summed over every start that loaded it.
+    """
+    tool_sizes: dict[str, list[int]] = defaultdict(list)
+    group_sizes: dict[str, list[int]] = defaultdict(list)
+    group_tools: dict[str, set] = defaultdict(set)
+    for s in starts:
+        for name, size in s["tool_sizes"].items():
+            tool_sizes[name].append(size)
+            group_tools[tool_group(name)].add(name)
+        for g, v in s["groups"].items():
+            group_sizes[g].append(v["chars"])
+    tools = [
+        _usage(n, sizes, len(sizes), calls.get(n, 0), group=tool_group(n))
+        for n, sizes in tool_sizes.items()
+    ]
+    groups = [
+        _usage(g, sizes, len(sizes), sum(calls.get(n, 0) for n in group_tools[g]),
+               tools=len(group_tools[g]))
+        for g, sizes in group_sizes.items()
+    ]
+
+    def ranked(rows):
+        keep = [r for r in rows if r["per_100"] <= max_per_100]
+        return sorted(keep, key=lambda r: (-r["carried"], r["name"]))
+
+    return {"starts": len(starts), "max_per_100": max_per_100,
+            "tools": ranked(tools), "groups": ranked(groups)}
 
 
 def ledger_fields(starts: list[dict]) -> dict:

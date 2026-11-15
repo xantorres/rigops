@@ -147,6 +147,38 @@ def cmd_starts(args) -> int:
     return 0
 
 
+def cmd_dead(args) -> int:
+    now = dt.datetime.now(dt.timezone.utc)
+    since = transcripts.parse_bound(args.since or "-30d", now)
+    until = transcripts.parse_bound(args.until, now) if args.until else None
+    tdir = rigops_config.expand(args.transcripts_dir) if args.transcripts_dir else None
+    found = starts.collect_starts(since, until, transcripts_dir=tdir, subagents=args.subagents)
+    calls = starts.count_calls(since, until, transcripts_dir=tdir)
+    report = starts.dead_weight(found, calls, args.max_per_100)
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return 0
+    if not found:
+        print("no session starts with a recorded request shape in the window")
+        return 0
+    print(
+        f"session starts since {since.date().isoformat()}: {report['starts']}; "
+        f"loaded but called at most {args.max_per_100:g} times per 100 loads:"
+    )
+    head = ["sessions", "calls", "chars p50", "carried"]
+
+    def cells(r):
+        return [str(r["sessions"]), str(r["calls"]), _k(r["chars_p50"]), _k(r["carried"])]
+
+    groups = report["groups"][:args.top]
+    print(fmt.table([[g["name"], str(g["tools"]), *cells(g)] for g in groups],
+                    ["group", "tools", *head]) if groups else "groups: none")
+    tools = report["tools"][:args.top]
+    print(fmt.table([[t["name"], *cells(t)] for t in tools], ["tool", *head])
+          if tools else "tools: none")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Fixed context tax: always-loaded config bytes.")
     ap.add_argument("--history", action="store_true", help="fixed_tax_b trend across the ledger")
@@ -155,10 +187,19 @@ def main() -> int:
         help="what session starts load: tool schemas and system prompt, per surface",
     )
     ap.add_argument(
-        "--since", default=None,
-        help="with --starts: ISO date, 'today' or '-Nd' (default -7d; unbounded with --session)",
+        "--dead", action="store_true",
+        help="tools and tool groups loaded at session start but rarely or never called",
     )
-    ap.add_argument("--until", default=None, help="with --starts: ISO date")
+    ap.add_argument(
+        "--max-per-100", type=float, default=1.0,
+        help="with --dead: most calls per 100 loading sessions still counted as dead (default 1)",
+    )
+    ap.add_argument(
+        "--since", default=None,
+        help="ISO date, 'today' or '-Nd' (--starts default -7d, unbounded with --session; "
+             "--dead default -30d)",
+    )
+    ap.add_argument("--until", default=None, help="with --starts or --dead: ISO date")
     ap.add_argument("--session", default=None, help="with --starts: one session id (prefix)")
     ap.add_argument("--subagents", action="store_true", help="with --starts: count subagents too")
     ap.add_argument("--top", type=int, default=15, help="rows per ranked table")
@@ -167,6 +208,8 @@ def main() -> int:
     args = ap.parse_args(transcripts.attach_dash_values(sys.argv[1:]))
 
     cfg = rigops_config.load()
+    if args.dead:
+        return cmd_dead(args)
     if args.starts:
         return cmd_starts(args)
     if args.history:

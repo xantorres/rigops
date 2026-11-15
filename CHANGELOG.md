@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--session ID` shows one start's largest tools. Ledger rows record
   `start_tools` and `start_tool_chars`, and a built-in lever rule watches the
   latter.
+- tax: `rigops tax --dead` joins start-time tool schemas with tool-call counts
+  over 30 days and ranks the tools and server groups that load but go unused
+  by characters carried.
 
 ## [0.8.0] - 2026-10-04
 

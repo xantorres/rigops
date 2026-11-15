@@ -44,6 +44,13 @@ def entry_row(entrypoint: str, ts: str) -> dict:
     return {"type": "attachment", "entrypoint": entrypoint, "timestamp": ts}
 
 
+def call_row(session: str, ts: str, *names: str) -> dict:
+    content = [{"type": "tool_use", "id": f"t{i}", "name": n, "input": {}}
+               for i, n in enumerate(names)]
+    return {"type": "assistant", "sessionId": session, "timestamp": ts,
+            "message": {"id": f"m-{ts}", "content": content}}
+
+
 class ComposeTests(unittest.TestCase):
     def test_sizes_tools_by_their_json_and_groups_servers(self):
         tools = BUILTIN_TOOLS + SERVER_TOOLS
@@ -67,6 +74,7 @@ def make_tree(tmp: str) -> Path:
     write_session(root, "-Users-alice-app", "sess-desk", [
         entry_row("acme-desktop", "2026-08-12T09:00:00Z"),
         shape_row("sess-desk", "2026-08-12T09:00:01Z", BUILTIN_TOOLS + SERVER_TOOLS),
+        call_row("sess-desk", "2026-08-12T09:05:00Z", "Read", "Read"),
         shape_row("sess-desk", "2026-08-12T10:00:00Z", BUILTIN_TOOLS),
     ])
     write_session(root, "-Users-alice-app", "sess-bot", [
@@ -76,10 +84,12 @@ def make_tree(tmp: str) -> Path:
     write_session(root, "-Users-alice-app", "sess-old", [
         entry_row("cli", "2026-07-01T09:00:00Z"),
         shape_row("sess-old", "2026-07-01T09:00:01Z", BUILTIN_TOOLS),
+        call_row("sess-old", "2026-07-01T09:05:00Z", "Bash"),
     ])
     write_session(root / "-Users-alice-app" / "sess-desk", "subagents", "agent-1", [
         entry_row("acme-desktop", "2026-08-12T09:30:00Z"),
         shape_row("sess-desk", "2026-08-12T09:30:01Z", BUILTIN_TOOLS),
+        call_row("sess-desk", "2026-08-12T09:31:00Z", "mcp__acme-docs__read"),
     ])
     return root
 
@@ -123,6 +133,39 @@ class CollectStartsTests(unittest.TestCase):
                          sum(len(json.dumps(t)) for t in BUILTIN_TOOLS + SERVER_TOOLS))
 
 
+AUG_10 = dt.datetime(2026, 8, 10, tzinfo=UTC)
+AUG_17 = dt.datetime(2026, 8, 17, tzinfo=UTC)
+
+
+class DeadWeightTests(unittest.TestCase):
+    def test_calls_count_subagents_and_respect_the_window(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            calls = starts.count_calls(AUG_10, AUG_17, transcripts_dir=make_tree(tmp))
+        self.assertEqual(dict(calls), {"Read": 2, "mcp__acme-docs__read": 1})
+
+    def test_uncalled_tools_rank_by_chars_carried_across_starts(self):
+        loads = [
+            {"tool_sizes": {"A": 100, "B": 150}, "groups": {"builtin": {"tools": 2, "chars": 250}}},
+            {"tool_sizes": {"A": 100}, "groups": {"builtin": {"tools": 1, "chars": 100}}},
+        ]
+        report = starts.dead_weight(loads, starts.Counter())
+        self.assertEqual([(t["name"], t["carried"]) for t in report["tools"]],
+                         [("A", 200), ("B", 150)])
+
+    def test_called_tools_drop_out_and_the_threshold_is_inclusive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_tree(tmp)
+            found = starts.collect_starts(AUG_10, AUG_17, transcripts_dir=root)
+            calls = starts.count_calls(AUG_10, AUG_17, transcripts_dir=root)
+        strict = starts.dead_weight(found, calls)
+        self.assertEqual([t["name"] for t in strict["tools"]],
+                         ["Bash", "mcp__acme-docs__search"])
+        self.assertEqual(strict["groups"], [])
+        loose = starts.dead_weight(found, calls, max_per_100=100)
+        self.assertEqual([g["name"] for g in loose["groups"]], ["mcp__acme-docs"])
+        self.assertEqual(loose["groups"][0]["tools"], 2)
+
+
 class TaxStartsCliTests(unittest.TestCase):
     def _run(self, root: Path, *args) -> subprocess.CompletedProcess:
         env = {**os.environ, "RIGOPS_CONFIG": str(root / "absent.json")}
@@ -144,6 +187,18 @@ class TaxStartsCliTests(unittest.TestCase):
         self.assertEqual(single.returncode, 0, single.stderr)
         self.assertIn("tools 4", single.stdout)
         self.assertIn("mcp__acme-docs", single.stdout)
+
+    def test_dead_lists_uncalled_tools(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_tree(tmp)
+            as_json = self._run(root, "--dead", "--since", "2026-08-10", "--until", "2026-08-17",
+                                "--json")
+            text = self._run(root, "--dead", "--since", "2026-08-10", "--until", "2026-08-17")
+        self.assertEqual(as_json.returncode, 0, as_json.stderr)
+        self.assertEqual([t["name"] for t in json.loads(as_json.stdout)["tools"]],
+                         ["Bash", "mcp__acme-docs__search"])
+        self.assertIn("groups: none", text.stdout)
+        self.assertIn("mcp__acme-docs__search", text.stdout)
 
     def test_unknown_session_exits_nonzero(self):
         with tempfile.TemporaryDirectory() as tmp:
