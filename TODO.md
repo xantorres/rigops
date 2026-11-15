@@ -22,7 +22,7 @@ is a real seam hit during adoption, not speculation.
   config key would decouple data location from scratch state.
 - [ ] `sources/file_json.py` has tests but no config wiring or caller — either wire
   it into `sources.custom` as a `file:` variant or drop it.
-- [ ] `rigops ledger --dry-run` still executes `sources.custom` subprocesses; worth
+- [x] `rigops ledger --dry-run` still executes `sources.custom` subprocesses; worth
   documenting, or gating custom sources behind the real write.
 
 ## Janitor

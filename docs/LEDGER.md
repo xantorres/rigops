@@ -58,7 +58,7 @@ Appends today's row (or `--at`'s date). Flags:
 
 - `--at YYYY-MM-DD` - row date, default today.
 - `--label TEXT` - free-text tag stored on the row.
-- `--dry-run` - compute and print, write nothing.
+- `--dry-run` - compute and print, write nothing. `sources.custom` commands still run to compute the row (see [CONFIG.md](CONFIG.md)).
 - `--force` - replace an existing row for that date.
 - `--show` - print the current ledger and exit; no write, no computation.
 - `--json` - machine-readable row instead of the summary line.
