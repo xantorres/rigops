@@ -430,10 +430,88 @@ class DiskFreeCheckTests(unittest.TestCase):
         self.assertNotIn(tmp + "/", result["detail"])
 
 
+class SummaryLineTests(unittest.TestCase):
+    TS = "2026-11-15T05:00:00Z"
+
+    def test_counts_failing_checks_and_config_findings_not_only_jobs(self):
+        jobs = [{"id": "a", "status": "ok"}, {"id": "b", "status": "stale"}]
+        checks = [{"name": "drill", "status": "fail"}, {"name": "probe", "status": "fail"},
+                  {"name": "slow", "status": "warn"}]
+        findings = [core.Finding(check="pointers", area="rigops", symptom="s", evidence="e",
+                                 fix="f")]
+        gates = [
+            {"kind": "job", "name": "b", "status": "stale", "since": "2026-11-01T00:00:00Z"},
+            {"kind": "check", "name": "drill", "status": "fail", "since": "2026-11-10T04:00:00Z"},
+            {"kind": "check", "name": "probe", "status": "fail", "since": self.TS},
+            {"kind": "check", "name": "slow", "status": "warn", "since": self.TS},
+            {"kind": "config", "name": "pointers", "status": "fail",
+             "since": "2026-11-14T02:00:00Z"},
+        ]
+        self.assertEqual(doctor.render_summary(jobs, checks, findings, gates, self.TS), (
+            "rigops doctor: 2 failing checks, 1 failing config finding (2 jobs checked)\n"
+            "red for: drill 5d, probe 0h, pointers 1d\n"
+        ))
+
+    def test_a_since_that_does_not_parse_or_lies_ahead_reads_safely(self):
+        self.assertEqual(doctor._red_for("yesterday", self.TS), "?")
+        self.assertEqual(doctor._red_for("2026-11-16T05:00:00Z", self.TS), "0h")
+
+    def test_ok_when_only_warnings_and_stale_jobs_remain(self):
+        gates = [{"kind": "check", "name": "slow", "status": "warn", "since": self.TS}]
+        out = doctor.render_summary([{"id": "b", "status": "stale"}],
+                                    [{"name": "slow", "status": "warn"}], [], gates, self.TS)
+        self.assertEqual(out, "rigops doctor: OK (1 jobs checked)\n")
+
+
 class GatesRecordTests(EnvIsolatedTestCase):
     def _gates_record(self) -> dict:
+        """The record with each gate's `since` checked for shape and set aside."""
+        record = json.loads(core.local_state_path("doctor/gates.json").read_text())
+        for gate in record["gates"]:
+            self.assertRegex(gate.pop("since"), r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+        return record
+
+    def _run_failing_probe(self, previous_gates: list) -> tuple:
+        registry_path = _write_registry(self.tmp, OK_ITEM)
+        Path(os.environ["RIGOPS_CONFIG"]).write_text(json.dumps({"doctor": {"checks": {"custom": [
+            {"name": "probe", "command": f"{sys.executable} -c 'import sys; sys.exit(1)'",
+             "fail_exit": 1},
+        ]}}}))
         path = core.local_state_path("doctor/gates.json")
-        return json.loads(path.read_text())
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"version": 1, "ts": "2026-08-01T00:00:00Z",
+                                    "gates": previous_gates}))
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=(True, None, 0)),
+        ):
+            _, out = _run_doctor(["--registry", str(registry_path)])
+        return json.loads(path.read_text()), out
+
+    def test_a_gate_still_red_keeps_the_since_of_its_first_red_run(self):
+        earlier = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 3 * 86400 - 60))
+        record, out = self._run_failing_probe([
+            {"kind": "check", "name": "probe", "status": "fail", "since": earlier},
+            {"kind": "check", "name": "cleared", "status": "fail", "since": earlier},
+        ])
+        self.assertEqual([(g["name"], g["since"]) for g in record["gates"]], [("probe", earlier)])
+        self.assertEqual(out.splitlines()[:2], [
+            "rigops doctor: 1 failing check (1 jobs checked)", "red for: probe 3d",
+        ])
+
+    def test_a_gate_that_turns_red_from_stale_or_warn_starts_at_this_run(self):
+        record, out = self._run_failing_probe([
+            {"kind": "check", "name": "probe", "status": "warn", "since": "2026-08-01T00:00:00Z"},
+        ])
+        self.assertEqual(record["gates"][0]["since"], record["ts"])
+        self.assertIn("red for: probe 0h", out)
+
+    def test_a_gate_missing_from_the_previous_record_starts_at_this_run(self):
+        record, out = self._run_failing_probe([
+            {"kind": "job", "name": "probe", "status": "failing", "since": "2026-08-01T00:00:00Z"},
+        ])
+        self.assertEqual(record["gates"][0]["since"], record["ts"])
+        self.assertIn("red for: probe 0h", out)
 
     def test_written_even_when_everything_is_ok(self):
         registry_path = _write_registry(self.tmp, OK_ITEM)

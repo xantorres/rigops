@@ -390,7 +390,9 @@ def _is_unjudged(job: dict) -> bool:
     )
 
 
-def render_report(ts: str, jobs: list, checks: list, heal_log: list, supervisor: str) -> str:
+def render_report(ts: str, jobs: list, checks: list, heal_log: list, supervisor: str,
+                  red_for: dict | None = None) -> str:
+    red_for = red_for or {}
     lines = [f"rigops doctor report {ts}", f"supervisor: {supervisor}", "", "== jobs =="]
     unjudged = [j for j in jobs if _is_unjudged(j)]
     job_rows = [
@@ -398,12 +400,13 @@ def render_report(ts: str, jobs: list, checks: list, heal_log: list, supervisor:
             j["id"], j["status"],
             f"{j['runtime_h']:.1f}h" if j["runtime_h"] is not None else "-",
             f"{j['evidence_age_h']:.1f}h" if j["evidence_age_h"] is not None else "-",
-            j["action"],
+            j["action"], red_for.get(("job", j["id"]), ""),
         ]
         for j in jobs if not _is_unjudged(j)
     ]
     if job_rows:
-        lines.append(fmt.table(job_rows, ["id", "status", "runtime", "evidence age", "action"]))
+        lines.append(fmt.table(
+            job_rows, ["id", "status", "runtime", "evidence age", "action", "red for"]))
     elif not jobs:
         lines.append("no registry items")
     if unjudged:
@@ -411,14 +414,34 @@ def render_report(ts: str, jobs: list, checks: list, heal_log: list, supervisor:
         lines.append(f"not judged (no launchd label, no evidence): {ids}")
     lines.append("")
     lines.append("== checks ==")
-    check_rows = [[c["name"], c["status"], c["detail"]] for c in checks]
+    check_rows = [[c["name"], c["status"], red_for.get(("check", c["name"]), ""), c["detail"]]
+                  for c in checks]
     lines.append(
-        fmt.table(check_rows, ["name", "status", "detail"]) if check_rows else "none configured"
+        fmt.table(check_rows, ["name", "status", "red for", "detail"])
+        if check_rows else "none configured"
     )
     if heal_log:
         lines.append("")
         lines.append("== heal actions ==")
         lines.extend(heal_log)
+    return "\n".join(lines) + "\n"
+
+
+RED = ("failing", "hung", "fail")
+
+
+def render_summary(jobs: list, checks: list, findings: list, gates: list, ts: str) -> str:
+    counts = [
+        (sum(1 for j in jobs if j["status"] in ("failing", "hung")), "failing/hung job"),
+        (sum(1 for c in checks if c["status"] == "fail"), "failing check"),
+        (len(_failing(findings)), "failing config finding"),
+    ]
+    summary = ", ".join(f"{n} {noun}{'' if n == 1 else 's'}" for n, noun in counts if n)
+    lines = [f"rigops doctor: {summary or 'OK'} ({len(jobs)} jobs checked)"]
+    red = [g for g in gates if g["status"] in RED]
+    if red:
+        lines.append("red for: " + ", ".join(
+            f"{g['name']} {_red_for(g['since'], ts)}" for g in red))
     return "\n".join(lines) + "\n"
 
 
@@ -498,6 +521,27 @@ def _config_gate_entries(findings: list) -> list:
          "status": "fail" if any(f.severity != "warn" for f in group) else "warn"}
         for check, group in sorted(by_check.items())
     ]
+
+
+def _with_since(gates: list, previous, ts: str) -> list:
+    """A gate keeps its first ts while it stays in the record at the same red-or-not level."""
+    known = {}
+    if isinstance(previous, dict) and isinstance(previous.get("gates"), list):
+        known = {(g.get("kind"), g.get("name"), g.get("status") in RED): g["since"]
+                 for g in previous["gates"]
+                 if isinstance(g, dict) and isinstance(g.get("since"), str)}
+    return [{**g, "since": known.get((g["kind"], g["name"], g["status"] in RED), ts)}
+            for g in gates]
+
+
+def _red_for(since: str, ts: str) -> str:
+    fmt_ts = "%Y-%m-%dT%H:%M:%SZ"
+    try:
+        hours = (datetime.strptime(ts, fmt_ts) - datetime.strptime(since, fmt_ts)).total_seconds()
+    except ValueError:
+        return "?"
+    hours = max(0.0, hours / 3600)
+    return f"{int(hours // 24)}d" if hours >= 24 else f"{int(hours)}h"
 
 
 def main(argv=None) -> int:
@@ -689,7 +733,13 @@ def main(argv=None) -> int:
     # not a nightly interruption, so it stays out of the notify predicate.
     stale_count = sum(1 for j in jobs if j["status"] == "stale")
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    report_text = render_report(ts, jobs, checks, heal_log, args.supervisor)
+    gates_path = rigops_core.local_state_path("doctor/gates.json")
+    gates = _with_since(
+        _job_gate_entries(jobs) + _check_gate_entries(checks) + _config_gate_entries(findings),
+        _load_json(gates_path, None), ts,
+    )
+    red_for = {(g["kind"], g["name"]): _red_for(g["since"], ts) for g in gates}
+    report_text = render_report(ts, jobs, checks, heal_log, args.supervisor, red_for)
 
     notify_command = rigops_config.get(cfg, "doctor.notify_command", "")
     notify_stamps_path = doctor_state_dir / "notified.json"
@@ -744,10 +794,8 @@ def main(argv=None) -> int:
 
     # Written every run, gates or none: an empty list still proves the doctor ran,
     # which is what a card reading it needs to tell "clean" from "never checked".
-    gates = _job_gate_entries(jobs) + _check_gate_entries(checks) + _config_gate_entries(findings)
     try:
-        _save_json(rigops_core.local_state_path("doctor/gates.json"),
-                   {"version": 1, "ts": ts, "gates": gates})
+        _save_json(gates_path, {"version": 1, "ts": ts, "gates": gates})
     except OSError as exc:
         print(f"warning: gates record not written: {exc}", file=sys.stderr)
 
@@ -755,6 +803,7 @@ def main(argv=None) -> int:
         payload = {
             "ts": ts, "supervisor": args.supervisor, "jobs": jobs, "checks": checks,
             "healed": heal_log, "fail_count": fail_count, "stale_count": stale_count,
+            "gates": gates,
             "findings": [
                 {"id": f.id, "check": f.check, "area": f.area, "severity": f.severity,
                  "symptom": f.symptom, "evidence": f.evidence, "fix": f.fix}
@@ -766,8 +815,7 @@ def main(argv=None) -> int:
         print(report_text, end="")
         print(render_findings(findings), end="")
     else:
-        summary = f"{fail_count} failing/hung" if fail_count else "OK"
-        print(f"rigops doctor: {summary} ({len(jobs)} jobs checked)")
+        print(render_summary(jobs, checks, findings, gates, ts), end="")
         print(render_findings(findings), end="")
 
     # --heal is the unattended supervisor path, and its own registry row judges it

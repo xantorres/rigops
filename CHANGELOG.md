@@ -43,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - eit: `--dir` naming one project directory read only its subagent files and
   labelled them by session; it now reads every session file under the
   project's own label.
+- doctor: the summary line printed `OK` while custom checks or config checks
+  failed; it now counts failing checks and failing config findings beside
+  failing jobs, and a `red for:` line shows how long each has been failing,
+  from a `since` the gates record carries between runs.
 
 ## [0.8.0] - 2026-10-04
 
