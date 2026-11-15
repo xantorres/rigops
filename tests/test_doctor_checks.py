@@ -827,8 +827,9 @@ class CheckLeversTests(unittest.TestCase):
             rows.append({"date": day.isoformat(), **{k: v[i] for k, v in series.items()}})
         return rows
 
-    def _judge(self, rows, notes=(), rules=None, today=date(2026, 9, 16)):
-        return check_levers.judge(rows, list(notes), rules or self.RULES, today, self.LEDGER)
+    def _judge(self, rows, notes=(), rules=None, today=date(2026, 9, 16), builtin=frozenset()):
+        return check_levers.judge(rows, list(notes), rules or self.RULES, today, self.LEDGER,
+                                  builtin=builtin)
 
     def test_headless_denial_above_zero_fires(self):
         rows = self._rows(denials_headless=[0, 0, 10], out_per_turn=[1000] * 3,
@@ -977,6 +978,66 @@ class CheckLeversTests(unittest.TestCase):
             findings = self._run(tmp, row + "\n", "not json\n",
                                  rules={"denials_headless": {"max": 0}})
         self.assertEqual(sorted(f.key for f in findings), ["denials_headless:max", "notes"])
+
+    def test_built_ins_apply_without_config_and_expand_groups(self):
+        cfg = {"ledger": {"watch_projects": {"app": "-Users-alice-app", "web": "-Users-alice-web"}}}
+        rules, builtin = check_levers.effective_rules(cfg)
+        for lever in ("turn1_p50", "turn1_app", "turn1_web_p50", "eit_per_turn", "fixed_tax_b"):
+            self.assertIn(lever, rules)
+        self.assertNotIn("turn1_{group}", rules)
+        self.assertEqual(builtin, set(rules))
+
+    def test_user_rule_replaces_a_built_in_and_null_turns_it_off(self):
+        cfg = {
+            "ledger": {"watch_projects": {"app": "x"}},
+            "doctor": {"levers": {"rules": {
+                "turn1_p50": {"rise_pct": 50}, "eit_per_turn": None, "turn1_{group}": None,
+            }}},
+        }
+        rules, builtin = check_levers.effective_rules(cfg)
+        self.assertEqual(rules["turn1_p50"], {"rise_pct": 50})
+        self.assertNotIn("turn1_p50", builtin)
+        self.assertNotIn("eit_per_turn", rules)
+        self.assertNotIn("turn1_app", rules)
+        self.assertIn("turn1_app_p50", rules)
+
+    def test_defaults_false_drops_every_built_in(self):
+        cfg = {"doctor": {"levers": {"defaults": False, "rules": {"corrections": {"max": 9}}}}}
+        rules, builtin = check_levers.effective_rules(cfg)
+        self.assertEqual((rules, builtin), ({"corrections": {"max": 9}}, set()))
+
+    def test_turn1_step_change_fires_with_a_start_hint(self):
+        rows = self._rows(turn1_app=[33000, 34000, 32500, 33500, 67000])
+        rules, builtin = check_levers.effective_rules({"ledger": {"watch_projects": {"app": "x"}}})
+        findings = self._judge(rows, rules=rules, builtin=builtin)
+        self.assertEqual([f.key for f in findings], ["turn1_app:rise_pct"])
+        self.assertIn("rigops tax", findings[0].fix)
+        self.assertIn("--accept turn1_app", findings[0].fix)
+        self.assertIn("baseline median", findings[0].evidence)
+
+    def test_built_in_rules_stay_quiet_on_flat_weeks_and_absent_columns(self):
+        rows = self._rows(turn1_p50=[31000, 33800, 30500, 34000, 33100],
+                          eit_per_turn=[9100, 9800, 8800, 9500, 10100])
+        rules, builtin = check_levers.effective_rules({})
+        self.assertEqual(self._judge(rows, rules=rules, builtin=builtin), [])
+
+    def test_built_in_rules_alone_do_not_report_an_old_or_empty_ledger(self):
+        rules, builtin = check_levers.effective_rules({})
+        rows = self._rows(turn1_p50=[30000])
+        self.assertEqual(self._judge(rows, rules=rules, builtin=builtin,
+                                     today=date(2026, 12, 1)), [])
+        self.assertEqual(self._judge([], rules=rules, builtin=builtin), [])
+
+    def test_run_without_user_rules_judges_built_ins_and_skips_a_missing_ledger(self):
+        rows = "".join(
+            json.dumps({"date": d, "turn1_p50": v}) + "\n"
+            for d, v in (("2026-08-24", 30000), ("2026-08-31", 31000),
+                         ("2026-09-07", 30500), ("2026-09-14", 50000))
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(self._run(tmp, rules={}), [])
+            findings = self._run(tmp, ledger_text=rows, rules={})
+        self.assertEqual([f.key for f in findings], ["turn1_p50:rise_pct"])
 
 
 class CheckMcpTests(unittest.TestCase):

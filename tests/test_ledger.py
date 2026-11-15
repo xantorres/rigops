@@ -466,6 +466,26 @@ class LedgerNoteTests(EnvIsolatedTestCase):
             self.assertIn("out_per_trun", result.stderr)
             self.assertFalse((Path(tmp) / "state" / "interventions.jsonl").exists())
 
+    def test_note_accept_takes_a_built_in_lever_and_an_expanded_group(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._env_for(tmp)
+            cfg = {"ledger": {"watch_projects": {"app": "-Users-alice-app"}}}
+            (Path(tmp) / "config.json").write_text(json.dumps(cfg))
+            result = _run_ledger(
+                ["note", "bigger start", "--accept", "turn1_p50", "--accept", "turn1_app"], env,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            entries = state.read_jsonl(Path(tmp) / "state" / "interventions.jsonl")
+            self.assertEqual(entries[0]["accept"], ["turn1_app", "turn1_p50"])
+
+    def test_note_accept_refuses_a_lever_turned_off(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._env_for(tmp)
+            cfg = {"doctor": {"levers": {"rules": {"turn1_p50": None}}}}
+            (Path(tmp) / "config.json").write_text(json.dumps(cfg))
+            result = _run_ledger(["note", "off", "--accept", "turn1_p50"], env)
+            self.assertEqual(result.returncode, 2)
+
     def test_top_level_at_before_note_no_longer_shadows(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = self._env_for(tmp)

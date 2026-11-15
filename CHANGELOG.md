@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- doctor: built-in lever rules watch turn-1 context (overall and per
+  `ledger.watch_projects` group), EIT per turn, cache hit rate, fixed tax,
+  corrections and tool errors against the trailing weekly baseline, with no
+  config. A configured rule replaces a built-in, `null` turns one off,
+  `doctor.levers.defaults: false` drops them all, and `{group}` in a rule key
+  expands over the watch groups. Each warning names the command that shows the
+  cause. `tools/replay-levers.py` replays a ledger through the rules.
+
 ## [0.8.0] - 2026-10-04
 
 ### Added

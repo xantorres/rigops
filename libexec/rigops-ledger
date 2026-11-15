@@ -16,6 +16,7 @@ from rigops import config as rigops_config  # noqa: E402
 from rigops import fmt  # noqa: E402
 from rigops import levers  # noqa: E402
 from rigops import state  # noqa: E402
+from rigops.doctor import check_levers  # noqa: E402
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -126,13 +127,12 @@ def cmd_note(args) -> int:
     entry = {"ts": ts, "date": at.isoformat(), "text": text}
     if args.accept:
         # A misspelt lever would record an acceptance that silences nothing.
-        rules = rigops_config.get(rigops_config.load(), "doctor.levers.rules") or {}
-        rules = rules if isinstance(rules, dict) else {}
+        rules, _ = check_levers.effective_rules(rigops_config.load())
         unknown = sorted(set(args.accept) - set(rules))
         if unknown:
             known = ", ".join(sorted(rules)) or "none"
             print(
-                f"error: no doctor.levers.rules entry for {', '.join(unknown)} (configured: {known})",
+                f"error: no lever rule for {', '.join(unknown)} (judged: {known})",
                 file=sys.stderr,
             )
             return 2
@@ -240,7 +240,7 @@ def main() -> int:
     note_p.add_argument("--at", help="note date YYYY-MM-DD (default today)")
     note_p.add_argument(
         "--accept", action="append", metavar="LEVER",
-        help="accept the current level of a doctor.levers.rules lever as deliberate (repeatable)",
+        help="accept the current level of a judged lever as deliberate (repeatable)",
     )
 
     diff_p = sub.add_parser("diff", help="week-over-week deltas with interventions between rows")

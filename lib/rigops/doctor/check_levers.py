@@ -12,6 +12,11 @@ Rules live under ``doctor.levers.rules``, one per ledger column:
 - ``rise_pct`` / ``drop_pct``: the latest row must not move further than this, in
   the worse direction, from the median of the weekly rows before it.
 
+Built-in rules (``DEFAULT_RULES``) watch the core cost columns without any
+config; a user rule replaces the built-in one for its lever, ``null`` turns a
+lever off, and ``doctor.levers.defaults: false`` drops the built-ins. A
+``{group}`` in a rule key stands for every ``ledger.watch_projects`` group.
+
 ``rigops ledger note "<why>" --accept <lever>`` records a deliberate change: rows
 on or before that note's date are not judged for that lever, and a band restarts
 its baseline at the accepted row.
@@ -35,6 +40,29 @@ BASELINE_ROWS = 4
 MIN_BASELINE_ROWS = 2
 DEFAULT_MAX_AGE_DAYS = 10
 RULE_KEYS = ("max", "min", "rise_pct", "drop_pct")
+GROUP = "{group}"
+
+# Tolerances sit just above the widest swing across a real ledger's flat weeks, so a
+# built-in fires on a step change, not on weekly noise.
+DEFAULT_RULES = {
+    "turn1_p50": {"rise_pct": 30},
+    "turn1_{group}": {"rise_pct": 30},
+    "turn1_{group}_p50": {"rise_pct": 30},
+    "eit_per_turn": {"rise_pct": 20},
+    "cache_hit_pct": {"drop_pct": 3},
+    "fixed_tax_b": {"rise_pct": 10},
+    "corrections": {"rise_pct": 150},
+    "tool_err_per_100": {"rise_pct": 50},
+}
+
+HINTS = (
+    ("turn1_", "compare what session starts load with `rigops tax` and `rigops ledger diff`"),
+    ("fixed_tax_b", "`rigops tax` lists the always-loaded files by size"),
+    ("eit_per_turn", "`rigops eit --by session` shows which sessions carry the cost"),
+    ("cache_hit_pct", "`rigops eit --by session` shows which sessions lost cache reuse"),
+    ("corrections", "`rigops ledger diff` pairs the jump with the interventions around it"),
+    ("tool_err_per_100", "`rigops ledger diff` pairs the jump with the interventions around it"),
+)
 
 
 def _number(value) -> bool:
@@ -104,15 +132,47 @@ def _malformed(rule) -> bool:
     )
 
 
+def _expand(rules, groups) -> dict:
+    out = {}
+    for key, rule in rules.items():
+        if GROUP in key:
+            out.update({key.replace(GROUP, g): rule for g in groups})
+        else:
+            out[key] = rule
+    return out
+
+
+def effective_rules(cfg) -> tuple[dict, set]:
+    """(rules, built-in lever names): built-ins overlaid by the user's rules, nulls dropped."""
+    user = core.cfg_get(cfg, "doctor.levers.rules") or {}
+    if not isinstance(user, dict):
+        user = {}
+    groups = sorted(core.cfg_get(cfg, "ledger.watch_projects") or {})
+    use_defaults = core.cfg_get(cfg, "doctor.levers.defaults", True) is not False
+    builtin = _expand(DEFAULT_RULES, groups) if use_defaults else {}
+    configured = {
+        **_expand({k: v for k, v in user.items() if GROUP in k}, groups),
+        **{k: v for k, v in user.items() if GROUP not in k},
+    }
+    merged = {**builtin, **configured}
+    rules = {k: v for k, v in merged.items() if v is not None}
+    return rules, set(builtin) - set(configured)
+
+
+def _fix(lever) -> str:
+    accept = f'`rigops ledger note "<why>" --accept {lever}`'
+    for prefix, hint in HINTS:
+        if lever.startswith(prefix):
+            return f"{hint}; if the change is deliberate, record it with {accept}"
+    return f"find what moved it, or record a deliberate change with {accept}"
+
+
 def _judge_lever(lever, rule, series, accepted, ledger) -> list:
     latest = series[-1]
     value = latest.get(lever)
     if not _number(value) or (accepted and latest["date"] <= accepted):
         return []
-    fix = (
-        "find what moved it, or record a deliberate change with "
-        f'`rigops ledger note "<why>" --accept {lever}`'
-    )
+    fix = _fix(lever)
     found = []
     if "max" in rule and value > rule["max"]:
         found.append(_warning(
@@ -153,8 +213,13 @@ def _judge_lever(lever, rule, series, accepted, ledger) -> list:
     return found
 
 
-def judge(rows, notes, rules, today, ledger, max_age_days=DEFAULT_MAX_AGE_DAYS) -> list:
+def judge(rows, notes, rules, today, ledger, max_age_days=DEFAULT_MAX_AGE_DAYS,
+          builtin=frozenset()) -> list:
+    """Judge the newest weekly row; ``builtin`` levers stay quiet about their own setup."""
+    configured = set(rules) - set(builtin)
     if not rows:
+        if not configured:
+            return []
         return [_warning(
             "empty", "the ledger has no rows, so no lever is judged",
             _tilde(ledger), "run `rigops ledger` or remove doctor.levers.rules", ledger,
@@ -163,7 +228,7 @@ def judge(rows, notes, rules, today, ledger, max_age_days=DEFAULT_MAX_AGE_DAYS) 
     latest = series[-1]
     found = []
     age = (today - date.fromisoformat(latest["date"])).days
-    if age > max_age_days:
+    if configured and age > max_age_days:
         found.append(_warning(
             "stale",
             f"the newest ledger row is {age} days old, past the {max_age_days}-day limit",
@@ -179,6 +244,8 @@ def judge(rows, notes, rules, today, ledger, max_age_days=DEFAULT_MAX_AGE_DAYS) 
                 ledger,
             ))
         elif lever not in latest:
+            if lever in builtin:
+                continue
             found.append(_warning(
                 f"{lever}:column", f"the ledger has no `{lever}` column, so that rule never fires",
                 f"{_tilde(ledger)} row {latest['date']}",
@@ -190,17 +257,20 @@ def judge(rows, notes, rules, today, ledger, max_age_days=DEFAULT_MAX_AGE_DAYS) 
 
 
 def run(cfg, today=None):
-    rules = core.cfg_get(cfg, "doctor.levers.rules") or {}
-    if not rules:
-        return []
+    user = core.cfg_get(cfg, "doctor.levers.rules") or {}
     state = core.state_dir()
     ledger = state / "ledger.jsonl"
-    if not isinstance(rules, dict):
+    if not isinstance(user, dict):
         return [_warning(
-            "rules", "doctor.levers.rules is not an object", json.dumps(rules),
+            "rules", "doctor.levers.rules is not an object", json.dumps(user),
             "map each ledger column to its rule", ledger,
         )]
+    rules, builtin = effective_rules(cfg)
+    if not rules:
+        return []
     rows, problem = read_rows(ledger)
+    if problem == "does not exist" and not set(rules) - builtin:
+        return []
     if problem:
         return [_warning(
             "unreadable", f"the ledger {problem}, so no lever is judged", _tilde(ledger),
@@ -216,5 +286,5 @@ def run(cfg, today=None):
     max_age = core.cfg_get(cfg, "doctor.levers.max_age_days", DEFAULT_MAX_AGE_DAYS)
     if not _number(max_age):
         max_age = DEFAULT_MAX_AGE_DAYS
-    found.extend(judge(rows, notes or [], rules, today or date.today(), ledger, max_age))
+    found.extend(judge(rows, notes or [], rules, today or date.today(), ledger, max_age, builtin))
     return found
