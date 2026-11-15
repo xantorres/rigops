@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import glob
 import json
 import os
@@ -72,19 +73,30 @@ def _resolve_dir(transcripts_dir) -> Path:
     return default_transcripts_dir()
 
 
+@functools.lru_cache(maxsize=64)
+def _is_project_dir(root: str) -> bool:
+    """Session files sit directly in a project dir and one level down in a transcripts root."""
+    base = glob.escape(root)
+    return bool(glob.glob(os.path.join(base, "*.jsonl"))) and not glob.glob(
+        os.path.join(base, "*", "*.jsonl"))
+
+
 def find_transcripts(transcripts_dir=None) -> list[str]:
-    root = _resolve_dir(transcripts_dir)
-    pattern1 = os.path.join(str(root), "*", "*.jsonl")
-    pattern2 = os.path.join(str(root), "*", "**", "*.jsonl")
-    files = set(glob.glob(pattern1))
-    files |= set(glob.glob(pattern2, recursive=True))
+    root = str(_resolve_dir(transcripts_dir))
+    level = "" if _is_project_dir(root) else "*"
+    files = set(glob.glob(os.path.join(root, level, "*.jsonl")))
+    files |= set(glob.glob(os.path.join(root, level, "**", "*.jsonl"), recursive=True))
     return sorted(files)
 
 
+def relative_path(path, transcripts_dir=None) -> str:
+    """Path from the dir holding project dirs, so a single project dir keeps its own name."""
+    root = os.path.normpath(str(_resolve_dir(transcripts_dir)))
+    return os.path.relpath(path, os.path.dirname(root) if _is_project_dir(root) else root)
+
+
 def project_label(path, transcripts_dir=None) -> str:
-    root = _resolve_dir(transcripts_dir)
-    rel = os.path.relpath(path, str(root))
-    top = rel.split(os.sep)[0]
+    top = relative_path(path, transcripts_dir).split(os.sep)[0]
     # Suffix from the coding harness's worktree-session dir naming; not something this rig assigns.
     return re.sub(r"--claude-worktrees-.*$", "", top)
 

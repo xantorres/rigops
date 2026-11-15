@@ -35,7 +35,7 @@ State directory (where `ledger.jsonl`, `ledger.md`, `interventions.jsonl`, `eval
 
 ## `transcripts_dir`
 
-Root directory of Claude Code project transcripts. Type `string`, default `~/.claude/projects`. Everything that scans transcripts (`rigops ledger`, `rigops eit`, `rigops tax`) walks `<transcripts_dir>/*/*.jsonl` and `<transcripts_dir>/*/**/*.jsonl`.
+Root directory of Claude Code project transcripts. Type `string`, default `~/.claude/projects`. Everything that scans transcripts (`rigops ledger`, `rigops eit`, `rigops tax`) walks `<transcripts_dir>/*/*.jsonl` and `<transcripts_dir>/*/**/*.jsonl`. A `--dir` that names one project directory (it holds session files directly) walks that directory's `*.jsonl` and `**/*.jsonl` instead and keeps its project label.
 
 ```json
 {"transcripts_dir": "~/.claude/projects"}

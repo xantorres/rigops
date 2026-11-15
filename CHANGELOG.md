@@ -35,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ledger: rows record `main_default_model_pct`, the main thread's EIT share on
   the model settings name as default, and a built-in lever floor of 50% warns
   when sessions run on something else.
+- eit: `rigops eit --by group` splits EIT over the `ledger.watch_projects`
+  groups, with unmatched turns under `other`.
+
+### Fixed
+
+- eit: `--dir` naming one project directory read only its subagent files and
+  labelled them by session; it now reads every session file under the
+  project's own label.
 
 ## [0.8.0] - 2026-10-04
 

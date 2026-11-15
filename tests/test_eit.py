@@ -122,6 +122,52 @@ class ByGroupingAndTopToolsTests(unittest.TestCase):
             self.assertEqual(model_groups["claude-opus-5-20260101"], 5000.0)
 
 
+class ProjectDirAndGroupTests(unittest.TestCase):
+    def _corpus(self, tmp: str) -> Path:
+        root = Path(tmp) / "projects"
+        app = root / "-Users-alice-app--claude-worktrees-blue"
+        _write_line(app / "s1.jsonl", _turn("a1", "2026-08-11T12:00:00Z", "s1", "m", 1000))
+        _write_line(app / "s1" / "subagents" / "agent-1.jsonl",
+                    _turn("a2", "2026-08-11T12:01:00Z", "s1", "m", 200))
+        _write_line(root / "-Users-alice-lib" / "s2.jsonl",
+                    _turn("b1", "2026-08-11T12:02:00Z", "s2", "m", 30))
+        return root
+
+    def _groups(self, args: list, env: dict) -> dict:
+        result = _run_eit(["--since", "-3650d", "--json", *args], env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return {g["key"]: (g["eit"], g["turns"]) for g in json.loads(result.stdout)["top_groups"]}
+
+    def test_a_single_project_dir_reads_main_and_subagent_turns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._corpus(tmp)
+            one = root / "-Users-alice-app--claude-worktrees-blue"
+            got = self._groups(["--dir", str(one)], dict(os.environ))
+            self.assertEqual(got, {"-Users-alice-app": (1200.0, 2)})
+            whole = self._groups(["--dir", str(root)], dict(os.environ))
+            self.assertEqual(whole["-Users-alice-app"], (1200.0, 2))
+            self.assertEqual(whole["-Users-alice-lib"], (30.0, 1))
+
+    def test_a_stray_file_in_the_root_keeps_root_mode_and_is_skipped_as_before(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._corpus(tmp)
+            _write_line(root / "stray.jsonl", _turn("x1", "2026-08-11T12:03:00Z", "s3", "m", 5))
+            got = self._groups(["--dir", str(root)], dict(os.environ))
+            self.assertEqual(got, {"-Users-alice-app": (1200.0, 2), "-Users-alice-lib": (30.0, 1)})
+
+    def test_by_group_maps_paths_onto_watch_projects_with_other_for_the_rest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self._corpus(tmp)
+            cfg = Path(tmp) / "config.json"
+            cfg.write_text(json.dumps({"ledger": {"watch_projects": {"app": "alice-app"}}}))
+            env = {**os.environ, "RIGOPS_CONFIG": str(cfg)}
+            got = self._groups(["--dir", str(root), "--by", "group"], env)
+            self.assertEqual(got, {"app": (1200.0, 2), "other": (30.0, 1)})
+            one = root / "-Users-alice-app--claude-worktrees-blue"
+            self.assertEqual(self._groups(["--dir", str(one), "--by", "group"], env),
+                             {"app": (1200.0, 2)})
+
+
 class DirValidationTests(unittest.TestCase):
     def test_nonexistent_dir_exits_2(self):
         result = _run_eit(

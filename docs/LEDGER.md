@@ -86,9 +86,9 @@ Ad hoc usage report, independent of the ledger (no row is written).
 - `--since` - ISO date/time, `today`, or `-Nd` (default `-7d`).
 - `--until` - ISO date/time.
 - `--json`.
-- `--by {project,model,session}` - grouping for the top-N breakdown (default `project`).
+- `--by {project,model,session,group}` - grouping for the top-N breakdown (default `project`). `group` maps each transcript path onto the `ledger.watch_projects` substrings, first match wins, and puts the rest under `other`.
 - `--top N` - how many groups to show (default `10`).
-- `--dir PATH` - override `transcripts_dir` for this run.
+- `--dir PATH` - override `transcripts_dir` for this run, either a transcripts root or one project directory.
 - `--rebuilds` - cache rebuilds instead of the usage report: main-thread turns where at least 10k tokens of the previous turn's context (input, cache creation and cache read) came back uncached and under half of it was read. Each is classed `compaction` (a compact boundary sat between the turns), `quick` (within 5 minutes of the previous turn, so the short cache lifetime should still hold: a prefix change such as a model, tool-list or system-prompt switch), `idle` (more than an hour later, past the long lifetime) or `other`. Per class: turns, share of main-thread EIT, median gap, how many changed model, harness version or request shape, and the entry types most often found between the two turns. `--top N` lists the costliest rebuilds.
 
 Each ledger row records `rebuild_eit_pct` (all rebuild turns' share of main-thread EIT) and `rebuild_<class>_eit_pct` per class, and a built-in doctor lever watches the total.

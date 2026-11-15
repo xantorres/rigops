@@ -17,7 +17,12 @@ from rigops import rebuilds  # noqa: E402
 from rigops import transcripts  # noqa: E402
 
 
-def build_report(turns, by, top_n) -> dict:
+def group_of(path: str, groups: dict, transcripts_dir) -> str:
+    rel = transcripts.relative_path(path, transcripts_dir)
+    return next((name for name, sub in groups.items() if sub and sub in rel), "other")
+
+
+def build_report(turns, by, top_n, groups=None, transcripts_dir=None) -> dict:
     n = len(turns)
     eits = [transcripts.eit(t) for t in turns]
     ctxs = [transcripts.ctx(t) for t in turns]
@@ -56,6 +61,7 @@ def build_report(turns, by, top_n) -> dict:
         "project": lambda t: t["project"],
         "model": lambda t: t["model"],
         "session": lambda t: t["session"],
+        "group": lambda t: group_of(t["path"], groups or {}, transcripts_dir),
     }[by]
     group_eit = defaultdict(float)
     group_turns = defaultdict(int)
@@ -137,7 +143,9 @@ def main() -> int:
     parser.add_argument("--since", default="-7d", help="ISO date/time, 'today', or '-Nd'")
     parser.add_argument("--until", default=None, help="ISO date/time")
     parser.add_argument("--json", action="store_true")
-    parser.add_argument("--by", choices=["project", "model", "session"], default="project")
+    parser.add_argument("--by", choices=["project", "model", "session", "group"],
+                        default="project",
+                        help="group: ledger.watch_projects substrings, unmatched turns as other")
     parser.add_argument("--top", type=int, default=10)
     parser.add_argument(
         "--rebuilds", action="store_true",
@@ -171,7 +179,8 @@ def main() -> int:
         return 0
 
     turns = transcripts.collect_turns(since, until, transcripts_dir=transcripts_dir)
-    report = build_report(turns, args.by, args.top)
+    groups = rigops_config.get(rigops_config.load(), "ledger.watch_projects", {}) or {}
+    report = build_report(turns, args.by, args.top, groups, transcripts_dir)
     report["window"] = {
         "since": since.isoformat() if since else None,
         "until": until.isoformat() if until else None,
