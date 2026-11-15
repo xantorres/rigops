@@ -78,7 +78,9 @@ def load(path=None, registry=None) -> dict:
         for key in ("probes", "negatives"):
             dupes = _duplicate_ids(spec.get(key, []))
             if dupes:
-                raise SystemExit(f"error: duplicate {key} ids across merged suites: {', '.join(dupes)}")
+                raise SystemExit(
+                    f"error: duplicate {key} ids across merged suites: {', '.join(dupes)}"
+                )
     return spec
 
 

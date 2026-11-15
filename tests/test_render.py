@@ -172,7 +172,9 @@ class ClaudeAgentTests(RenderTestCase):
 
 
     def _render_with(self, body: str):
-        (self.source / "agents" / "odd.md").write_text(f"---\nname: odd\npurpose: x\n{body}\n---\nB\n")
+        (self.source / "agents" / "odd.md").write_text(
+            f"---\nname: odd\npurpose: x\n{body}\n---\nB\n"
+        )
         return render.render_claude(self.source, self.home)
 
     def test_tool_classes_are_case_insensitive(self):

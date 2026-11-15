@@ -98,7 +98,8 @@ def _client_mount(match: Path, transcripts_dir, reg):
     best = None
     for mount in rigops_realm.mounts(reg):
         slug = rigops_roots.encode_project(mount)
-        if (project == slug or project.startswith(slug + "-")) and (best is None or len(slug) > len(best[0])):
+        matches = project == slug or project.startswith(slug + "-")
+        if matches and (best is None or len(slug) > len(best[0])):
             best = (slug, mount)
     return best[1] if best else None
 

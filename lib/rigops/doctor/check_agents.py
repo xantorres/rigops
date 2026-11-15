@@ -50,7 +50,8 @@ def _claims_read_only(text: str) -> bool:
         for match in CLAIM_RE.finditer(sentence):
             if NEGATED_RE.search(sentence[:match.start()]):
                 continue
-            if "read-only" not in match.group().lower() and SCOPE_AFTER_RE.match(sentence, match.end()):
+            scoped = SCOPE_AFTER_RE.match(sentence, match.end())
+            if "read-only" not in match.group().lower() and scoped:
                 continue
             return True
     return False
