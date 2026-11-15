@@ -10,7 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from rigops import config as rigops_config
-from rigops import fmt, rebuilds, starts, transcripts
+from rigops import fmt, modelmix, rebuilds, starts, transcripts
 from rigops.sources import ccusage, command, rtk
 
 WINDOW_DAYS = 7
@@ -253,9 +253,7 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
         row[f"turn1_{col}"] = round(transcripts.percentile(sorted(vals), 0.1)) if vals else None
         row[f"turn1_{col}_p50"] = round(median(vals)) if vals else None
         row[f"sessions_{col}"] = len(vals)
-    row["denials"] = fr["denials"]
-    row["denials_headless"] = fr["denials_headless"]
-    row["corrections"] = fr["corrections"]
+    row.update({k: fr[k] for k in ("denials", "denials_headless", "corrections")})
     row["tier3_breaches"] = tier3_breach_sessions(win_main, tier3)
     row["tool_err_per_100"] = (
         round(fr["tool_errors"] / len(win_main) * 100, 1) if win_main else None
@@ -263,6 +261,7 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
     row["fixed_tax_b"] = fixed_tax_bytes(cfg)
     row.update(starts.ledger_fields(starts.collect_starts(since, until, transcripts_dir)))
     row.update(rebuilds.ledger_fields(*rebuilds.collect(since, until, transcripts_dir)))
+    row.update(modelmix.ledger_fields(win_main, Path(transcripts_dir).parent / "settings.json"))
     row["sources"] = source_annotations(cfg, since, until)
     return row
 

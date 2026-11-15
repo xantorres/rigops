@@ -40,6 +40,7 @@ EIT = input + 1.25 * cache_creation + 0.1 * cache_read
 | `cheap-model EIT %` | Share of window EIT attributed to `sonnet`/`haiku`-family models, over all window turns - moves with the main session's model choice. |
 | `subagent cheap %` | Same share, restricted to turns whose transcript path contains `/subagents/` - the routing lever, isolated from the main session's model. |
 | `fixed tax` | `fixed_tax.paths`/`fixed_tax.globs` byte total at write time - see [CONFIG.md](CONFIG.md#fixed_tax). |
+| `main_default_model_pct` (`ledger.jsonl` only) | Share of main-thread EIT on the model family that `settings.json` beside `transcripts_dir` names as `model` at write time, recorded in `default_model`. Empty when settings name no single model (unset, `default`, or a `*plan` alias). |
 | `denials` | Permission-denial tool-result rows across the window's user turns. |
 | `denials hl` | Same, restricted to transcript paths matching a `friction.headless_projects` substring - see [CONFIG.md](CONFIG.md#friction). |
 | `corrections` | User text turns whose first line reads as a correction (at most one counted per turn). |

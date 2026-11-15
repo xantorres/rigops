@@ -53,6 +53,7 @@ DEFAULT_RULES = {
     "fixed_tax_b": {"rise_pct": 10},
     "start_tool_chars": {"rise_pct": 10},
     "rebuild_eit_pct": {"rise_pct": 30},
+    "main_default_model_pct": {"min": 50},
     "corrections": {"rise_pct": 150},
     "tool_err_per_100": {"rise_pct": 50},
 }
@@ -64,6 +65,8 @@ HINTS = (
     ("eit_per_turn", "`rigops eit --by session` shows which sessions carry the cost"),
     ("cache_hit_pct", "`rigops eit --by session` shows which sessions lost cache reuse"),
     ("rebuild_", "`rigops eit --rebuilds` classes each cache rebuild by cause"),
+    ("main_default_model", "a session's own model pick overrides the settings default; "
+     "`rigops eit --by model` splits EIT per model"),
     ("corrections", "`rigops ledger diff` pairs the jump with the interventions around it"),
     ("tool_err_per_100", "`rigops ledger diff` pairs the jump with the interventions around it"),
 )

@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ledger: `rigops ledger diff` lists commits that touched always-loaded config
   in the repos under `ledger.derive_interventions`, tagged as derived, beside
   the manual notes.
+- ledger: rows record `main_default_model_pct`, the main thread's EIT share on
+  the model settings name as default, and a built-in lever floor of 50% warns
+  when sessions run on something else.
 
 ## [0.8.0] - 2026-10-04
 
