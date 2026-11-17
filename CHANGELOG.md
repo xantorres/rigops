@@ -46,6 +46,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1% or more.
 - ledger: a built-in `caveman` source records proxy requests and caveman's own
   saved-token estimate, shown on the summary line when `caveman` is on PATH.
+- mine: `rigops mine --dry-run` reports the corrections that repeat across
+  sessions over a window (`--since`, default 90d). Corrections group as
+  complete-linkage cliques, so A~B and B~C never unite A with C, and
+  `--min-sessions 1` lists the single ones instead of dropping them. Dry-run
+  is the only mode. Paths, amounts, domains, ids and addresses in the report
+  are masked, and broken redaction rules are counted and reported.
+- doctor: `cause_policy` (`off`, `shadow` or `on`, default `off`) classifies
+  each failing job from the tail of its plist log as auth, quota, network,
+  deterministic or unknown. `shadow` changes nothing and writes what `on`
+  would do to `events.jsonl`; `on` holds auth, quota and network failures
+  instead of kicking them and never kicks a deterministic one.
+  Exit 0 from `cause_probe_command` releases one kick, and a network hold asks
+  it on every run.
+- doctor: registry health evidence takes glob patterns. A glob picks the
+  newest match; one with no match is no evidence, so the row reads unknown
+  instead of healthy.
+- doctor: a memory store lint warns on index pointers with no note, unindexed
+  notes and an index past its line or byte cap. Wikilinks without a note stay
+  allowed and are not counted.
+- doctor: flags agents whose prose claims read-only while their tool grants
+  allow edits.
+- render: rig workflows are copied into the workflows dir. The directory
+  stays unmanaged, so a reapply never prunes workflows the harness saves
+  there itself.
+- render: an agent's `effort` passes through to the rendered frontmatter, so
+  an agent can pin its own reasoning effort. Tools and effort are validated
+  at render time and the roster gains an Effort column.
+- realm: trusted realms resolve for watermarks and probes. A realm is the dir
+  behind a realm link that sits at a non-personal registry root. Memory
+  watermarks for a realm's projects go to that realm's backlog, or stay
+  unrouted when it has none, and never fall back to the personal backlog.
+- janitor: a truncate rule archives the head it drops to a dated sibling, so a
+  log can be bounded without losing history on the first cut; a delete rule
+  ages the siblings out.
+- redaction: the gate adds shape rules for tax ids, IBANs, phone numbers and
+  street addresses, word-bounded so hashes, uuids and versions stay clear.
+- tools: `tools/memory-path-sweep.py` counts dead absolute paths across memory
+  notes, archives included. The default mode classes other-host, ephemeral,
+  cut-name and template paths separately and never touches token or env
+  paths; `--no-exempt` and `--plain` give comparable baselines.
+
+### Changed
+
+- doctor: `notify_command` runs for a finding not yet sent, or one last sent
+  24 hours ago or more. A failure that flaps inside 6 hours is the same
+  finding. A job the doctor kicked in that run does not page, once per key per
+  7 days; kills always page, and at most 2 other pages go out per local day.
+  Sent keys live in `doctor/notified.json`, and `tools/replay-notify.py`
+  replays an events log through the rules.
+- doctor: jobs sharing a launchd label get one kick per run, and a custom
+  check that times out is a warning.
 
 ### Fixed
 
@@ -59,6 +110,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failed; it now counts failing checks and failing config findings beside
   failing jobs, and a `red for:` line shows how long each has been failing,
   from a `since` the gates record carries between runs.
+- retrieval: an explicit search from inside a repo also runs the loose query
+  restricted to that repo and ranks the merged pool by score, so a repo
+  document that holds only some of the question's words reaches the ranking.
+  Prefetch is unchanged.
+- realm: trusted mounts match by canonical path, so a symlinked start dir or
+  mount resolves and a relative registry path never trusts a dir by cwd. A
+  missing realm registry fails closed.
+- janitor: watermarks stay unrouted when the registry is unreadable, and the
+  janitor reports that as an error; routing them to the personal backlog
+  would file client findings there.
+- install: a bare re-install keeps the previous manifest's job set, so a job
+  dropped on purpose no longer comes back with the next `--apply`. First
+  installs and manifests without jobs still install every job.
+- doctor: a corrupt stamp in a state file (NaN, infinite, in the future or a
+  huge integer) counts as no stamp.
 
 ## [0.8.0] - 2026-10-04
 
