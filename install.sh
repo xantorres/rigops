@@ -790,6 +790,25 @@ step_jobs() {
     for name in "${SELECTED_JOBS[@]}"; do
         job_step "$name"
     done
+    unload_dropped_jobs
+}
+
+# A job the previous install loaded but this run no longer selects would
+# stay loaded yet leave the manifest, out of --uninstall's reach.
+unload_dropped_jobs() {
+    local label plist sha domain name keep logged=0
+    while IFS=$'\t' read -r label plist sha domain; do
+        keep=0
+        for name in "${SELECTED_JOBS[@]}"; do
+            [ "$label" = "$LABEL_PREFIX.$name" ] && keep=1
+        done
+        [ "$keep" -eq 0 ] || continue
+        if [ "$logged" -eq 0 ]; then
+            step_log "unload jobs dropped from this install"
+            logged=1
+        fi
+        remove_job "$label" "$plist" "$sha" "$domain" </dev/null
+    done <"$OLD_JOBS_TSV"
 }
 
 write_manifest() {

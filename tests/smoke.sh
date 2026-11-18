@@ -596,6 +596,26 @@ jobs_install --uninstall --apply --yes
 [ -z "$(ls "$FAKE_LAUNCHD/loaded")" ] || fail "uninstall left jobs loaded: $(ls "$FAKE_LAUNCHD/loaded")"
 [ -z "$(ls "$JOBS_AGENTS")" ] || fail "uninstall left plists: $(ls "$JOBS_AGENTS")"
 
+echo "smoke: --jobs unloads a job it drops"
+jobs_install --apply --jobs doctor,ledger --yes
+[ "$RC" -eq 0 ] || fail "two-job install exit $RC: $OUT"
+jobs_install --jobs doctor
+[ "$RC" -eq 0 ] || fail "drop plan exit $RC: $OUT"
+case "$OUT" in
+    *"unload jobs dropped"*"($JOB_PREFIX.ledger)"*) : ;;
+    *) fail "drop plan does not list the ledger unload: $OUT" ;;
+esac
+[ -f "$FAKE_LAUNCHD/loaded/$JOB_PREFIX.ledger" ] || fail "drop plan unloaded ledger"
+jobs_install --apply --jobs doctor --yes
+[ "$RC" -eq 0 ] || fail "drop apply exit $RC: $OUT"
+[ -f "$FAKE_LAUNCHD/loaded/$JOB_PREFIX.ledger" ] && fail "dropped ledger job still loaded"
+[ -f "$JOBS_AGENTS/$JOB_PREFIX.ledger.plist" ] && fail "dropped ledger plist still present"
+[ -f "$FAKE_LAUNCHD/loaded/$JOB_PREFIX.doctor" ] || fail "kept doctor job not loaded"
+[ "$(manifest_labels "$JOBS_MANIFEST")" = "$JOB_PREFIX.doctor" ] \
+    || fail "manifest after drop: $(manifest_labels "$JOBS_MANIFEST")"
+jobs_install --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "uninstall after drop exit $RC: $OUT"
+
 rm -rf "$JOBS_HOME"
 JOBS_HOME=""
 

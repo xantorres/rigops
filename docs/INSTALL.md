@@ -116,7 +116,7 @@ From `bash install.sh --help`:
 | `--apply` | Perform the actions. Without it, every run is plan-only, regardless of any other flag. |
 | `--plugin-only` | Install the CLI tree and symlink only; skip jobs, templates, and the statusline copy. Config and registry are still scaffolded. Conflicts with `--statusline`. |
 | `--no-jobs` | Skip launchd job installation. Conflicts with `--jobs`. |
-| `--jobs a,b` | Comma-separated job list to install. Available jobs: `doctor`, `ledger`. Naming anything else is a usage error. |
+| `--jobs a,b` | Comma-separated job list to install. Available jobs: `doctor`, `ledger`. Naming anything else is a usage error. A job the previous install recorded but the list leaves out is booted out and its plist removed, the same way `--uninstall` does it. |
 | `--prefix DIR` | Install prefix (default `$HOME/.local/share/rigops`). |
 | `--python PATH` | `python3` interpreter to use (default: first `python3` on PATH). Must be >= 3.9. |
 | `--statusline` | Wire the plugin statusline into `~/.claude/settings.json`. Conflicts with `--plugin-only`. |
