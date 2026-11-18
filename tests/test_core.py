@@ -27,6 +27,9 @@ class ShortTests(unittest.TestCase):
     def test_path_outside_home_is_unchanged(self):
         self.assertEqual(core.short("/opt/rig/law.md"), "/opt/rig/law.md")
 
+    def test_a_sibling_sharing_the_home_prefix_is_unchanged(self):
+        self.assertEqual(core.short("/home/alice2/rig/law.md"), "/home/alice2/rig/law.md")
+
     def test_home_text_inside_a_path_is_not_collapsed(self):
         outside = "/mnt/backup/home/alice/law.md"
         self.assertEqual(core.short(outside), outside)

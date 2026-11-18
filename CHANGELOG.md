@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that are not UTF-8.
 - tax, eit, rebuilds: a transcript row holding bytes that are not UTF-8 no
   longer stops the run.
+- doctor, context card: a path beside the home directory that only shares its
+  name prefix, like `/Users/alice2` for home `/Users/alice`, is no longer
+  shown as `~2`.
 
 ## [0.9.0] - 2026-11-17
 

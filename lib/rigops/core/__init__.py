@@ -44,7 +44,7 @@ def short(path) -> str:
     """Collapse a leading home directory to ``~``, for display."""
     home = str(HOME)
     text = str(path)
-    return "~" + text[len(home):] if text.startswith(home) else text
+    return "~" + text[len(home):] if text == home or text.startswith(home + os.sep) else text
 
 
 def parse_utc_stamp(ts):
