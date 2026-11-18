@@ -12,7 +12,12 @@ from rigops import config as rigops_config
 from rigops.watermarks import check_watermarks  # noqa: F401
 
 DELETE_ACTIONS = ("delete", "keep_newest_n")
-_UNSAFE_BASES = {Path("/"), Path.home(), Path.home().parent}
+
+
+def _unsafe_bases() -> set:
+    # Real paths, since _safe_base compares one: a HOME behind a symlink must still match.
+    home = Path(os.path.realpath(Path.home()))
+    return {Path("/"), home, home.parent, Path(os.path.realpath(Path.home().parent))}
 
 
 def _safe_base(base: Path):
@@ -29,7 +34,7 @@ def _safe_base(base: Path):
     if not base.exists():
         return False, "base does not exist"
     real = Path(os.path.realpath(base))
-    if real in _UNSAFE_BASES:
+    if real in _unsafe_bases():
         return False, f"refusing to operate on {real}"
     return True, None
 

@@ -441,6 +441,19 @@ class SafetyTests(unittest.TestCase):
         self.assertFalse(safe)
         self.assertIsNotNone(reason)
 
+    def test_home_behind_a_symlink_is_still_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            real = Path(os.path.realpath(tmp)) / "real"
+            (real / "home").mkdir(parents=True)
+            (Path(tmp) / "link").symlink_to(real)
+            home = Path(tmp) / "link" / "home"
+            with mock.patch.dict(os.environ, {"HOME": str(home)}):
+                for base in (home, real / "home", real):
+                    with self.subTest(base=base):
+                        safe, reason = janitor._safe_base(base)
+                        self.assertFalse(safe)
+                        self.assertIsNotNone(reason)
+
     def test_symlink_base_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             real_dir = Path(tmp) / "real"
