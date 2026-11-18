@@ -83,6 +83,13 @@ class CliContractTests(unittest.TestCase):
             "rules": [], "total_deleted": 0, "watermarks": [], "apply": False,
         })
 
+    def test_render_json_without_check_is_a_usage_error(self):
+        proc = self.run_cmd("render", "claude", "--json", "--home", str(self.home))
+
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("--json", proc.stderr)
+        self.assertEqual(proc.stdout, "")
+
 
 if __name__ == "__main__":
     unittest.main()

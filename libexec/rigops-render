@@ -22,6 +22,8 @@ def main(argv=None) -> int:
     ap.add_argument("--source", help="source tree (default: config render.source, or ~/rig)")
     ap.add_argument("--home", help="home to render into (default: the real home)")
     args = ap.parse_args(argv)
+    if args.json and not args.check:
+        ap.error("--json requires --check")
 
     cfg = rigops_config.load()
     default_source = core.cfg_get(cfg, "render.source", str(core.HOME / "rig"))
