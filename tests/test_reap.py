@@ -506,6 +506,8 @@ class SnapshotFailureTests(EnvIsolatedTestCase):
             ("timeout", self._raising(subprocess.TimeoutExpired(cmd="lsof", timeout=30))),
             ("oserror", self._raising(FileNotFoundError("lsof"))),
             ("rc2", self._returning(2, "")),
+            ("rc1_empty", self._returning(1, "")),
+            ("own_pid_missing", self._returning(0, "p123\nn/x\n")),
         ]
         for name, fake in cases:
             with self.subTest(name):
@@ -513,8 +515,9 @@ class SnapshotFailureTests(EnvIsolatedTestCase):
                 self.assertIsNone(reap.cwd_map())
 
     def test_lsof_partial_rc1_is_still_usable(self):
-        self._with_run(self._returning(1, "p123\nn/x\n"))
-        self.assertEqual(reap.cwd_map(), {123: "/x"})
+        me = os.getpid()
+        self._with_run(self._returning(1, f"p123\nn/x\np{me}\nn/here\n"))
+        self.assertEqual(reap.cwd_map(), {123: "/x", me: "/here"})
 
 
 REMOVAL_BLOCKERS_CASES = [
@@ -1171,13 +1174,15 @@ class RunRecheckBeforeRemovalTests(GitFixtureTestCase):
 
 
 class RunObservationFailureTests(GitFixtureTestCase):
-    def _apply_with_failing(self, failing) -> tuple[Path, dict, str]:
+    def _apply_with_failing(self, failing, setup=None) -> tuple[Path, dict, str, dict]:
         repo = self.tmp / "repo"
         _init_repo(repo)
         wt_path = self.tmp / "wt-merged"
         _run_git(["worktree", "add", "-b", "feature-merged", str(wt_path)], repo)
         sessions_dir = self.tmp / "sessions"
         sessions_dir.mkdir()
+        if setup:
+            setup(repo)
 
         # git runs through Popen, so only ps, lsof and du see this.
         orig_run = subprocess.run
@@ -1220,6 +1225,24 @@ class RunObservationFailureTests(GitFixtureTestCase):
         self.assertFalse(target["applied"]["removed"])
         self.assertIn("ps", err)
         self.assertFalse(payload["process_observation_ok"])
+
+    def test_lsof_failure_signals_nothing_in_a_stale_dir(self):
+        procs = []
+
+        def plant(repo):
+            stale = repo / ".claude" / "worktrees" / "stale1"
+            stale.mkdir(parents=True)
+            # Claimed by argv, the one match left with lsof down.
+            proc = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)", os.path.realpath(stale)],
+                start_new_session=True)
+            self.addCleanup(proc.wait)
+            self.addCleanup(proc.kill)
+            procs.append(proc)
+
+        self._apply_with_failing(lambda argv: argv[0] == "lsof", plant)
+
+        self.assertIsNone(procs[0].poll())
 
 
 class RunRepeatedRepoTests(GitFixtureTestCase):

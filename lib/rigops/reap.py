@@ -364,7 +364,8 @@ def cwd_map() -> dict[int, str] | None:
                 pid = None
         elif line.startswith("n") and pid is not None:
             cwds[pid] = line[1:]
-    return cwds
+    # An exit 1 that listed nothing, not even this process, read nothing.
+    return cwds if os.getpid() in cwds else None
 
 
 def path_claims(path: str | None, target: str) -> bool:
