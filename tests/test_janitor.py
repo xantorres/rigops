@@ -180,6 +180,22 @@ class DirAgeTests(unittest.TestCase):
             self.assertFalse(old_dir.exists())
             self.assertEqual(result["rules"][0]["acted"], 1)
 
+    @unittest.skipIf(os.geteuid() == 0, "root lists any directory")
+    def test_dir_with_an_unlistable_subdir_is_never_old(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "base"
+            base.mkdir()
+            now = time.time()
+            old_dir = self._old_dir_with_file(base, now, file_days_old=40)
+            locked = old_dir / "sub"
+            locked.chmod(0)
+            try:
+                result = self._apply(base, now)
+            finally:
+                locked.chmod(0o700)
+            self.assertTrue((locked / "f.txt").exists())
+            self.assertEqual(result["rules"][0]["matched"], [])
+
 
 class TruncateTests(unittest.TestCase):
     def test_truncate_keeps_last_500_mode_preserved(self):
