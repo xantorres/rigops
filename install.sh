@@ -1037,6 +1037,34 @@ print("     " + verb + " (backup " + backup_path + ")")
 PYEOF
 }
 
+remove_job() {
+    local label="$1" plist="$2" sha="$3" domain="$4" current_hash disabled_path
+    if [ "$APPLY" -eq 1 ] && command -v launchctl >/dev/null 2>&1; then
+        launchctl bootout "$domain/$label" >/dev/null 2>&1 || true
+    fi
+    if [ -f "$plist" ]; then
+        current_hash="$(sha256_file "$plist")"
+        if [ "$current_hash" = "$sha" ]; then
+            [ "$APPLY" -eq 1 ] && rm -f "$plist"
+            printf '     removed  %s (%s)\n' "$plist" "$label"
+        else
+            disabled_path="${plist}.rigops-disabled"
+            if [ "$APPLY" -eq 1 ]; then
+                mv -f "$plist" "$disabled_path"
+                echo "warn: $plist modified since install; disabled (renamed to $disabled_path) so launchd won't re-bootstrap it against the removed prefix.
+restore: mv \"$disabled_path\" \"$plist\" && launchctl bootstrap $domain \"$plist\"
+delete instead: rm \"$disabled_path\"" >&2
+                printf '     disabled %s -> %s (%s, modified since install)\n' "$plist" "$disabled_path" "$label"
+            else
+                printf '     plan: would disable %s (rename to %s) (%s, modified since install)\n' \
+                    "$plist" "$disabled_path" "$label"
+            fi
+        fi
+    else
+        printf '     absent   %s (%s)\n' "$plist" "$label"
+    fi
+}
+
 do_uninstall() {
     local manifest_path="$PREFIX/install.manifest.json"
     if [ ! -f "$manifest_path" ]; then
@@ -1078,33 +1106,10 @@ PYEOF
     m_state_dir_external="$(printf '%s\n' "$meta_line" | cut -f8)"
 
     step_log "uninstall jobs recorded in manifest"
-    local tag label plist sha domain current_hash disabled_path
+    local tag label plist sha domain current_hash
     while IFS=$'\t' read -r tag label plist sha domain; do
         [ "$tag" = "JOB" ] || continue
-        if [ "$APPLY" -eq 1 ] && command -v launchctl >/dev/null 2>&1; then
-            launchctl bootout "$domain/$label" >/dev/null 2>&1 || true
-        fi
-        if [ -f "$plist" ]; then
-            current_hash="$(sha256_file "$plist")"
-            if [ "$current_hash" = "$sha" ]; then
-                [ "$APPLY" -eq 1 ] && rm -f "$plist"
-                printf '     removed  %s (%s)\n' "$plist" "$label"
-            else
-                disabled_path="${plist}.rigops-disabled"
-                if [ "$APPLY" -eq 1 ]; then
-                    mv -f "$plist" "$disabled_path"
-                    echo "warn: $plist modified since install; disabled (renamed to $disabled_path) so launchd won't re-bootstrap it against the removed prefix.
-restore: mv \"$disabled_path\" \"$plist\" && launchctl bootstrap $domain \"$plist\"
-delete instead: rm \"$disabled_path\"" >&2
-                    printf '     disabled %s -> %s (%s, modified since install)\n' "$plist" "$disabled_path" "$label"
-                else
-                    printf '     plan: would disable %s (rename to %s) (%s, modified since install)\n' \
-                        "$plist" "$disabled_path" "$label"
-                fi
-            fi
-        else
-            printf '     absent   %s (%s)\n' "$plist" "$label"
-        fi
+        remove_job "$label" "$plist" "$sha" "$domain"
     done <"$dump"
 
     undo_statusline "$manifest_path"
