@@ -337,6 +337,14 @@ class StaleWorktreeDirsTests(EnvIsolatedTestCase):
 
                 self.assertEqual(reap.stale_worktree_dirs(repo, set(), []), [])
 
+    def test_worktrees_dir_linked_into_the_repo_yields_nothing(self):
+        repo = self.tmp / "repo"
+        (repo / "src" / "pkgA").mkdir(parents=True)
+        (repo / ".claude").mkdir()
+        os.symlink("../src", repo / ".claude" / "worktrees")
+
+        self.assertEqual(reap.stale_worktree_dirs(repo, set(), []), [])
+
 
 # --- section 2: kill machinery, synthetic snapshots, no real signals --------
 
