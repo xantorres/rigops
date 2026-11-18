@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- plugin: `/rigops:week` ends by listing proposed changes: repeated
+  corrections from `rigops mine`, backlog lines added since the baseline row,
+  and the newest report matching the new `ledger.week_reports` key. Nothing
+  is applied without a yes, and each applied change gets a ledger note.
+
 ## [0.9.0] - 2026-11-17
 
 ### Added

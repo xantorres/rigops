@@ -64,6 +64,14 @@ A commit counts when it is not a merge, touches at least one of those paths and 
 {"ledger": {"derive_interventions": ["~/dotfiles", {"repo": "~/rig", "paths": ["rules/**", "law/**"]}]}}
 ```
 
+## `ledger.week_reports`
+
+A glob of weekly reports written by tools other than rigops. Type: string, default unset. No rigops command reads it. The `/rigops:week` ritual reads the matching file with the newest modification time and lists what it proposes beside its own findings. `rigops config get ledger.week_reports` exits `3` while the key is unset, and the ritual skips the read.
+
+```json
+{"ledger": {"week_reports": "~/reports/weekly-*.md"}}
+```
+
 ## `fixed_tax`
 
 Always-loaded config counted toward the "fixed tax" - bytes that reload on every turn no matter what the turn is about. Feeds the `fixed tax` ledger column and `rigops tax`.
