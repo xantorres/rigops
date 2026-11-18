@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import datetime as dt
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from rigops.sources import caveman, ccusage, command, file_json, rtk  # noqa: E402
+from rigops.sources import caveman, ccusage, command, rtk  # noqa: E402
 
 
 class RunJsonTests(unittest.TestCase):
@@ -157,23 +156,6 @@ class CustomAnnotationsTests(unittest.TestCase):
     def test_non_list_argv_skipped(self):
         specs = [{"name": "t", "argv": "sh -c echo"}]
         self.assertEqual(command.custom_annotations(specs), {})
-
-
-class ReadJsonTests(unittest.TestCase):
-    def test_valid(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            p = Path(tmp) / "f.json"
-            p.write_text('{"a": 1}', encoding="utf-8")
-            self.assertEqual(file_json.read_json(p), {"a": 1})
-
-    def test_missing(self):
-        self.assertIsNone(file_json.read_json("/no/such/rigops-fixture.json"))
-
-    def test_invalid(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            p = Path(tmp) / "f.json"
-            p.write_text("not json", encoding="utf-8")
-            self.assertIsNone(file_json.read_json(p))
 
 
 if __name__ == "__main__":

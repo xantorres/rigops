@@ -20,8 +20,6 @@ is a real seam hit during adoption, not speculation.
 - [ ] The ledger state path is welded to the state dir; the only way to keep an
   existing ledger in place is `RIGOPS_STATE_DIR` for everything. A `ledger.path`
   config key would decouple data location from scratch state.
-- [ ] `sources/file_json.py` has tests but no config wiring or caller — either wire
-  it into `sources.custom` as a `file:` variant or drop it.
 - [x] `rigops ledger --dry-run` still executes `sources.custom` subprocesses; worth
   documenting, or gating custom sources behind the real write.
 
