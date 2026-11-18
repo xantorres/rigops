@@ -7,7 +7,7 @@ How to get rigops running: as a Claude Code plugin, as installed scripts and lau
 rigops ships in two independent pieces that read the same JSON config:
 
 - **Plugin half** - a Claude Code marketplace plugin: five slash commands, two skills, and two hook entries. Zero daemons; nothing runs on a schedule, everything fires from inside a Claude Code session.
-- **Script half** - `install.sh` copies the `rigops` CLI and its libraries onto disk, symlinks it onto your PATH, and (optionally) installs two launchd jobs on macOS. This is what gives you `rigops ledger`, `rigops doctor`, `rigops reap`, and the rest outside of a Claude Code session, plus scheduled runs.
+- **Script half** - `install.sh` copies the `rigops` CLI and its libraries onto disk, symlinks it onto your PATH, and (optionally) installs launchd jobs on macOS: `doctor` and `ledger` by default, `janitor` and `reap` on request. This is what gives you `rigops ledger`, `rigops doctor`, `rigops reap`, and the rest outside of a Claude Code session, plus scheduled runs.
 
 Install either half alone, or both. The plugin degrades gracefully when the CLI isn't present (below); the CLI works with the plugin absent.
 
@@ -80,7 +80,9 @@ rigops install: plan for ~ (dry run; re-run with --apply to act)
      installed ~/.local/share/rigops/lib/rigops/transcripts.py
      installed ~/.local/share/rigops/templates/cron/crontab.example
      installed ~/.local/share/rigops/templates/launchd/doctor.plist.in
+     installed ~/.local/share/rigops/templates/launchd/janitor.plist.in
      installed ~/.local/share/rigops/templates/launchd/ledger.plist.in
+     installed ~/.local/share/rigops/templates/launchd/reap.plist.in
      installed ~/.local/share/rigops/plugin/statusline/rigops-statusline.sh
      installed ~/.local/share/rigops/LICENSE
 3. plan: symlink ~/.local/bin/rigops -> ~/.local/share/rigops/bin/rigops
@@ -116,7 +118,7 @@ From `bash install.sh --help`:
 | `--apply` | Perform the actions. Without it, every run is plan-only, regardless of any other flag. |
 | `--plugin-only` | Install the CLI tree and symlink only; skip jobs, templates, and the statusline copy. Config and registry are still scaffolded. Conflicts with `--statusline`. |
 | `--no-jobs` | Skip launchd job installation. Conflicts with `--jobs`. |
-| `--jobs a,b` | Comma-separated job list to install. Available jobs: `doctor`, `ledger`. Naming anything else is a usage error. A job the previous install recorded but the list leaves out is booted out and its plist removed, the same way `--uninstall` does it. |
+| `--jobs a,b` | Comma-separated job list to install. Available jobs: `doctor` (every 30 minutes), `ledger` (Monday 09:05), `janitor` (Sunday 10:00) and `reap` (daily 08:30). Without `--jobs`, a first install gets `doctor` and `ledger`, and a later run keeps the job set the manifest recorded. `janitor` and `reap` run with `--apply`, so they delete on schedule and only `--jobs` installs them. Naming anything else is a usage error. A job the previous install recorded but the list leaves out is booted out and its plist removed, the same way `--uninstall` does it. |
 | `--prefix DIR` | Install prefix (default `$HOME/.local/share/rigops`). |
 | `--python PATH` | `python3` interpreter to use (default: first `python3` on PATH). Must be >= 3.9. |
 | `--statusline` | Wire the plugin statusline into `~/.claude/settings.json`. Conflicts with `--plugin-only`. |

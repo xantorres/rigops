@@ -629,8 +629,27 @@ jobs_install --uninstall --apply --yes
 [ "$RC" -eq 0 ] || fail "uninstall after skipped-jobs runs exit $RC: $OUT"
 [ -z "$(ls "$FAKE_LAUNCHD/loaded")" ] || fail "doctor still loaded after uninstall"
 
+echo "smoke: a bare install schedules only the default jobs"
+jobs_install --apply --yes
+[ "$RC" -eq 0 ] || fail "bare jobs install exit $RC: $OUT"
+[ "$(manifest_labels "$JOBS_MANIFEST" | tr '\n' ' ')" = "$JOB_PREFIX.doctor $JOB_PREFIX.ledger " ] \
+    || fail "bare install job set: $(manifest_labels "$JOBS_MANIFEST")"
+jobs_install --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "uninstall after bare install exit $RC: $OUT"
+
+echo "smoke: a bare re-run keeps an opt-in job"
+jobs_install --apply --jobs doctor,janitor --yes
+[ "$RC" -eq 0 ] || fail "opt-in janitor install exit $RC: $OUT"
+jobs_install --apply --yes
+[ "$RC" -eq 0 ] || fail "bare re-run over janitor exit $RC: $OUT"
+[ -f "$FAKE_LAUNCHD/loaded/$JOB_PREFIX.janitor" ] || fail "bare re-run unloaded the janitor job"
+[ "$(manifest_labels "$JOBS_MANIFEST" | tr '\n' ' ')" = "$JOB_PREFIX.doctor $JOB_PREFIX.janitor " ] \
+    || fail "bare re-run job set: $(manifest_labels "$JOBS_MANIFEST")"
+jobs_install --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "uninstall after janitor re-run exit $RC: $OUT"
+
 echo "smoke: rendered job plists parse as well-formed plists"
-ALL_JOBS="doctor ledger"
+ALL_JOBS="doctor ledger janitor reap"
 jobs_install --apply --jobs "$(printf '%s' "$ALL_JOBS" | tr ' ' ',')" --yes
 [ "$RC" -eq 0 ] || fail "all-jobs install exit $RC: $OUT"
 for job in $ALL_JOBS; do
@@ -652,6 +671,20 @@ import sys
 with open(sys.argv[1], "rb") as fh:
     path = plistlib.load(fh)["EnvironmentVariables"]["PATH"].split(":")
 sys.exit(0 if "/opt/homebrew/bin" in path and "/usr/local/bin" in path else 1)
+PYEOF
+done
+
+echo "smoke: each job plist runs its own installed command"
+for job in $ALL_JOBS; do
+    python3 - "$JOBS_AGENTS/$JOB_PREFIX.$job.plist" "$JOBS_HOME/.local/share/rigops/libexec/rigops-$job" \
+        <<'PYEOF' || fail "$job plist does not run the installed rigops-$job"
+import os
+import plistlib
+import sys
+
+with open(sys.argv[1], "rb") as fh:
+    args = plistlib.load(fh)["ProgramArguments"]
+sys.exit(0 if args[1] == sys.argv[2] and os.path.isfile(args[1]) else 1)
 PYEOF
 done
 jobs_install --uninstall --apply --yes

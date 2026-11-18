@@ -30,11 +30,15 @@ SMOKE_HOME="$(mktemp -d)"
 SRC_COPY=""
 export RIGOPS_INSTALL_LABEL_PREFIX="com.rigops.smoke$$"
 LABEL="${RIGOPS_INSTALL_LABEL_PREFIX}.doctor"
+ALL_JOBS="doctor ledger janitor reap"
 UID_NUM="$(id -u)"
 
 cleanup() {
-    launchctl bootout "gui/$UID_NUM/$LABEL" >/dev/null 2>&1 || true
-    launchctl bootout "user/$UID_NUM/$LABEL" >/dev/null 2>&1 || true
+    local job
+    for job in $ALL_JOBS; do
+        launchctl bootout "gui/$UID_NUM/$RIGOPS_INSTALL_LABEL_PREFIX.$job" >/dev/null 2>&1 || true
+        launchctl bootout "user/$UID_NUM/$RIGOPS_INSTALL_LABEL_PREFIX.$job" >/dev/null 2>&1 || true
+    done
     rm -rf "$SMOKE_HOME"
     if [ -n "$SRC_COPY" ]; then rm -rf "$SRC_COPY"; fi
 }
@@ -119,5 +123,26 @@ set -e
 
 rm -rf "$SRC_COPY"
 SRC_COPY=""
+
+echo "smoke-launchd: every shipped job loads and unloads"
+run bash "$INSTALL_SH" --apply --jobs "$(printf '%s' "$ALL_JOBS" | tr ' ' ',')" --yes
+[ "$RC" -eq 0 ] || fail "all-jobs install exit $RC: $OUT"
+for job in $ALL_JOBS; do
+    run launchctl list "$RIGOPS_INSTALL_LABEL_PREFIX.$job"
+    [ "$RC" -eq 0 ] || fail "$job not loaded after install ($OUT)"
+done
+
+run bash "$INSTALL_SH" --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "all-jobs uninstall exit $RC: $OUT"
+for job in $ALL_JOBS; do
+    set +e
+    launchctl list "$RIGOPS_INSTALL_LABEL_PREFIX.$job" >/dev/null 2>&1
+    listed_rc=$?
+    set -e
+    [ "$listed_rc" -ne 0 ] || fail "$job still loaded after uninstall"
+    if [ -f "$SMOKE_HOME/Library/LaunchAgents/$RIGOPS_INSTALL_LABEL_PREFIX.$job.plist" ]; then
+        fail "$job plist still present after uninstall"
+    fi
+done
 
 echo "smoke-launchd: OK"

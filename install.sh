@@ -35,7 +35,8 @@ nothing. Pass --apply to actually install.
   --plugin-only   install tree + symlink only; skip jobs, templates,
                   statusline; still scaffold config/registry
   --no-jobs       skip launchd job installation
-  --jobs a,b      comma list of jobs to install (available: doctor, ledger)
+  --jobs a,b      comma list of jobs to install (default: doctor, ledger;
+                  also available: janitor, reap, which run with --apply)
   --prefix DIR    install prefix (default: $HOME/.local/share/rigops)
   --python PATH   python3 interpreter to use (default: first on PATH)
   --statusline    wire the plugin statusline into ~/.claude/settings.json
@@ -157,7 +158,9 @@ fi
 
 # Jobs shipped by this checkout. --jobs filters this set; naming anything
 # else is a usage error, not a silent no-op.
-AVAILABLE_JOBS=(doctor ledger)
+AVAILABLE_JOBS=(doctor ledger janitor reap)
+# janitor and reap delete on a schedule, so only --jobs installs them.
+DEFAULT_JOBS=(doctor ledger)
 SELECTED_JOBS=()
 if [ -n "$JOBS_FILTER" ]; then
     while IFS= read -r name; do
@@ -175,7 +178,7 @@ if [ -n "$JOBS_FILTER" ]; then
 $(printf '%s' "$JOBS_FILTER" | tr ',' '\n')
 EOF
 else
-    SELECTED_JOBS=("${AVAILABLE_JOBS[@]}")
+    SELECTED_JOBS=("${DEFAULT_JOBS[@]}")
 fi
 
 if [ -n "$JOBS_FILTER" ] && [ "${#SELECTED_JOBS[@]}" -eq 0 ]; then
@@ -338,10 +341,11 @@ fi
 
 # A bare run keeps the job set the previous manifest recorded, so a job
 # retired on purpose (or dropped with --jobs) is not reinstalled by the next
-# --apply. A first install, or a manifest with no jobs, still gets all of them.
+# --apply, and an opt-in job stays. A first install, or a manifest with no
+# jobs, gets the default set.
 if [ -z "$JOBS_FILTER" ] && [ -s "$OLD_JOBS_TSV" ]; then
     KEPT_JOBS=()
-    for avail in "${SELECTED_JOBS[@]}"; do
+    for avail in "${AVAILABLE_JOBS[@]}"; do
         while IFS=$'\t' read -r old_label _; do
             [ "$old_label" = "$LABEL_PREFIX.$avail" ] && KEPT_JOBS+=("$avail")
         done <"$OLD_JOBS_TSV"
