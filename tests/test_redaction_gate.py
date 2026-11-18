@@ -232,6 +232,12 @@ class LocationOnlyOutputTests(unittest.TestCase):
         out = run_gate(self.script, "--message", str(msg), home=self.home)
         self.assert_location_only(out, "msg.txt:3")
 
+    def test_message_with_a_nul_byte_is_still_scanned(self):
+        msg = self.tmp / "msg.txt"
+        msg.write_bytes(b"subject\n\x00\n" + PLACEHOLDER_HIT.encode() + b"\n")
+        out = run_gate(self.script, "--message", str(msg), home=self.home)
+        self.assert_location_only(out, "msg.txt:3")
+
     def test_tree_hit_prints_file_and_line(self):
         out = run_gate(self.script, home=self.home)
         self.assert_location_only(out, "notes.txt:2")

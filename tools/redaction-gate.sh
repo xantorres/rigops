@@ -331,7 +331,8 @@ run_message() {
 
   while IFS="$RULE_SEP" read -r label lineno raw; do
     parse_rule "$label" "$lineno" "$raw"
-    grep_rule " scanning message" -nI -- "$file" || continue
+    # -a: a message is never a binary to skip, whatever bytes it holds.
+    grep_rule " scanning message" -na -- "$file" || continue
     report "$(match_lines "$shown")"
   done <<<"$RULES"
 
