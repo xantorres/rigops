@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import config as rigops_config  # noqa: E402
 from rigops import reap  # noqa: E402
+from rigops import reap_selftest  # noqa: E402
 
 
 def main() -> int:
@@ -50,7 +51,7 @@ def main() -> int:
         args.grace_days = rigops_config.get(cfg, "reaper.grace_days", 14)
 
     if args.selftest:
-        return reap.run_selftest()
+        return reap_selftest.run_selftest()
 
     if args.root:
         roots = [args.root]
