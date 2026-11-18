@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the newest report matching the new `ledger.week_reports` key. Nothing
   is applied without a yes, and each applied change gets a ledger note.
 
+### Fixed
+
+- doctor, ledger: two runs writing the same state file at once both finish.
+  Each write uses a temp file of its own instead of one fixed `.tmp` name.
+- ledger: friction counts no longer stop at a transcript row holding bytes
+  that are not UTF-8.
+
 ## [0.9.0] - 2026-11-17
 
 ### Added
