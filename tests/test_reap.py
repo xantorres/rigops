@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from rigops import reap, state  # noqa: E402
+from rigops import reap, reap_procs, state  # noqa: E402
 
 # Resolved before any test rewrites the environment: the log the operator's own
 # reaper runs append to, which no test may touch.
@@ -440,12 +440,12 @@ class ProtectedPidsOwnPgidTests(EnvIsolatedTestCase):
             555555: {"ppid": 1, "pgid": os.getpgrp(), "uid": 0, "tty": "??",
                     "etimes": 10, "command": "stranger"},
         }
-        orig = reap._ppid_of
-        reap._ppid_of = lambda pid: None
+        orig = reap_procs._ppid_of
+        reap_procs._ppid_of = lambda pid: None
         try:
             protected = reap.protected_pids(snap)
         finally:
-            reap._ppid_of = orig
+            reap_procs._ppid_of = orig
         self.assertIn(555555, protected)
 
 

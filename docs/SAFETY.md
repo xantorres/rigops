@@ -22,7 +22,7 @@ Two independent kill paths, same shape, different scope.
 - Signals the whole process group only when the pid is that group's own leader; otherwise it signals the pid alone, so a non-leader match never takes unrelated siblings down with it.
 - SIGTERM, poll every 0.5s up to `kill_grace_s` (default 5s), then SIGKILL once unless the target reads as gone: the pid alone, where a failed `ps` reads as gone, or the whole group while any member remains, even after the leader has exited.
 
-**`rigops reap`** (`lib/rigops/reap.py`, `kill_pids` / `_filter_killable` / `removal_blockers`) signals a *set* of pids matched by cwd/argv under a worktree, plus their full descendant closure:
+**`rigops reap`** (`lib/rigops/reap_procs.py`, `kill_pids` / `_filter_killable` / `removal_blockers`) signals a *set* of pids matched by cwd/argv under a worktree, plus their full descendant closure:
 
 - Only own-uid, terminal-less (no controlling tty) pids are eligible - an interactive shell parked in an old worktree is never a target.
 - A never-signal set (init, the reaper's own pid, and its full ancestor chain) is subtracted first.
