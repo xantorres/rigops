@@ -16,7 +16,7 @@ from pathlib import Path
 
 from rigops import core
 
-from .check_pointers import _finding, _sources
+from .check_pointers import finding_key, source_files
 from .pointer_grammar import MEMORY_NOTE_RE
 
 AREA = "docs"
@@ -31,9 +31,8 @@ _POINTER_RE = re.compile(r"\]\(([^)\s#]+\.md)(?:#[^)\s]*)?\)")
 
 
 def _warn(kind, value, where, fix, symptom):
-    finding = _finding(kind, value, where, fix)
     return core.Finding(
-        check=CHECK, area=AREA, key=finding.key, symptom=symptom,
+        check=CHECK, area=AREA, key=finding_key(kind, value, where), symptom=symptom,
         evidence=where, fix=fix, severity="warn",
     )
 
@@ -77,8 +76,8 @@ def _store_findings(mem, max_lines, max_bytes):
 
 
 def run(cfg):
-    configured = core.cfg_get(cfg, "doctor.memory.sources", DEFAULT_SOURCES)
-    paths, _ = _sources({"doctor": {"pointers": {"sources": configured}}})
+    configured = core.cfg_get(cfg, "doctor.memory.sources", None)
+    paths, _ = source_files(DEFAULT_SOURCES if configured is None else configured)
     max_lines = _cap(cfg, "index_max_lines", DEFAULT_MAX_LINES)
     max_bytes = _cap(cfg, "index_max_bytes", DEFAULT_MAX_BYTES)
     stores = sorted({p.parent for p in paths if MEMORY_NOTE_RE.search(str(p))})

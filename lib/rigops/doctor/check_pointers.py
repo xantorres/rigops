@@ -62,15 +62,18 @@ def _cfg(cfg, key, default):
 
 
 def _sources(cfg):
-    """Return the files to scan, plus a finding per configured source that is gone.
+    return source_files(_cfg(cfg, "sources", DEFAULT_SOURCES))
+
+
+def source_files(patterns):
+    """Return the files the patterns name, plus a finding per pattern that is gone.
 
     A missing entry is only reported when the operator wrote it. The defaults
     name files that exist on this rig and not on every rig, so a fresh install
     would otherwise open with findings about a vault it does not have.
     """
-    configured = _cfg(cfg, "sources", DEFAULT_SOURCES)
     out, missing = [], []
-    for pattern in configured:
+    for pattern in patterns:
         expanded = str(core.expand(pattern))
         if any(ch in expanded for ch in "*?["):
             out.extend(Path(hit) for hit in sorted(glob.glob(expanded, recursive=True)))
@@ -224,12 +227,16 @@ def _path_ok(raw, known, truncated=False):
         return True
 
 
-def _finding(kind, value, where, fix, area=AREA):
+def finding_key(kind, value, where):
     # The key names the file but not the line: the same broken pointer is one
     # defect however far an unrelated edit above it pushes the line down, and an
     # id that moved on every reflow would put a fresh row in the backlog each run.
+    return f"{kind}:{value}:{where.rsplit(':', 1)[0]}"
+
+
+def _finding(kind, value, where, fix, area=AREA):
     return core.Finding(
-        check=CHECK, area=area, key=f"{kind}:{value}:{where.rsplit(':', 1)[0]}",
+        check=CHECK, area=area, key=finding_key(kind, value, where),
         symptom=f"{kind} pointer `{value}` does not resolve",
         evidence=where, fix=fix,
     )
