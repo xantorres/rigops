@@ -23,8 +23,9 @@ UNDOCUMENTED_FLAGS: dict[str, str] = {}
 ADD_ARGUMENT = re.compile(r"add_argument\(([^)]*)", re.S)
 FLAG = re.compile(r"""["'](--[a-z0-9][a-z0-9-]*)["']""")
 SCRIPT_HALF = re.compile(r"the `rigops` CLI \(([^)]*)\)")
-LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
-FENCE = re.compile(r"^```.*?^```", re.S | re.M)
+LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+LINK_DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(\S+)", re.M)
+FENCE = re.compile(r"^[ \t]*(```|~~~).*?^[ \t]*\1", re.S | re.M)
 SKIP_DIRS = {".git", ".claude", "fixtures"}
 
 
@@ -77,7 +78,7 @@ class DocsContractTests(unittest.TestCase):
         broken = []
         for page in markdown_files():
             body = FENCE.sub("", page.read_text(encoding="utf-8"))
-            for target in LINK.findall(body):
+            for target in LINK.findall(body) + LINK_DEFINITION.findall(body):
                 if re.match(r"[a-z][a-z0-9+.-]*:", target) or target.startswith("#"):
                     continue
                 path = target.split("#", 1)[0]
