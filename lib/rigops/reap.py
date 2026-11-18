@@ -667,7 +667,8 @@ def stale_worktree_dirs(repo: Path, registered_paths: set[str],
         return []
     stale: list[str] = []
     for entry in sorted(base.iterdir()):
-        if not entry.is_dir():
+        # git never creates a worktree as a symlink; following one makes its target a kill zone.
+        if entry.is_symlink() or not entry.is_dir():
             continue
         real = os.path.realpath(entry)
         if real in registered_paths:

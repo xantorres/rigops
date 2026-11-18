@@ -305,6 +305,22 @@ class LiveWorktreeCwdsNullPidTests(EnvIsolatedTestCase):
             self.assertEqual(live, [])
 
 
+class StaleWorktreeDirsTests(EnvIsolatedTestCase):
+    def test_symlink_under_worktrees_is_never_stale(self):
+        repo = self.tmp / "repo"
+        base = repo / ".claude" / "worktrees"
+        base.mkdir(parents=True)
+        outside = self.tmp / "outside"
+        outside.mkdir()
+        os.symlink(outside, base / "link-out")
+        leftover = base / "leftover"
+        leftover.mkdir()
+
+        stale = reap.stale_worktree_dirs(repo, set(), [])
+
+        self.assertEqual(stale, [os.path.realpath(leftover)])
+
+
 # --- section 2: kill machinery, synthetic snapshots, no real signals --------
 
 
