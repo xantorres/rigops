@@ -65,9 +65,28 @@ emit_rules() {
   done <"$f"
 }
 
-all_rules() {
-  emit_rules "$PUBLIC_PATTERNS" "public"
-  emit_rules "$PRIVATE_PATTERNS" "private"
+# A layer that is present but yields no rules would let every scan
+# report clean, so it fails like a missing public layer.
+load_rules() {
+  local public private
+  if [ ! -f "$PUBLIC_PATTERNS" ]; then
+    echo "error: public redaction patterns missing: $PUBLIC_PATTERNS" >&2
+    exit 2
+  fi
+  public="$(emit_rules "$PUBLIC_PATTERNS" "public")"
+  if [ -z "$public" ]; then
+    echo "error: public redaction patterns load no rules: $PUBLIC_PATTERNS" >&2
+    exit 2
+  fi
+  private="$(emit_rules "$PRIVATE_PATTERNS" "private")"
+  if [ -n "$PRIVATE_PATTERNS" ] && [ -z "$private" ]; then
+    echo "error: private redaction patterns load no rules" >&2
+    exit 2
+  fi
+  RULES="$public"
+  if [ -n "$private" ]; then
+    RULES="$RULES"$'\n'"$private"
+  fi
 }
 
 # Counts lines in $1 without relying on wc's inconsistent padding.
@@ -131,7 +150,7 @@ run_default() {
       add=$(count_lines "$matches")
       hits=$((hits + add))
     fi
-  done < <(all_rules)
+  done <<<"$RULES"
 
   if [ "$hits" -gt 0 ]; then
     echo "redaction gate: ${hits} hit(s)"
@@ -184,7 +203,7 @@ run_history() {
       add=$(count_lines "$matches")
       hits=$((hits + add))
     fi
-  done < <(all_rules)
+  done <<<"$RULES"
 
   if [ "$hits" -gt 0 ]; then
     echo "redaction gate: ${hits} hit(s)"
@@ -234,7 +253,7 @@ run_message() {
       add=$(count_lines "$matches")
       hits=$((hits + add))
     fi
-  done < <(all_rules)
+  done <<<"$RULES"
 
   if [ "$hits" -gt 0 ]; then
     echo "redaction gate: ${hits} hit(s)"
@@ -279,6 +298,8 @@ if [ "$#" -gt 0 ]; then
   usage >&2
   exit 2
 fi
+
+load_rules
 
 case "$mode" in
   default) run_default ;;

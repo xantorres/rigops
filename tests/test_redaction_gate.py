@@ -1,4 +1,6 @@
+import base64
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -6,6 +8,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 GATE = ROOT / "tools" / "redaction-gate.sh"
+
+PLACEHOLDER_RULE = "s zz-sample-[0-9]+\n"
+PLACEHOLDER_HIT = "zz-sample-" + "42"
 
 # Built by concatenation so no literal here matches the gate itself.
 SHAPES = {
@@ -51,6 +56,75 @@ def gate(text):
             env=env,
         )
         return out.returncode
+
+
+def sandbox_gate(root, public=PLACEHOLDER_RULE):
+    """Copies the gate under root/tools, with `public` as its public layer."""
+    tools = Path(root) / "tools"
+    tools.mkdir(parents=True, exist_ok=True)
+    script = tools / "redaction-gate.sh"
+    shutil.copy(GATE, script)
+    if public is not None:
+        (tools / "redaction-patterns.public.txt").write_text(public, encoding="utf-8")
+    return script
+
+
+def run_gate(script, *args, home, cwd=None, extra_env=None):
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CEILING_DIRECTORIES": str(Path(home).parent),
+    }
+    env.pop("RIGOPS_REDACTION_PATTERNS", None)
+    env.pop("RIGOPS_REDACTION_PATTERNS_B64", None)
+    env.update(extra_env or {})
+    return subprocess.run(
+        ["bash", str(script), *args],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=cwd,
+    )
+
+
+class ZeroRulesTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.home = self.tmp / "home"
+        self.home.mkdir()
+        self.msg = self.tmp / "msg.txt"
+        self.msg.write_text("nothing to see\n", encoding="utf-8")
+
+    def assert_fails_closed(self, out):
+        self.assertEqual(out.returncode, 2, out.stdout + out.stderr)
+        self.assertNotIn("clean", out.stdout)
+
+    def test_missing_public_layer_fails(self):
+        script = sandbox_gate(self.tmp / "repo", public=None)
+        out = run_gate(script, "--message", str(self.msg), home=self.home)
+        self.assert_fails_closed(out)
+
+    def test_public_layer_without_rules_fails(self):
+        script = sandbox_gate(self.tmp / "repo", public="# only a comment\n\n")
+        out = run_gate(script, "--message", str(self.msg), home=self.home)
+        self.assert_fails_closed(out)
+
+    def test_private_layer_without_rules_fails(self):
+        script = sandbox_gate(self.tmp / "repo")
+        packed = base64.b64encode(b"# only a comment\n").decode()
+        out = run_gate(
+            script, "--message", str(self.msg), home=self.home,
+            extra_env={"RIGOPS_REDACTION_PATTERNS_B64": packed},
+        )
+        self.assert_fails_closed(out)
+
+    def test_loaded_rules_still_report_clean(self):
+        script = sandbox_gate(self.tmp / "repo")
+        out = run_gate(script, "--message", str(self.msg), home=self.home)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
 
 
 class PersonalDataShapeTests(unittest.TestCase):
