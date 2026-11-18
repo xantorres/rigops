@@ -642,6 +642,18 @@ with open(sys.argv[1], "rb") as fh:
     plistlib.load(fh)
 PYEOF
 done
+
+echo "smoke: rendered job PATH reaches homebrew tools"
+for job in $ALL_JOBS; do
+    python3 - "$JOBS_AGENTS/$JOB_PREFIX.$job.plist" <<'PYEOF' || fail "$job plist PATH misses a homebrew prefix"
+import plistlib
+import sys
+
+with open(sys.argv[1], "rb") as fh:
+    path = plistlib.load(fh)["EnvironmentVariables"]["PATH"].split(":")
+sys.exit(0 if "/opt/homebrew/bin" in path and "/usr/local/bin" in path else 1)
+PYEOF
+done
 jobs_install --uninstall --apply --yes
 [ "$RC" -eq 0 ] || fail "all-jobs uninstall exit $RC: $OUT"
 

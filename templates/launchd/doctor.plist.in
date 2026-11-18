@@ -32,7 +32,7 @@
 		<key>HOME</key>
 		<string>@HOME@</string>
 		<key>PATH</key>
-		<string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
 @EXTRA_ENV@
 	</dict>
 	<key>StandardOutPath</key>
