@@ -5,7 +5,8 @@ from __future__ import annotations
 import stat
 from pathlib import Path
 
-from . import frontmatter
+from rigops import core
+
 from .common import Rendered, marker_md, render_markdown_file
 
 CLASS_ORDER = ("read", "search", "edit", "shell", "web")
@@ -59,7 +60,7 @@ def _tools_line(fields: dict, name: str = "") -> str:
 
 def _render_agent(agent_file: Path, home: Path) -> bytes:
     name = agent_file.stem
-    fields, body = frontmatter.parse(agent_file.read_text())
+    fields, body = core.parse_frontmatter(agent_file.read_text())
     lines = [
         "---",
         f"name: {fields.get('name', name)}",

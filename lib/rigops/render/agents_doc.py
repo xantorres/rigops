@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import frontmatter
+from rigops import core
+
 from .common import Rendered, marker_md
 
 HEADER = [
@@ -43,7 +44,7 @@ def render_agents(source: Path, home: Path) -> Rendered:
     entries = []
     if agents_src.is_dir():
         for agent_file in sorted(agents_src.glob("*.md")):
-            fields, _ = frontmatter.parse(agent_file.read_text())
+            fields, _ = core.parse_frontmatter(agent_file.read_text())
             entries.append((
                 fields.get("name", agent_file.stem),
                 fields.get("tier", "inherit"),

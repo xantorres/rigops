@@ -16,10 +16,10 @@ from datetime import date
 from pathlib import Path
 
 from rigops import config as _config
+from rigops import frontmatter as _frontmatter
 from rigops import realm as _realm
 from rigops import state as _state
 from rigops import transcripts as _transcripts
-from rigops.render import frontmatter as _frontmatter
 
 HOME = Path(os.path.expanduser("~"))
 CLAUDE_DIR = HOME / ".claude"

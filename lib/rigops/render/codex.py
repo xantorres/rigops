@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import frontmatter
+from rigops import core
+
 from .common import Rendered, lines_of, marker_md, section_lines, trim_blank
 
 READ_LAW = (
@@ -48,7 +49,7 @@ def _render_agents_md(source: Path, home: Path) -> bytes:
 
 def _render_agent_toml(agent_file: Path) -> bytes:
     name = agent_file.stem
-    fields, body = frontmatter.parse(agent_file.read_text())
+    fields, body = core.parse_frontmatter(agent_file.read_text())
     if "'''" in body:
         raise ValueError(f"agent {name} body contains ''' -- cannot fit a TOML literal string")
     lines = [
