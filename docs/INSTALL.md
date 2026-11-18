@@ -138,13 +138,14 @@ Config and registry are scaffolded from `config/config.example.json` and `config
 
 ### Statusline wiring
 
-`--statusline` (without `--plugin-only`) edits `~/.claude/settings.json`, setting its `statusLine` key to run the installed statusline script. It prints a unified diff of the change before writing, and on `--apply` writes a timestamped backup first: `~/.claude/settings.json.rigops-backup.<YYYYMMDDHHMMSS>`. If `settings.json` doesn't exist yet, it's created fresh with no backup needed.
+`--statusline` (without `--plugin-only`) edits `~/.claude/settings.json`, setting its `statusLine` key to run the installed statusline script. It prints a unified diff of the change before writing, and on `--apply` writes a timestamped backup first: `~/.claude/settings.json.rigops-backup.<YYYYMMDDHHMMSS>`. If `settings.json` doesn't exist yet, it's created fresh with no backup needed. The manifest records the `statusLine` value it replaced, so `--uninstall` can put it back.
 
 ### Uninstall and purge
 
 `--uninstall` reads `install.manifest.json` and undoes exactly what it recorded - nothing else:
 
 - Each job is booted out of launchd. If its on-disk plist still matches the manifest's recorded hash, the plist is removed; if it's been edited since install, it's renamed to `<plist>.rigops-disabled` instead (with a printed restore command) - never silently deleted, never silently left live.
+- A `statusLine` wired by `--statusline` is reverted: the value it replaced comes back, or the key is dropped if there was none. A timestamped backup of `settings.json` is written first. If `statusLine` no longer runs the installed script, it's left alone.
 - Each file is removed if its hash still matches what was installed; a file modified since install is left in place with a warning, never overwritten or deleted out from under you.
 - `__pycache__` directories under the prefix are swept (they're not in the manifest - Python writes them lazily) and the now-empty prefix tree is removed.
 

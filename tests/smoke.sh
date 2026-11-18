@@ -430,6 +430,39 @@ PYEOF
 backups="$(find "$STATUSLINE_HOME/.claude" -name 'settings.json.rigops-backup.*' 2>/dev/null || true)"
 [ -n "$backups" ] || fail "no settings.json backup found"
 
+echo "smoke: uninstall restores the statusLine that --statusline replaced"
+printf '{"existing": true, "statusLine": {"type": "command", "command": "/usr/bin/true"}}' >"$SETTINGS"
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
+[ "$RC" -eq 0 ] || fail "statusline re-wire exit $RC: $OUT"
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
+[ "$RC" -eq 0 ] || fail "statusline re-apply exit $RC: $OUT"
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "statusline uninstall exit $RC: $OUT"
+python3 - "$SETTINGS" <<'PYEOF' || fail "uninstall did not restore the previous statusLine: $(cat "$SETTINGS")"
+import json
+import sys
+
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+if data.get("statusLine") != {"type": "command", "command": "/usr/bin/true"}:
+    sys.exit(1)
+if data.get("existing") is not True:
+    sys.exit(1)
+PYEOF
+
+echo "smoke: uninstall drops a statusLine key that --statusline added"
+printf '{"existing": true}' >"$SETTINGS"
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
+[ "$RC" -eq 0 ] || fail "statusline fresh wire exit $RC: $OUT"
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "statusline fresh uninstall exit $RC: $OUT"
+python3 - "$SETTINGS" <<'PYEOF' || fail "uninstall left the rigops statusLine: $(cat "$SETTINGS")"
+import json
+import sys
+
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+sys.exit(0 if "statusLine" not in data and data.get("existing") is True else 1)
+PYEOF
+
 echo "smoke: statusline error path (checkout without the script)"
 SRC_COPY="$(mktemp -d)"
 cp -R "$REPO_ROOT/." "$SRC_COPY/"

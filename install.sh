@@ -548,14 +548,15 @@ step_statusline() {
     copy_file_step "$src" "$PREFIX/$dest_rel" "$dest_rel" 1
     local mode="plan"
     [ "$APPLY" -eq 1 ] && mode="apply"
-    "$PY_ABS" - "$CLAUDE_SETTINGS" "$PREFIX/$dest_rel" "$mode" <<'PYEOF'
+    "$PY_ABS" - "$CLAUDE_SETTINGS" "$PREFIX/$dest_rel" "$mode" \
+        "$PREFIX/install.manifest.json" "$MANIFEST_TSV" <<'PYEOF'
 import difflib
 import json
 import os
 import sys
 from datetime import datetime
 
-settings_path, command_path, mode = sys.argv[1], sys.argv[2], sys.argv[3]
+settings_path, command_path, mode, manifest_path, tsv_path = sys.argv[1:6]
 
 if os.path.exists(settings_path):
     old_text = open(settings_path, encoding="utf-8").read()
@@ -572,6 +573,21 @@ else:
     old_text = ""
     data = {}
     existed = False
+
+# Uninstall puts back what was here before; on a re-wire the value here is
+# already ours, so the earlier install's record holds the real previous one.
+record = {"settings": settings_path, "command": command_path}
+current = data.get("statusLine")
+if isinstance(current, dict) and current.get("command") == command_path:
+    try:
+        with open(manifest_path, encoding="utf-8") as fh:
+            earlier = json.load(fh).get("statusline")
+    except (OSError, ValueError, AttributeError):
+        earlier = None
+    if isinstance(earlier, dict) and earlier.get("command") == command_path and "previous" in earlier:
+        record["previous"] = earlier["previous"]
+elif "statusLine" in data:
+    record["previous"] = current
 
 data["statusLine"] = {"type": "command", "command": command_path}
 new_text = json.dumps(data, indent=2, sort_keys=True) + "\n"
@@ -597,6 +613,8 @@ if mode == "apply":
     os.makedirs(os.path.dirname(settings_path), exist_ok=True)
     with open(settings_path, "w", encoding="utf-8") as fh:
         fh.write(new_text)
+    with open(tsv_path, "a", encoding="utf-8") as fh:
+        fh.write("STATUSLINE\t" + json.dumps(record, sort_keys=True) + "\n")
 PYEOF
 }
 
@@ -798,6 +816,7 @@ import sys
  config_file_external, state_dir_external) = sys.argv[1:14]
 
 files, symlinks, jobs, scaffolded = [], [], [], []
+statusline = None
 with open(tsv_path, encoding="utf-8") as fh:
     for raw in fh:
         line = raw.rstrip("\n")
@@ -815,6 +834,8 @@ with open(tsv_path, encoding="utf-8") as fh:
             )
         elif tag == "SCAFFOLD":
             scaffolded.append(parts[1])
+        elif tag == "STATUSLINE":
+            statusline = json.loads(line.split("\t", 1)[1])
 
 old_jobs = []
 if jobs_authoritative != "1" and os.path.exists(old_jobs_path):
@@ -864,6 +885,12 @@ manifest = {
     "jobs": jobs,
     "scaffolded": scaffolded,
 }
+# A run without --statusline leaves the earlier wiring in settings.json,
+# so its record carries forward for --uninstall to undo.
+if statusline is None and isinstance(existing, dict) and isinstance(existing.get("statusline"), dict):
+    statusline = existing["statusline"]
+if statusline is not None:
+    manifest["statusline"] = statusline
 
 
 def without_created(data):
@@ -951,6 +978,65 @@ purge_safe() {
     return 0
 }
 
+# Puts back the statusLine that --statusline replaced, only while
+# settings.json still runs the command the manifest recorded.
+undo_statusline() {
+    local mode="plan"
+    [ "$APPLY" -eq 1 ] && mode="apply"
+    step_log "uninstall statusLine wiring"
+    "$PY_ABS" - "$1" "$mode" <<'PYEOF'
+import json
+import os
+import sys
+from datetime import datetime
+
+manifest_path, mode = sys.argv[1], sys.argv[2]
+record = json.load(open(manifest_path, encoding="utf-8")).get("statusline")
+if not isinstance(record, dict) or not record.get("settings"):
+    print("     none recorded")
+    sys.exit(0)
+settings_path, command = record["settings"], record.get("command")
+if not os.path.exists(settings_path):
+    print("     absent   " + settings_path)
+    sys.exit(0)
+old_text = open(settings_path, encoding="utf-8").read()
+try:
+    data = json.loads(old_text) if old_text.strip() else {}
+except ValueError:
+    data = None
+if not isinstance(data, dict):
+    print(f"warn: {settings_path} is not a JSON object, leaving statusLine in place", file=sys.stderr)
+    print("     kept     statusLine (settings.json unreadable)")
+    sys.exit(0)
+current = data.get("statusLine")
+if not (isinstance(current, dict) and current.get("command") == command):
+    print("     kept     statusLine (no longer runs " + str(command) + ")")
+    sys.exit(0)
+if "previous" in record:
+    data["statusLine"] = record["previous"]
+    verb = "restored previous statusLine"
+else:
+    del data["statusLine"]
+    verb = "removed statusLine"
+if mode != "apply":
+    print("     plan: would " + verb.replace("restored", "restore").replace("removed", "remove"))
+    sys.exit(0)
+# The install-time backup may share this second's stamp; never overwrite it.
+stem = settings_path + ".rigops-backup." + datetime.now().strftime("%Y%m%d%H%M%S")
+backup_path, n = stem, 0
+while os.path.exists(backup_path):
+    n += 1
+    backup_path = f"{stem}.{n}"
+with open(backup_path, "w", encoding="utf-8") as fh:
+    fh.write(old_text)
+tmp_path = settings_path + ".rigops-tmp"
+with open(tmp_path, "w", encoding="utf-8") as fh:
+    fh.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
+os.replace(tmp_path, settings_path)
+print("     " + verb + " (backup " + backup_path + ")")
+PYEOF
+}
+
 do_uninstall() {
     local manifest_path="$PREFIX/install.manifest.json"
     if [ ! -f "$manifest_path" ]; then
@@ -1020,6 +1106,8 @@ delete instead: rm \"$disabled_path\"" >&2
             printf '     absent   %s (%s)\n' "$plist" "$label"
         fi
     done <"$dump"
+
+    undo_statusline "$manifest_path"
 
     step_log "uninstall files under $m_prefix"
     local rel fpath
