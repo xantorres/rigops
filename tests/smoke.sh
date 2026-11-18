@@ -61,17 +61,59 @@ for line in entries:
 PYEOF
 }
 
+# Puts a fake launchctl in $1/bin that keeps loaded labels as files under
+# $1/loaded and fails bootstrap for any label listed in $FAKE_LAUNCHD_FAIL,
+# so job paths run on any OS without touching the real launchd.
+make_fake_launchctl() {
+    mkdir -p "$1/bin" "$1/loaded"
+    cat >"$1/bin/launchctl" <<'EOF'
+#!/bin/sh
+state="${FAKE_LAUNCHD:?}"
+echo "$*" >>"$state/calls"
+case "$1" in
+    bootstrap)
+        label="$(basename "$3" .plist)"
+        case " ${FAKE_LAUNCHD_FAIL:-} " in *" $label "*) exit 5 ;; esac
+        : >"$state/loaded/$label"
+        ;;
+    bootout)
+        label="${2##*/}"
+        [ -f "$state/loaded/$label" ] || exit 3
+        rm -f "$state/loaded/$label"
+        ;;
+    list)
+        [ -f "$state/loaded/$2" ] || exit 113
+        ;;
+esac
+exit 0
+EOF
+    chmod +x "$1/bin/launchctl"
+}
+
+# Labels recorded in manifest $1, one per line.
+manifest_labels() {
+    python3 - "$1" <<'PYEOF'
+import json
+import sys
+
+for job in json.load(open(sys.argv[1], encoding="utf-8")).get("jobs", []):
+    print(job.get("label", ""))
+PYEOF
+}
+
 SMOKE_HOME="$(mktemp -d)"
 SRC_COPY=""
 STATUSLINE_HOME=""
 FIX1_HOME=""
 PURGE_SAFE_HOME=""
+JOBS_HOME=""
 cleanup() {
     rm -rf "$SMOKE_HOME"
     if [ -n "$SRC_COPY" ]; then rm -rf "$SRC_COPY"; fi
     if [ -n "$STATUSLINE_HOME" ]; then rm -rf "$STATUSLINE_HOME"; fi
     if [ -n "$FIX1_HOME" ]; then rm -rf "$FIX1_HOME"; fi
     if [ -n "$PURGE_SAFE_HOME" ]; then rm -rf "$PURGE_SAFE_HOME"; fi
+    if [ -n "$JOBS_HOME" ]; then rm -rf "$JOBS_HOME"; fi
 }
 trap cleanup EXIT
 
@@ -481,5 +523,35 @@ esac
 
 rm -rf "$PURGE_SAFE_HOME"
 PURGE_SAFE_HOME=""
+
+JOBS_HOME="$(mktemp -d)"
+FAKE_LAUNCHD="$JOBS_HOME/fake-launchd"
+make_fake_launchctl "$FAKE_LAUNCHD"
+JOB_PREFIX="com.rigops.smoke$$"
+JOBS_MANIFEST="$JOBS_HOME/.local/share/rigops/install.manifest.json"
+JOBS_AGENTS="$JOBS_HOME/Library/LaunchAgents"
+jobs_install() {
+    run env HOME="$JOBS_HOME" PATH="$FAKE_LAUNCHD/bin:$PATH" FAKE_LAUNCHD="$FAKE_LAUNCHD" \
+        RIGOPS_INSTALL_LABEL_PREFIX="$JOB_PREFIX" bash "$INSTALL_SH" "$@"
+}
+
+echo "smoke: a failed job load keeps every job already placed in the manifest"
+FAKE_LAUNCHD_FAIL="$JOB_PREFIX.ledger" jobs_install --apply --jobs doctor,ledger --yes
+[ "$RC" -eq 1 ] || fail "failing ledger load expected exit 1, got $RC: $OUT"
+[ -f "$FAKE_LAUNCHD/loaded/$JOB_PREFIX.doctor" ] || fail "doctor not loaded before the ledger failure"
+labels="$(manifest_labels "$JOBS_MANIFEST")"
+for job in doctor ledger; do
+    case "$labels" in
+        *"$JOB_PREFIX.$job"*) : ;;
+        *) fail "manifest lost $job after a failed load: $labels" ;;
+    esac
+done
+jobs_install --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "uninstall after failed load exit $RC: $OUT"
+[ -z "$(ls "$FAKE_LAUNCHD/loaded")" ] || fail "uninstall left jobs loaded: $(ls "$FAKE_LAUNCHD/loaded")"
+[ -z "$(ls "$JOBS_AGENTS")" ] || fail "uninstall left plists: $(ls "$JOBS_AGENTS")"
+
+rm -rf "$JOBS_HOME"
+JOBS_HOME=""
 
 echo "smoke: OK"

@@ -741,6 +741,10 @@ job_step() {
                 cp "$tmp_plist" "$dest_plist"
                 chmod 0644 "$dest_plist"
             fi
+            # Recorded before the load, so a failed bootstrap still leaves
+            # this plist where --uninstall can find it.
+            printf 'JOB\t%s\t%s\t%s\t%s\n' "$label" "$dest_plist" "$rendered_hash" "$used_domain" >>"$MANIFEST_TSV"
+            write_manifest 0 >/dev/null
             used_domain="$(load_launchd_job "$label" "$dest_plist")"
         fi
     fi
@@ -749,6 +753,7 @@ job_step() {
 
     if [ "$APPLY" -eq 1 ]; then
         printf 'JOB\t%s\t%s\t%s\t%s\n' "$label" "$dest_plist" "$rendered_hash" "$used_domain" >>"$MANIFEST_TSV"
+        write_manifest 0 >/dev/null
     fi
 
     printf '     %-9s %-9s label=%s plist=%s\n' "$file_status" "$action" "$label" "$dest_plist"
@@ -773,11 +778,10 @@ write_manifest() {
     # jobs_authoritative=1 (final, post-step_jobs) trusts MANIFEST_TSV's own
     # JOB lines as the complete truth for this run -- including "none",
     # e.g. a `--jobs doctor` run legitimately dropping a previously
-    # installed ledger job. jobs_authoritative=0 (mid-run checkpoints, before
-    # step_jobs has had a chance to run) instead forwards the PREVIOUS
-    # manifest's job records untouched, so a crash between a checkpoint and
-    # step_jobs can never wipe "jobs" down to [] in the file --uninstall
-    # reads.
+    # installed ledger job. jobs_authoritative=0 (mid-run checkpoints)
+    # keeps the PREVIOUS manifest's job records and overlays this run's JOB
+    # lines by label, so a crash at any point can never drop a job that is
+    # placed on disk from the file --uninstall reads.
     local jobs_authoritative="$1"
     mkdir -p "$PREFIX"
     "$PY_ABS" - "$MANIFEST_TSV" "$INSTALL_VERSION" "$PY_ABS" "$PREFIX" "$EFFECTIVE_HOME" \
@@ -812,19 +816,24 @@ with open(tsv_path, encoding="utf-8") as fh:
         elif tag == "SCAFFOLD":
             scaffolded.append(parts[1])
 
-if jobs_authoritative != "1":
-    jobs = []
-    if os.path.exists(old_jobs_path):
-        with open(old_jobs_path, encoding="utf-8") as fh:
-            for raw in fh:
-                line = raw.rstrip("\n")
-                if not line:
-                    continue
-                parts = line.split("\t")
-                if len(parts) == 4:
-                    jobs.append(
-                        {"label": parts[0], "plist": parts[1], "sha256": parts[2], "domain": parts[3]}
-                    )
+old_jobs = []
+if jobs_authoritative != "1" and os.path.exists(old_jobs_path):
+    with open(old_jobs_path, encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.rstrip("\n")
+            if not line:
+                continue
+            parts = line.split("\t")
+            if len(parts) == 4:
+                old_jobs.append(
+                    {"label": parts[0], "plist": parts[1], "sha256": parts[2], "domain": parts[3]}
+                )
+
+# A label recorded twice keeps its latest record, in first-seen order.
+by_label = {}
+for job in old_jobs + jobs:
+    by_label[job["label"]] = job
+jobs = list(by_label.values())
 
 existing = None
 if os.path.exists(out_path):
