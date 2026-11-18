@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - install: a re-install removes files the previous install recorded that
   this version no longer ships. An edited one is kept with a warning, and a
   file neither manifest lists is never touched.
+- reap: a `reaper.max_worktrees` that is not a non-negative integer exits 2
+  with an error naming the key, instead of a traceback.
 - reap: `--dry-run` without `--apply` exits 2, the usage-error code every
   other command uses, instead of 64.
 - doctor: a job with an `always-on` or `keepalive` cadence is no longer

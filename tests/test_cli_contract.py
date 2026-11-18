@@ -43,6 +43,29 @@ class CliContractTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("usage:", proc.stdout)
 
+    def test_reap_rejects_a_bad_max_worktrees_naming_the_key(self):
+        empty = self.home / "tree"
+        empty.mkdir()
+        for bad in ("5", True, -1, 2.5):
+            with self.subTest(value=bad):
+                config = {"reaper": {"max_worktrees": bad}}
+                proc = self.run_cmd("reap", "--root", str(empty), config=config)
+
+                self.assertEqual(proc.returncode, 2, proc.stderr)
+                self.assertIn("reaper.max_worktrees", proc.stderr)
+                self.assertNotIn("Traceback", proc.stderr)
+                self.assertEqual(proc.stdout, "")
+
+    def test_reap_accepts_a_zero_or_positive_max_worktrees(self):
+        empty = self.home / "tree"
+        empty.mkdir()
+        for good in (0, 5):
+            with self.subTest(value=good):
+                config = {"reaper": {"max_worktrees": good}}
+                proc = self.run_cmd("reap", "--root", str(empty), config=config)
+
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+
     def json_out(self, proc):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return json.loads(proc.stdout)
