@@ -116,17 +116,17 @@ GENERIC_RULES = (
 )
 PUBLIC_PATTERNS = (Path(__file__).resolve().parent.parent.parent / "tools"
                    / "redaction-patterns.public.txt")
-PRIVATE_PATTERNS = "~/.config/rigops/redaction-patterns.txt"
+PRIVATE_DEFAULTS = ("~/.config/rigops/redaction-patterns.txt",
+                    "~/.config/rigops/redaction-patterns.rigops.txt")
 
 
-def _rule_lines(files) -> tuple:
+def _rule_lines(files, packed=None) -> tuple:
     lines, unreadable = [], 0
     for path in files:
         try:
             lines += Path(path).expanduser().read_text(encoding="utf-8").splitlines()
         except (OSError, ValueError):
             unreadable += 1
-    packed = os.environ.get("RIGOPS_REDACTION_PATTERNS_B64")
     if packed:
         try:
             lines += base64.b64decode(packed).decode("utf-8").splitlines()
@@ -145,9 +145,9 @@ def _python_pattern(pattern: str) -> str:
     return pattern
 
 
-def _compile_rules(files) -> tuple:
+def _compile_rules(files, packed=None) -> tuple:
     compiled, broken = [], 0
-    lines, unreadable = _rule_lines(files)
+    lines, unreadable = _rule_lines(files, packed)
     for raw in lines:
         if not raw.strip() or raw.startswith("#"):
             continue
@@ -163,26 +163,32 @@ def _compile_rules(files) -> tuple:
     return compiled, broken + unreadable
 
 
-def _rule_patterns(files) -> list:
-    return _compile_rules(files)[0]
+def default_layers() -> tuple:
+    """Rule files and base64 layer that tools/redaction-gate.sh loads, as (files, packed)."""
+    packed = os.environ.get("RIGOPS_REDACTION_PATTERNS_B64")
+    if packed:
+        return [PUBLIC_PATTERNS], packed
+    named = os.environ.get("RIGOPS_REDACTION_PATTERNS")
+    if named:
+        return [PUBLIC_PATTERNS] + [p for p in named.split(":") if p], None
+    present = [p for p in PRIVATE_DEFAULTS if Path(p).expanduser().is_file()]
+    return [PUBLIC_PATTERNS] + present, None
 
 
-def default_files() -> list:
-    return [PUBLIC_PATTERNS, os.environ.get("RIGOPS_REDACTION_PATTERNS") or PRIVATE_PATTERNS]
+def _layers(pattern_files) -> tuple:
+    return default_layers() if pattern_files is None else (pattern_files, None)
 
 
 def broken_rules(pattern_files=None) -> int:
     """Rules that redact skips: bad flag, bad regex, or a rule source it cannot read."""
-    return _compile_rules(default_files() if pattern_files is None else pattern_files)[1]
+    return _compile_rules(*_layers(pattern_files))[1]
 
 
 def redact(text: str, registry=None, pattern_files=None) -> str:
     """Mask secrets, identifiers and everything the repo's redaction rules or the registry name."""
     for pattern, mask in GENERIC_RULES:
         text = pattern.sub(mask, text)
-    if pattern_files is None:
-        pattern_files = default_files()
-    for pattern in _rule_patterns(pattern_files):
+    for pattern in _compile_rules(*_layers(pattern_files))[0]:
         text = pattern.sub("[redacted]", text)
     if registry is not None:
         for token in registry.client_tokens:
