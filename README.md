@@ -272,7 +272,7 @@ Two halves, one config.
 
 **Script half** - the `rigops` CLI (`eit`, `ledger`, `eval`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`, `card`, `nudge`, `render`, `retrieval`, `mine`, `version`), plus hardened launchd templates for the `doctor` and `ledger` jobs, and a cron template for Linux hosts (unverified).
 
-Both halves read the same `~/.config/rigops/config.json` (schema: [config/config.schema.json](config/config.schema.json)). Runtime state lives under `~/.local/state/rigops/`.
+Both halves read the same `~/.config/rigops/config.json` (keys: [docs/CONFIG.md](docs/CONFIG.md)). Runtime state lives under `~/.local/state/rigops/`.
 
 ## Extracted from a working rig
 
