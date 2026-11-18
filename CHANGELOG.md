@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - doctor, context card: a path beside the home directory that only shares its
   name prefix, like `/Users/alice2` for home `/Users/alice`, is no longer
   shown as `~2`.
+- tools: `memory-path-sweep` exempts a macOS temp path under
+  `/private/var/folders` as well as `/var/folders`.
 
 ## [0.9.0] - 2026-11-17
 

@@ -8,7 +8,7 @@
 default      --plain plus brace expansion (any missing alternative is dead) and these classes,
              counted on the last line and never stat-ed unless noted:
   scope      note frontmatter `paths-scope: historical|remote`; any other value is itself a finding
-  tmp        /tmp, /private/tmp, /var/folders
+  tmp        /tmp, /private/tmp, /var/folders, /private/var/folders
   cut        the match ends at a space and a sibling starts with "<name> " (check_pointers._path_ok)
   template   `YYYY` (unchecked), `<x>` (parent holds a sibling with the prefix), a glob that matches
   secret-skip  token, credential and env paths plus doctor.pointers.secret_skip and --secret-skip:
@@ -28,7 +28,7 @@ from rigops import core  # noqa: E402
 from rigops.doctor import check_pointers as cp  # noqa: E402
 from rigops.doctor.pointer_grammar import PATH_RE  # noqa: E402
 
-EPHEMERAL = ("/tmp", "/private/tmp", "/var/folders")
+EPHEMERAL = ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
 TOKENS = ("$", "{", "}", "...", "<", ">")
 GLOBS = ("*", "?", "[")
 SCOPES = ("historical", "remote")

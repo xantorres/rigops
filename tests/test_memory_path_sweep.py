@@ -41,6 +41,11 @@ class SweepTest(unittest.TestCase):
         self.assertEqual(classes["template"], 1)
         self.assertEqual(len(out["default"][0]), 1)
 
+    def test_resolved_macos_temp_path_is_exempt(self):
+        out = self.run_modes({"n.md": "scratch /private/var/folders/zz/gone-dir/x\n"})["default"]
+        self.assertEqual(out[0], [])
+        self.assertEqual(out[1]["tmp"], 1)
+
     def test_scope_marker_and_bad_value(self):
         good = "---\nname: a\npaths-scope: remote\n---\nsee ~/gone-vm/x\n"
         bad = "---\nname: b\npaths-scope: nonsense\n---\n"
