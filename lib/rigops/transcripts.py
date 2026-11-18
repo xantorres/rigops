@@ -281,6 +281,9 @@ def _flatten_tool_result_text(content) -> str:
     return ""
 
 
+SKIP_PREFIXES = ("<system-reminder", "<command-", "Caveat:", "[Request interrupted")
+
+
 def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -> dict:
     """Count permission denials, self-corrections, tool errors, and human prompts from user-role
     transcript rows. Mirrors collect_turns' file walk, rel-path derivation, and
@@ -297,14 +300,13 @@ def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -
     corrections = 0
     tool_errors = 0
     prompts = 0
-    skip_prefixes = ("<system-reminder", "<command-", "Caveat:", "[Request interrupted")
     for path in find_transcripts(root):
         if "/subagents/" in path:
             continue
         rel_path = os.path.relpath(path, str(root))
         is_headless = any(sub and sub in rel_path for sub in headless)
         try:
-            fh = open(path)
+            fh = open(path, encoding="utf-8", errors="replace")
         except OSError:
             continue
         with fh:
@@ -357,7 +359,7 @@ def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -
                         text = item.get("text")
                         if not isinstance(text, str):
                             continue
-                        if _first_nonblank_line(text).startswith(skip_prefixes):
+                        if _first_nonblank_line(text).startswith(SKIP_PREFIXES):
                             continue
                         if not prompted:
                             prompts += 1

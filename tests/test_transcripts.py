@@ -247,6 +247,25 @@ class SpanishFrictionTests(unittest.TestCase):
         self.assertEqual(fr["corrections"], 2)
 
 
+class UndecodableFrictionTests(unittest.TestCase):
+    def test_a_row_with_bytes_that_are_not_utf8_does_not_stop_the_count(self):
+        def row(minute: int, text: bytes) -> bytes:
+            return (b'{"type": "user", "timestamp": "2026-11-03T12:0%d:00Z", "sessionId": "s1", '
+                    b'"message": {"role": "user", "content": "%s"}}\n' % (minute, text))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "-work-alpha" / "s1.jsonl"
+            path.parent.mkdir(parents=True)
+            path.write_bytes(row(0, b"caf\xe9 first") + row(1, b"no, just one for each"))
+            fr = transcripts.collect_friction(
+                transcripts.parse_ts("2026-11-03T00:00:00Z"),
+                transcripts.parse_ts("2026-11-04T00:00:00Z"),
+                transcripts_dir=tmp,
+            )
+        self.assertEqual(fr["prompts"], 2)
+        self.assertEqual(fr["corrections"], 1)
+
+
 class WindowBoundaryTests(EnvIsolatedTestCase):
     def test_7day_windows_do_not_overlap_at_boundary(self):
         with tempfile.TemporaryDirectory() as tmp:

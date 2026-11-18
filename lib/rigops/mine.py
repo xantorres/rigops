@@ -35,7 +35,6 @@ from rigops.retrieval import roots, search  # noqa: F401
 
 MAX_TEXT = 300
 KEEP_TEXT = 1000
-SKIP_PREFIXES = ("<system-reminder", "<command-", "Caveat:", "[Request interrupted")
 
 
 @dataclass
@@ -129,7 +128,7 @@ def collect(since, transcripts_dir=None, until=None) -> Harvest:
                     if not isinstance(text, str):
                         continue
                     first = transcripts._first_nonblank_line(text)
-                    if first.startswith(SKIP_PREFIXES):
+                    if first.startswith(transcripts.SKIP_PREFIXES):
                         continue
                     if not prompted:
                         harvest.prompts += 1
