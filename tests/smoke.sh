@@ -430,6 +430,23 @@ PYEOF
 backups="$(find "$STATUSLINE_HOME/.claude" -name 'settings.json.rigops-backup.*' 2>/dev/null || true)"
 [ -n "$backups" ] || fail "no settings.json backup found"
 
+echo "smoke: a statusline install never overwrites an earlier backup"
+stamps="$(python3 -c 'import datetime as d
+now = d.datetime.now()
+print(" ".join((now + d.timedelta(seconds=s)).strftime("%Y%m%d%H%M%S") for s in range(60)))')"
+for stamp in $stamps; do
+    printf 'earlier\n' >"$SETTINGS.rigops-backup.$stamp"
+done
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
+[ "$RC" -eq 0 ] || fail "statusline backup re-apply exit $RC: $OUT"
+for stamp in $stamps; do
+    [ "$(cat "$SETTINGS.rigops-backup.$stamp")" = earlier ] \
+        || fail "statusline install overwrote backup $stamp"
+done
+[ -n "$(find "$STATUSLINE_HOME/.claude" -name 'settings.json.rigops-backup.*.*')" ] \
+    || fail "statusline install wrote no backup of its own"
+rm -f "$SETTINGS".rigops-backup.*
+
 echo "smoke: uninstall restores the statusLine that --statusline replaced"
 printf '{"existing": true, "statusLine": {"type": "command", "command": "/usr/bin/true"}}' >"$SETTINGS"
 run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes

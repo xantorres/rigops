@@ -608,9 +608,13 @@ print()
 
 if mode == "apply":
     if existed:
-        stamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        backup_path = settings_path + ".rigops-backup." + stamp
-        with open(backup_path, "w", encoding="utf-8") as fh:
+        # A run in the same second must not overwrite the earlier backup.
+        stem = settings_path + ".rigops-backup." + datetime.now().strftime("%Y%m%d%H%M%S")
+        backup_path, n = stem, 0
+        while os.path.exists(backup_path):
+            n += 1
+            backup_path = f"{stem}.{n}"
+        with open(backup_path, "x", encoding="utf-8") as fh:
             fh.write(old_text)
     else:
         print(f"     note: {settings_path} did not exist; created minimal file with statusLine (no backup needed)")
