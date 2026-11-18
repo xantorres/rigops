@@ -578,17 +578,20 @@ else:
     data = {}
     existed = False
 
-# Uninstall puts back what was here before; on a re-wire the value here is
-# already ours, so the earlier install's record holds the real previous one.
+# Uninstall puts back what was here before; when the value here is already a
+# rigops one, from this prefix or another, that install's record holds it.
 record = {"settings": settings_path, "command": command_path}
 current = data.get("statusLine")
-if isinstance(current, dict) and current.get("command") == command_path:
+current_command = current.get("command") if isinstance(current, dict) else None
+suffix = "/plugin/statusline/rigops-statusline.sh"
+if isinstance(current_command, str) and current_command.endswith(suffix):
+    owner_manifest = current_command[: -len(suffix)] + "/install.manifest.json"
     try:
-        with open(manifest_path, encoding="utf-8") as fh:
+        with open(owner_manifest, encoding="utf-8") as fh:
             earlier = json.load(fh).get("statusline")
     except (OSError, ValueError, AttributeError):
         earlier = None
-    if isinstance(earlier, dict) and earlier.get("command") == command_path and "previous" in earlier:
+    if isinstance(earlier, dict) and earlier.get("command") == current_command and "previous" in earlier:
         record["previous"] = earlier["previous"]
 elif "statusLine" in data:
     record["previous"] = current

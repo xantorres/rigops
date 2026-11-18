@@ -480,6 +480,25 @@ data = json.load(open(sys.argv[1], encoding="utf-8"))
 sys.exit(0 if "statusLine" not in data and data.get("existing") is True else 1)
 PYEOF
 
+echo "smoke: a second prefix's uninstall restores the statusLine from before both"
+printf '{"existing": true, "statusLine": {"type": "command", "command": "/usr/bin/true"}}' >"$SETTINGS"
+for prefix in a b; do
+    run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline \
+        --prefix "$STATUSLINE_HOME/prefix-$prefix" --yes
+    [ "$RC" -eq 0 ] || fail "statusline wire into prefix-$prefix exit $RC: $OUT"
+done
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --prefix "$STATUSLINE_HOME/prefix-b" --yes
+[ "$RC" -eq 0 ] || fail "prefix-b uninstall exit $RC: $OUT"
+python3 - "$SETTINGS" <<'PYEOF' || fail "prefix-b uninstall left another prefix's statusLine: $(cat "$SETTINGS")"
+import json
+import sys
+
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+sys.exit(0 if data.get("statusLine") == {"type": "command", "command": "/usr/bin/true"} else 1)
+PYEOF
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --prefix "$STATUSLINE_HOME/prefix-a" --yes
+[ "$RC" -eq 0 ] || fail "prefix-a uninstall exit $RC: $OUT"
+
 echo "smoke: statusline error path (checkout without the script)"
 SRC_COPY="$(mktemp -d)"
 cp -R "$REPO_ROOT/." "$SRC_COPY/"
