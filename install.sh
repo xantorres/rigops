@@ -598,7 +598,7 @@ if isinstance(current_command, str) and current_command.endswith(suffix):
                 record[key] = earlier[key]
 elif "statusLine" in data:
     record["previous"] = current
-if not existed:
+if not os.path.lexists(settings_path):
     record["created"] = True
 
 data["statusLine"] = {"type": "command", "command": command_path}
@@ -1056,7 +1056,7 @@ if "previous" in record:
 else:
     del data["statusLine"]
     verb = "removed statusLine"
-if not data and record.get("created") is True:
+if not data and record.get("created") is True and not os.path.islink(settings_path):
     if mode != "apply":
         print("     plan: would remove " + settings_path + " (created by install, nothing else in it)")
         sys.exit(0)
@@ -1074,10 +1074,12 @@ while os.path.exists(backup_path):
     backup_path = f"{stem}.{n}"
 with open(backup_path, "w", encoding="utf-8") as fh:
     fh.write(old_text)
-tmp_path = settings_path + ".rigops-tmp"
+# Replacing a symlinked settings.json would swap the link for a plain file.
+real_path = os.path.realpath(settings_path)
+tmp_path = real_path + ".rigops-tmp"
 with open(tmp_path, "w", encoding="utf-8") as fh:
     fh.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
-os.replace(tmp_path, settings_path)
+os.replace(tmp_path, real_path)
 print("     " + verb + " (backup " + backup_path + ")")
 PYEOF
 }

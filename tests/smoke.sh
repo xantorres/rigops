@@ -526,6 +526,7 @@ for pass in 1 2; do
     run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
     [ "$RC" -eq 0 ] || fail "statusline wire into a missing settings.json, pass $pass, exit $RC: $OUT"
 done
+# The second pass's backup is install's to keep; only uninstall's own is checked.
 rm -f "$SETTINGS".rigops-backup.*
 run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
 [ "$RC" -eq 0 ] || fail "uninstall of a created settings.json exit $RC: $OUT"
@@ -566,6 +567,27 @@ case "$OUT" in
 esac
 [ "$(cat "$SETTINGS")" = '{"statusLine": {"type": "command", "command": "/usr/bin/true"}}' ] \
     || fail "uninstall changed a statusLine the user set: $(cat "$SETTINGS")"
+
+echo "smoke: uninstall writes through a symlinked settings.json"
+DOTFILE="$STATUSLINE_HOME/dotfiles/settings.json"
+mkdir -p "$STATUSLINE_HOME/dotfiles"
+for start in '{"theme": "dark"}' dangling; do
+    rm -f "$SETTINGS" "$SETTINGS".rigops-backup.* "$DOTFILE"
+    [ "$start" = dangling ] || printf '%s' "$start" >"$DOTFILE"
+    ln -s "$DOTFILE" "$SETTINGS"
+    run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
+    [ "$RC" -eq 0 ] || fail "statusline wire through a symlink ($start) exit $RC: $OUT"
+    run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
+    [ "$RC" -eq 0 ] || fail "uninstall through a settings.json symlink ($start) exit $RC: $OUT"
+    [ -L "$SETTINGS" ] || fail "uninstall replaced the settings.json symlink ($start)"
+    python3 - "$DOTFILE" <<'PYEOF' || fail "uninstall left the statusLine in the symlink target ($start): $(cat "$DOTFILE")"
+import json
+import sys
+
+sys.exit(0 if "statusLine" not in json.load(open(sys.argv[1], encoding="utf-8")) else 1)
+PYEOF
+done
+rm -f "$SETTINGS" "$SETTINGS".rigops-backup.*
 
 echo "smoke: statusline error path (checkout without the script)"
 SRC_COPY="$(mktemp -d)"
