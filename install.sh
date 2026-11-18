@@ -1079,8 +1079,12 @@ remove_job() {
     if [ -f "$plist" ]; then
         current_hash="$(sha256_file "$plist")"
         if [ "$current_hash" = "$sha" ]; then
-            [ "$APPLY" -eq 1 ] && rm -f "$plist"
-            printf '     removed  %s (%s)\n' "$plist" "$label"
+            if [ "$APPLY" -eq 1 ]; then
+                rm -f "$plist"
+                printf '     removed  %s (%s)\n' "$plist" "$label"
+            else
+                printf '     plan: would remove %s (%s)\n' "$plist" "$label"
+            fi
         else
             disabled_path="${plist}.rigops-disabled"
             if [ "$APPLY" -eq 1 ]; then
@@ -1178,8 +1182,12 @@ PYEOF
         if [ -f "$fpath" ]; then
             current_hash="$(sha256_file "$fpath")"
             if [ "$current_hash" = "$sha" ]; then
-                [ "$APPLY" -eq 1 ] && rm -f "$fpath"
-                printf '     removed  %s\n' "$fpath"
+                if [ "$APPLY" -eq 1 ]; then
+                    rm -f "$fpath"
+                    printf '     removed  %s\n' "$fpath"
+                else
+                    printf '     plan: would remove %s\n' "$fpath"
+                fi
             else
                 echo "warn: $fpath modified since install, leaving in place" >&2
                 printf '     kept     %s (modified since install)\n' "$fpath"
@@ -1215,8 +1223,12 @@ PYEOF
             cur="$(readlink "$link_path")"
             case "$cur" in
                 "$m_prefix"/*)
-                    [ "$APPLY" -eq 1 ] && rm -f "$link_path"
-                    printf '     removed  %s\n' "$link_path"
+                    if [ "$APPLY" -eq 1 ]; then
+                        rm -f "$link_path"
+                        printf '     removed  %s\n' "$link_path"
+                    else
+                        printf '     plan: would remove %s\n' "$link_path"
+                    fi
                     ;;
                 *)
                     printf '     kept     %s (points outside prefix: %s)\n' "$link_path" "$cur"

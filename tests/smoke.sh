@@ -397,6 +397,11 @@ case "$OUT" in
     *"plan:"*) : ;;
     *) fail "uninstall plan output missing 'plan:'" ;;
 esac
+case "$OUT" in
+    *"removed  "*) fail "uninstall plan reports removals it did not make: $OUT" ;;
+    *"plan: would remove $SMOKE_HOME/.local/share/rigops/"*) : ;;
+    *) fail "uninstall plan does not say which files it would remove: $OUT" ;;
+esac
 after_tree="$(snapshot_tree "$SMOKE_HOME")"
 [ "$before_tree" = "$after_tree" ] || fail "uninstall plan mode modified \$SMOKE_HOME"
 
@@ -661,6 +666,11 @@ jobs_install --jobs doctor
 case "$OUT" in
     *"unload jobs dropped"*"($JOB_PREFIX.ledger)"*) : ;;
     *) fail "drop plan does not list the ledger unload: $OUT" ;;
+esac
+case "$OUT" in
+    *"removed  "*) fail "drop plan reports a removal it did not make: $OUT" ;;
+    *"would remove"*"($JOB_PREFIX.ledger)"*) : ;;
+    *) fail "drop plan does not say it would remove the ledger plist: $OUT" ;;
 esac
 [ -f "$FAKE_LAUNCHD/loaded/$JOB_PREFIX.ledger" ] || fail "drop plan unloaded ledger"
 jobs_install --apply --jobs doctor --yes
