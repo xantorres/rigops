@@ -490,12 +490,12 @@ def _match_tags(tree: str, pids: set[int], snap: dict[int, dict],
 
 
 def process_alive(pid: int) -> bool:
-    """True while the pid exists and is not a zombie."""
+    """True while the pid exists and is not a zombie; an unreadable check counts as alive."""
     try:
         proc = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)],
                               capture_output=True, text=True, timeout=10, check=False)
     except (subprocess.TimeoutExpired, OSError):
-        return False
+        return True
     stat = proc.stdout.strip()
     return bool(stat) and not stat.startswith("Z")
 

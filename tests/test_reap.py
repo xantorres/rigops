@@ -364,6 +364,22 @@ class KillPidsTests(EnvIsolatedTestCase):
         self.assertTrue(result["overflow"])
         self.assertEqual(result["killed"], 0)
 
+    def test_unreadable_liveness_is_a_failed_kill_not_gone(self):
+        def raising_run(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd="ps", timeout=10)
+        orig_run = subprocess.run
+        subprocess.run = raising_run
+        self.addCleanup(setattr, subprocess, "run", orig_run)
+        snap = {900001: {"ppid": 1, "pgid": 900001, "uid": os.getuid(), "tty": "??",
+                         "etimes": 10, "command": "sleep 300"}}
+
+        self.assertTrue(reap.process_alive(900001))
+        result = reap.kill_pids("tree-label", {900001: "cwd"}, snap, apply=True,
+                                max_kills=20, grace_s=0)
+
+        self.assertEqual(result["failed_pids"], [900001])
+        self.assertEqual(result["killed"], 0)
+
 
 class ProtectedPidsOwnPgidTests(EnvIsolatedTestCase):
     def test_complete_walk_same_pgid_stranger_not_protected(self):
