@@ -203,6 +203,14 @@ REGRESSION safety: 2 newly failing, 3/3 -> 1/3 passing
 
 Case format, regression rules and CI wiring: [docs/EVAL.md](docs/EVAL.md).
 
+## Other commands
+
+`rigops render` writes one source tree onto every surface that consumes it. `--check` reports drift without writing, and `doctor` turns that drift into findings. Targets and check semantics: [docs/RENDER.md](docs/RENDER.md).
+
+`rigops retrieval` keeps one FTS5 index of sections over every tree a roots registry claims. `search` ranks sections under a token budget and a scope filter. `prefetch` takes realm and scopes from the working directory, never widens them, and stays silent below a score threshold. `probe` scores a labelled question suite and exits 1 when precision drops or a row crosses a realm.
+
+`rigops mine --dry-run` calls no model and writes nothing: it reports the corrections that repeat across sessions over a window (`--since`, default 90d), with paths, amounts, domains, ids and addresses masked.
+
 ## Quickstart
 
 ### Plugin only - thirty seconds, zero daemons
@@ -262,7 +270,7 @@ Two halves, one config.
 
 **Plugin half** - a Claude Code marketplace plugin: five commands (`/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:backlog`, `/rigops:week`), two skills (`ops-loop`, `fleet-triage`), two hooks (`card` on `SessionStart`, `ctx-nudge` on `UserPromptSubmit`), and a statusline. The `rg -r`/`-rn`/`-rl` guard and the skill-forcing gate that used to ship here now live in the user's own dispatcher: which workflow a prompt must go through is rig policy, and two copies of one gate is one copy too many. Zero daemons. No agents - deliberately; which subagent handles a task is a decision that belongs to the rig, not to rigops.
 
-**Script half** - the `rigops` CLI (`eit`, `ledger`, `eval`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`, `card`, `nudge`, `version`), plus hardened launchd templates for the `doctor` and `ledger` jobs, and a cron template for Linux hosts (unverified).
+**Script half** - the `rigops` CLI (`eit`, `ledger`, `eval`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`, `card`, `nudge`, `render`, `retrieval`, `mine`, `version`), plus hardened launchd templates for the `doctor` and `ledger` jobs, and a cron template for Linux hosts (unverified).
 
 Both halves read the same `~/.config/rigops/config.json` (schema: [config/config.schema.json](config/config.schema.json)). Runtime state lives under `~/.local/state/rigops/`.
 
@@ -295,6 +303,7 @@ Python 3.9+, stdlib only. Full matrix: [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MAT
 - [docs/LEDGER.md](docs/LEDGER.md)
 - [docs/EVAL.md](docs/EVAL.md)
 - [docs/REGISTRY.md](docs/REGISTRY.md)
+- [docs/RENDER.md](docs/RENDER.md)
 - [docs/SAFETY.md](docs/SAFETY.md)
 - [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MATRIX.md)
 - [patterns/](patterns/) - the ideas, portable without the code: drift-ledger, context-tax, job-registry, hardened-launchd, tiered-refresh, auth-probe-gating, scope-gated-hooks.
