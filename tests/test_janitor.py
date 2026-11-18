@@ -19,6 +19,19 @@ from rigops import backlog, janitor, watermarks  # noqa: E402
 from rigops.retrieval import roots  # noqa: E402
 
 
+def setUpModule():
+    # Watermark routing reads the realm registry under HOME; no test may lean on the real one.
+    tmp = tempfile.TemporaryDirectory()
+    unittest.addModuleCleanup(tmp.cleanup)
+    home = Path(tmp.name) / "home"
+    home.mkdir()
+    registry = Path(tmp.name) / "roots.json"
+    registry.write_text(json.dumps({"roots": []}))
+    env = mock.patch.dict(os.environ, {"HOME": str(home), "REALM_REGISTRY": str(registry)})
+    env.start()
+    unittest.addModuleCleanup(env.stop)
+
+
 def _age(path: Path, days_old: float, now: float) -> None:
     ts = now - days_old * 86400
     os.utime(path, (ts, ts))
