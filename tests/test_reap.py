@@ -132,6 +132,14 @@ class RunCapturedKillsProcessGroupTests(EnvIsolatedTestCase):
             self.assertTrue(gone, "process group still alive after _run_captured timeout")
 
 
+class RunCapturedUndecodableOutputTests(EnvIsolatedTestCase):
+    def test_non_utf8_bytes_round_trip_instead_of_raising(self):
+        argv = [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'bad\\xff\\0')"]
+        proc = reap._run_captured(argv, timeout=10, env=dict(os.environ))
+        name = proc.stdout.split("\0")[0]
+        self.assertEqual(os.fsencode(name), b"bad\xff")
+
+
 PARSE_WORKTREES_CASES = [
     (
         "primary_with_branch",
@@ -531,6 +539,36 @@ class ClassifyTests(GitFixtureTestCase):
         )
         self.assertEqual(verdict, reap.REAP)
 
+    def _verdict_after_tracked_edit(self, rel: str) -> str:
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / rel).write_text("base\n")
+        _run_git(["add", "-A"], repo)
+        _run_git(["commit", "-m", "add unusual path"], repo)
+        wt_path = self.tmp / "wt-quoted"
+        _run_git(["worktree", "add", "-b", "feature-quoted", str(wt_path)], repo)
+        (wt_path / rel).write_text("base\nlocal edit\n")
+        wt = {"path": str(wt_path), "branch": "feature-quoted",
+              "head": _rev_parse(repo, "feature-quoted"),
+              "bare": False, "detached": False, "locked": False, "prunable": False}
+        return reap.classify(
+            wt, repo, "main", [], self.tmp / "outside", "main", 14,
+            ignored_dirs=set(), ignored_prefixes=(),
+        )
+
+    def test_tracked_edit_in_path_with_space_is_skip_dirty(self):
+        self.assertEqual(self._verdict_after_tracked_edit("d sp/f.txt"), "skip: dirty")
+
+    def test_tracked_edit_in_non_ascii_path_is_skip_dirty(self):
+        self.assertEqual(self._verdict_after_tracked_edit("café.txt"), "skip: dirty")
+
+    def test_tracked_edit_in_path_with_pathspec_magic_is_skip_dirty(self):
+        self.assertEqual(self._verdict_after_tracked_edit(":colon.txt"), "skip: dirty")
+
+    def test_tracked_edit_in_path_with_rename_arrow_is_skip_dirty(self):
+        self.assertEqual(self._verdict_after_tracked_edit("a -> b.txt"), "skip: dirty")
+
     def test_unmerged_branch_with_local_commit_no_upstream_is_needs_push(self):
         repo = self.tmp / "repo"
         _init_repo(repo)
@@ -871,14 +909,14 @@ class ScanRepoDirSizeBudgetTests(GitFixtureTestCase):
 
 class WorktreeHasRealChangesPureTests(EnvIsolatedTestCase):
     def test_all_ignored_untracked_returns_false(self):
-        status = "?? node_modules/a.js\n"
+        status = "?? node_modules/a.js\0"
         result = reap.worktree_has_real_changes(
             Path("/nonexistent"), status, "main", {"node_modules"}, ()
         )
         self.assertFalse(result)
 
     def test_untracked_real_file_returns_true(self):
-        status = "?? src/real.py\n"
+        status = "?? src/real.py\0"
         result = reap.worktree_has_real_changes(Path("/nonexistent"), status, "main", set(), ())
         self.assertTrue(result)
 
@@ -887,16 +925,23 @@ class WorktreeHasRealChangesGitTests(GitFixtureTestCase):
     def test_tracked_modified_line_with_no_actual_diff_returns_false(self):
         repo = self.tmp / "repo"
         _init_repo(repo)
-        status = " M README.md\n"
+        status = " M README.md\0"
         result = reap.worktree_has_real_changes(repo, status, "main", set(), ())
         self.assertFalse(result)
 
     def test_unreadable_diff_ref_fails_dirty(self):
         repo = self.tmp / "repo"
         _init_repo(repo)
-        status = " M README.md\n"
+        status = " M README.md\0"
         result = reap.worktree_has_real_changes(repo, status, "nonexistent-ref-xyz", set(), ())
         self.assertTrue(result)
+
+    def test_rename_source_path_is_not_read_as_an_entry(self):
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        status = "R  README.md\0?? scratch.txt\0"
+        result = reap.worktree_has_real_changes(repo, status, "main", set(), ())
+        self.assertFalse(result)
 
 
 # --- section 5: run(), apply + json purity, real fixture --------------------

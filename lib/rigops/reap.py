@@ -109,9 +109,11 @@ def _run_captured(
     exactly what a plain terminate leaves behind. The reaper's own process
     group is a different pgid and is never touched.
     """
+    # surrogateescape: a non-UTF-8 path from `status -z` survives and re-encodes
+    # to the same bytes when passed back to git as a pathspec.
     with subprocess.Popen(
         argv, start_new_session=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, env=env,
+        text=True, errors="surrogateescape", env=env,
     ) as proc:
         try:
             stdout, stderr = proc.communicate(timeout=timeout)
@@ -738,7 +740,7 @@ def default_branch(repo: Path, timeout: int = 120) -> str:
 def worktree_has_real_changes(path: Path, status: str, default_branch_ref: str,
                               ignored_dirs: set[str], ignored_prefixes: tuple[str, ...],
                               timeout: int = 120) -> bool:
-    """Decide whether porcelain output represents real work.
+    """Decide whether `git status --porcelain -z` output represents real work.
 
     Untracked entries matching the ignored dirs/prefixes never count. A
     tracked file that git considers modified only counts if its content
@@ -748,21 +750,26 @@ def worktree_has_real_changes(path: Path, status: str, default_branch_ref: str,
     to lose.
     """
     tracked: list[str] = []
-    for line in status.splitlines():
-        if len(line) < 4:
+    entries = iter(status.split("\0"))
+    for entry in entries:
+        if len(entry) < 4:
             continue
-        code, rest = line[:2], line[3:]
+        code, rest = entry[:2], entry[3:]
         if code == "??":
             if not is_ignored_untracked(rest, ignored_dirs, ignored_prefixes):
                 return True
             continue
-        tracked.append(rest.split(" -> ", 1)[-1])
+        tracked.append(rest)
+        if "R" in code or "C" in code:
+            # A rename or copy carries its source path as the next entry.
+            next(entries, None)
 
     if not tracked:
         return False
 
-    diff = git_ok(path, "diff", default_branch_ref, "--stat", "--", *tracked,
-                  timeout=timeout)
+    # Literal: a path such as ":name" would otherwise parse as pathspec magic.
+    diff = git_ok(path, "--literal-pathspecs", "diff", default_branch_ref, "--stat",
+                  "--", *tracked, timeout=timeout)
     # Unreadable comparison must not clear a dirty flag.
     return diff is None or bool(diff)
 
@@ -853,8 +860,9 @@ def classify(wt: dict, repo: Path, target: str, live: list[Path], self_cwd: Path
     if timeout is None:
         return DEADLINE_SKIP
     # -uall so build output and other untracked leftovers count as work in
-    # progress rather than being silently discarded.
-    status = git_lines(path, "status", "--porcelain", "-uall", timeout=timeout)
+    # progress rather than being silently discarded. -z leaves paths unquoted,
+    # so a name with a space or non-ASCII character still works as a pathspec.
+    status = git_lines(path, "status", "--porcelain", "-z", "-uall", timeout=timeout)
     if status is None:
         return "skip: unreadable"
     if status:
