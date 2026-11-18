@@ -108,7 +108,7 @@ def run(cfg):
     if total <= ceiling:
         return []
     biggest = sorted(files, key=_size, reverse=True)[:3]
-    worst = ", ".join(str(p).replace(str(core.HOME), "~") for p in biggest)
+    worst = ", ".join(core.short(p) for p in biggest)
     return [core.Finding(
         check=CHECK, area=AREA, key="always_on",
         symptom=f"always-on instruction surface is {total} tokens against a {ceiling} ceiling",

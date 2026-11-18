@@ -45,7 +45,7 @@ def _cap(cfg, key, default):
 
 def _store_findings(mem, max_lines, max_bytes):
     out = []
-    label = str(mem / INDEX).replace(str(core.HOME), "~")
+    label = core.short(mem / INDEX)
     text = core.read_text(mem / INDEX)
     linked = set()
     for match in _POINTER_RE.finditer(text):

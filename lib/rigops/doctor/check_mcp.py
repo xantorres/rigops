@@ -26,10 +26,6 @@ def _json(path, default):
         return default
 
 
-def _label(path):
-    return str(path).replace(str(core.HOME), "~")
-
-
 def _is_stdio(server):
     if not isinstance(server, dict):
         return False
@@ -42,7 +38,7 @@ def _is_stdio(server):
 def _claude_json_servers():
     path = core.HOME / ".claude.json"
     data = _json(path, {})
-    label = _label(path)
+    label = core.short(path)
     out = [
         (name, server, f"{label} (user)")
         for name, server in (data.get("mcpServers", {}) or {}).items()
@@ -55,7 +51,7 @@ def _claude_json_servers():
 
 def _file_servers(path):
     servers = _json(path, {}).get("mcpServers", {}) or {}
-    return [(name, server, _label(path)) for name, server in servers.items()]
+    return [(name, server, core.short(path)) for name, server in servers.items()]
 
 
 def _plugin_servers():
@@ -75,14 +71,14 @@ def _plugin_servers():
             manifest_path = base / ".mcp.json"
             manifest = _json(manifest_path, {})
             for name, server in (manifest.get("mcpServers", {}) or {}).items():
-                out.append((name, server, f"plugin {key} ({_label(manifest_path)})"))
+                out.append((name, server, f"plugin {key} ({core.short(manifest_path)})"))
             plugin_json_path = base / ".claude-plugin" / "plugin.json"
             if plugin_json_path.is_file():
                 plugin_json = _json(plugin_json_path, {})
                 inline = plugin_json.get("mcpServers")
                 if isinstance(inline, dict):
                     for name, server in inline.items():
-                        out.append((name, server, f"plugin {key} ({_label(plugin_json_path)})"))
+                        out.append((name, server, f"plugin {key} ({core.short(plugin_json_path)})"))
     return out
 
 

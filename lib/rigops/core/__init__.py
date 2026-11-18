@@ -30,6 +30,13 @@ def expand(value) -> Path:
     return Path(os.path.expandvars(os.path.expanduser(str(value)))).resolve(strict=False)
 
 
+def short(path) -> str:
+    """Collapse a leading home directory to ``~``, for display."""
+    home = str(HOME)
+    text = str(path)
+    return "~" + text[len(home):] if text.startswith(home) else text
+
+
 def load_config() -> dict:
     return _config.load()
 

@@ -80,10 +80,6 @@ def _show(value) -> str:
     return f"{round(value, 1):g}" if isinstance(value, float) else str(value)
 
 
-def _tilde(path) -> str:
-    return str(path).replace(str(core.HOME), "~", 1)
-
-
 def _warning(key, symptom, evidence, fix, ledger) -> core.Finding:
     return core.Finding(
         check=CHECK, area=AREA, key=key, symptom=symptom, evidence=evidence, fix=fix,
@@ -186,14 +182,14 @@ def _judge_lever(lever, rule, series, accepted, ledger) -> list:
             f"{lever}:max",
             f"{lever} is {_show(value)} on the {latest['date']} ledger row, above its limit of "
             f"{_show(rule['max'])}",
-            f"{_tilde(ledger)} row {latest['date']}", fix, ledger,
+            f"{core.short(ledger)} row {latest['date']}", fix, ledger,
         ))
     if "min" in rule and value < rule["min"]:
         found.append(_warning(
             f"{lever}:min",
             f"{lever} is {_show(value)} on the {latest['date']} ledger row, below its floor of "
             f"{_show(rule['min'])}",
-            f"{_tilde(ledger)} row {latest['date']}", fix, ledger,
+            f"{core.short(ledger)} row {latest['date']}", fix, ledger,
         ))
     earlier = series[:-1]
     if accepted:
@@ -229,7 +225,7 @@ def judge(rows, notes, rules, today, ledger, max_age_days=DEFAULT_MAX_AGE_DAYS,
             return []
         return [_warning(
             "empty", "the ledger has no rows, so no lever is judged",
-            _tilde(ledger), "run `rigops ledger` or remove doctor.levers.rules", ledger,
+            core.short(ledger), "run `rigops ledger` or remove doctor.levers.rules", ledger,
         )]
     series = weekly(rows)
     latest = series[-1]
@@ -239,7 +235,7 @@ def judge(rows, notes, rules, today, ledger, max_age_days=DEFAULT_MAX_AGE_DAYS,
         found.append(_warning(
             "stale",
             f"the newest ledger row is {age} days old, past the {max_age_days}-day limit",
-            f"{_tilde(ledger)} row {latest['date']}",
+            f"{core.short(ledger)} row {latest['date']}",
             "check the job that runs `rigops ledger`; lever findings still describe that row",
             ledger,
         ))
@@ -255,7 +251,7 @@ def judge(rows, notes, rules, today, ledger, max_age_days=DEFAULT_MAX_AGE_DAYS,
                 continue
             found.append(_warning(
                 f"{lever}:column", f"the ledger has no `{lever}` column, so that rule never fires",
-                f"{_tilde(ledger)} row {latest['date']}",
+                f"{core.short(ledger)} row {latest['date']}",
                 "fix the lever name in doctor.levers.rules", ledger,
             ))
         else:
@@ -280,7 +276,7 @@ def run(cfg, today=None):
         return []
     if problem:
         return [_warning(
-            "unreadable", f"the ledger {problem}, so no lever is judged", _tilde(ledger),
+            "unreadable", f"the ledger {problem}, so no lever is judged", core.short(ledger),
             "run `rigops ledger`, or repair the named line", ledger,
         )]
     found = []
@@ -288,7 +284,7 @@ def run(cfg, today=None):
     if notes_problem and notes_problem != "does not exist":
         found.append(_warning(
             "notes", f"the intervention notes {notes_problem}, so no acceptance is honoured",
-            _tilde(state / "interventions.jsonl"), "repair the named line", ledger,
+            core.short(state / "interventions.jsonl"), "repair the named line", ledger,
         ))
     max_age = core.cfg_get(cfg, "doctor.levers.max_age_days", DEFAULT_MAX_AGE_DAYS)
     if not _number(max_age):

@@ -250,7 +250,7 @@ def _unregistered(name, known, kind):
 
 def _scan_text(path, text, known, numbered=True, memory=False):
     out = []
-    label = str(path).replace(str(core.HOME), "~")
+    label = core.short(path)
     for lineno, line in enumerate(text.splitlines(), 1):
         where = f"{label}:{lineno}" if numbered else label
         for match in PATH_RE.finditer(line):

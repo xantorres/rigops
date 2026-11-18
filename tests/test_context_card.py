@@ -20,7 +20,7 @@ def _short_resolved(path) -> str:
     """Oracle for an `add()`-routed component: it dedupes and labels by
     resolved path, so the expected string must resolve too (matters on macOS,
     where the system temp tree sits behind a /var -> /private/var symlink)."""
-    return card._short(core.expand(path))
+    return core.short(core.expand(path))
 
 
 def _registry(tmp: Path, raw: dict) -> roots.Registry:
@@ -644,7 +644,7 @@ class CardPreloadComponentsTests(unittest.TestCase):
             with mock.patch.object(card.core, "CLAUDE_DIR", claude_dir):
                 result = card.build(registry, cfg, worktree)
         memory = next(c for c in result["preload"]["components"] if c["label"] == "memory")
-        self.assertEqual(memory["path"], card._short(memory_index))
+        self.assertEqual(memory["path"], core.short(memory_index))
         expected_head = "\n".join(f"line {i}" for i in range(200))
         self.assertEqual(memory["tokens"], len(expected_head.encode("utf-8")) // 4)
 
@@ -661,7 +661,7 @@ class CardPreloadComponentsTests(unittest.TestCase):
             with mock.patch.object(card.core, "CLAUDE_DIR", claude_dir):
                 result = card.build(registry, cfg, cwd)
         memory = next(c for c in result["preload"]["components"] if c["label"] == "memory")
-        self.assertEqual(memory["path"], card._short(memory_index))
+        self.assertEqual(memory["path"], core.short(memory_index))
 
     def test_fixed_tokens_is_a_pathless_component(self):
         with tempfile.TemporaryDirectory() as tmp_s:

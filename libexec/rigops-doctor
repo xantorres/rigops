@@ -247,10 +247,9 @@ def _apply_cause_unsafe(job, item, label, last_exit, interval_h, ctx, heal_coold
         job["would"] = would
         # Never the raw tail: it can carry secrets. The hash lets two reviews compare tails.
         shown = next((p for p, t in tails if t), tails[0][0] if tails else "")
-        home = str(Path.home())
         job["exit"] = last_exit
         job["tail_sha"] = hashlib.sha256(tail.encode()).hexdigest()[:12]
-        job["log"] = "~" + str(shown)[len(home):] if str(shown).startswith(home) else str(shown)
+        job["log"] = rigops_core.short(shown)
 
 
 def _label_kicks(ctx: dict, label: str, job_id: str) -> list:

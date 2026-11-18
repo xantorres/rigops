@@ -62,10 +62,6 @@ def _plans_dir(cfg):
     return core.expand(configured or DEFAULT_DIR), bool(configured)
 
 
-def _rel(path):
-    return str(path).replace(str(core.HOME), "~")
-
-
 def run(cfg):
     root, configured = _plans_dir(cfg)
     if not root.is_dir():
@@ -74,14 +70,14 @@ def run(cfg):
         return [core.Finding(
             check=CHECK, area=AREA, key=f"dir:{root}",
             symptom="configured plans directory does not exist, so no plan is linted",
-            evidence=f"doctor.plans.dir = {_rel(root)}",
+            evidence=f"doctor.plans.dir = {core.short(root)}",
             fix="point doctor.plans.dir at the plans directory or drop the setting",
         )]
     findings = []
     for path in sorted(root.glob("*.md")):
         if path.name in EXEMPT:
             continue
-        where = _rel(path)
+        where = core.short(path)
         if not FILENAME_RE.match(path.name):
             findings.append(core.Finding(
                 check=CHECK, area=AREA, key=f"name:{path.name}",
@@ -117,13 +113,13 @@ def run(cfg):
             findings.append(core.Finding(
                 check=CHECK, area=AREA, key=f"unarchived:{path.name}",
                 symptom=f"plan `{path.name}` is {status} but still sits outside archive/",
-                evidence=where, fix=f"git mv it into {_rel(root)}/archive/",
+                evidence=where, fix=f"git mv it into {core.short(root)}/archive/",
             ))
     for path in sorted((root / "archive").glob("*.md")):
         if _frontmatter(path).get("status") == "active":
             findings.append(core.Finding(
                 check=CHECK, area=AREA, key=f"active-in-archive:{path.name}",
                 symptom=f"archived plan `{path.name}` still claims status active",
-                evidence=_rel(path), fix="move it back or settle its real status",
+                evidence=core.short(path), fix="move it back or settle its real status",
             ))
     return findings

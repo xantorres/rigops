@@ -41,12 +41,6 @@ def _abspath(cwd) -> Path:
     return Path(os.path.abspath(os.path.expanduser(str(cwd))))
 
 
-def _short(path) -> str:
-    home = str(core.HOME)
-    text = str(path)
-    return "~" + text[len(home):] if text.startswith(home) else text
-
-
 def _is_unscoped(path) -> bool:
     try:
         head = core.read_text(path)[:2000]
@@ -135,7 +129,8 @@ def _preload_components(cfg, cwd: Path) -> list:
         if resolved in seen or not resolved.is_file():
             return
         seen.add(resolved)
-        out.append({"label": label, "path": _short(resolved), "tokens": core.size(resolved) // 4})
+        out.append({"label": label, "path": core.short(resolved),
+                    "tokens": core.size(resolved) // 4})
 
     add("law", core.cfg_get(cfg, "context.preload.law", "~/.claude/CLAUDE.md"))
     for rule in _unscoped_rules(core.CLAUDE_DIR / "rules"):
@@ -154,7 +149,8 @@ def _preload_components(cfg, cwd: Path) -> list:
             head = "\n".join(core.read_text(memory_index).splitlines()[:200])
         except OSError:
             head = ""
-        out.append({"label": "memory", "path": _short(memory_index), "tokens": util.tokens(head)})
+        out.append({"label": "memory", "path": core.short(memory_index),
+                    "tokens": util.tokens(head)})
 
     fixed_tokens = int(core.cfg_get(cfg, "context.preload.fixed_tokens", 0) or 0)
     out.append({"label": "fixed", "path": None, "tokens": fixed_tokens})
@@ -278,7 +274,7 @@ def build(registry, cfg, cwd) -> dict:
     stale = _stale_line(gates_record, visible, cfg)
 
     if profile is None:
-        where = _short(cwd)
+        where = core.short(cwd)
         header = (f"rig card · {where} is unmapped · no realm, no prefetch · "
                   f"rigops retrieval roots --cwd {where} explains")
         lines = [header] + ([stale] if stale else [])
