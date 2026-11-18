@@ -1144,8 +1144,6 @@ delete instead: rm \"$disabled_path\"" >&2
                 rmdir "$d" 2>/dev/null || true
             done < <(find "$m_prefix" -depth -type d 2>/dev/null)
         fi
-        rm -f "$manifest_path"
-        rmdir "$m_prefix" 2>/dev/null || true
     fi
 
     step_log "uninstall symlink"
@@ -1219,6 +1217,13 @@ delete instead: rm \"$disabled_path\"" >&2
                 done
             fi
         fi
+    fi
+
+    # Last, so a declined purge prompt leaves the manifest a later
+    # --uninstall --purge still needs.
+    if [ "$APPLY" -eq 1 ]; then
+        rm -f "$manifest_path"
+        rmdir "$m_prefix" 2>/dev/null || true
     fi
 }
 

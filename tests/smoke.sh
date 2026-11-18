@@ -494,6 +494,18 @@ rm -f "$TAX_PATH"
 run bash "$INSTALL_SH" --apply --no-jobs --yes
 [ "$RC" -eq 0 ] || fail "re-install after cleanup exit $RC: $OUT"
 
+echo "smoke: a declined purge keeps the manifest for a later --purge"
+set +e
+OUT="$(printf 'n\n' | bash "$INSTALL_SH" --uninstall --apply --purge 2>&1)"
+RC=$?
+set -e
+[ "$RC" -eq 0 ] || fail "declined purge exit $RC: $OUT"
+case "$OUT" in
+    *"purge cancelled"*) : ;;
+    *) fail "declined purge output missing 'purge cancelled': $OUT" ;;
+esac
+[ -f "$MANIFEST" ] || fail "declined purge removed the manifest, so a later --purge cannot run"
+
 run bash "$INSTALL_SH" --uninstall --apply --purge --yes
 [ "$RC" -eq 0 ] || fail "uninstall --purge exit $RC: $OUT"
 
