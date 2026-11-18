@@ -424,6 +424,50 @@ class AliveForBlockingStatusTests(EnvIsolatedTestCase):
             subprocess.run = orig_run
 
 
+class SnapshotFailureTests(EnvIsolatedTestCase):
+    def _with_run(self, fake):
+        orig_run = subprocess.run
+        subprocess.run = fake
+        self.addCleanup(setattr, subprocess, "run", orig_run)
+
+    def _raising(self, exc):
+        def fake(*args, **kwargs):
+            raise exc
+        return fake
+
+    def _returning(self, rc, stdout):
+        def fake(*args, **kwargs):
+            return subprocess.CompletedProcess(args, rc, stdout=stdout, stderr="")
+        return fake
+
+    def test_ps_failure_is_none_not_empty(self):
+        cases = [
+            ("timeout", self._raising(subprocess.TimeoutExpired(cmd="ps", timeout=30))),
+            ("oserror", self._raising(FileNotFoundError("ps"))),
+            ("rc1", self._returning(1, "")),
+            ("own_pid_missing", self._returning(0, "garbage\n")),
+        ]
+        for name, fake in cases:
+            with self.subTest(name):
+                self._with_run(fake)
+                self.assertIsNone(reap.ps_snapshot())
+
+    def test_lsof_failure_is_none_not_empty(self):
+        cases = [
+            ("timeout", self._raising(subprocess.TimeoutExpired(cmd="lsof", timeout=30))),
+            ("oserror", self._raising(FileNotFoundError("lsof"))),
+            ("rc2", self._returning(2, "")),
+        ]
+        for name, fake in cases:
+            with self.subTest(name):
+                self._with_run(fake)
+                self.assertIsNone(reap.cwd_map())
+
+    def test_lsof_partial_rc1_is_still_usable(self):
+        self._with_run(self._returning(1, "p123\nn/x\n"))
+        self.assertEqual(reap.cwd_map(), {123: "/x"})
+
+
 REMOVAL_BLOCKERS_CASES = [
     (
         "policy_excluded_alive_is_blocker",
@@ -1029,6 +1073,58 @@ class RunRecheckBeforeRemovalTests(GitFixtureTestCase):
         self.assertTrue(wt_path.exists())
         self.assertEqual(target["verdict"], "skip: in-use")
         self.assertFalse(target["applied"]["removed"])
+
+
+class RunObservationFailureTests(GitFixtureTestCase):
+    def _apply_with_failing(self, failing) -> tuple[Path, dict, str]:
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        wt_path = self.tmp / "wt-merged"
+        _run_git(["worktree", "add", "-b", "feature-merged", str(wt_path)], repo)
+        sessions_dir = self.tmp / "sessions"
+        sessions_dir.mkdir()
+
+        # git runs through Popen, so only ps, lsof and du see this.
+        orig_run = subprocess.run
+
+        def fake_run(argv, *args, **kwargs):
+            if failing(argv):
+                raise subprocess.TimeoutExpired(cmd=argv, timeout=30)
+            return orig_run(argv, *args, **kwargs)
+        subprocess.run = fake_run
+        self.addCleanup(setattr, subprocess, "run", orig_run)
+
+        opts = types.SimpleNamespace(
+            selftest=False, apply=True, dry_run=False, json=True,
+            repo=[repo], roots=[], no_fetch=True, grace_days=14,
+            sessions_dir=sessions_dir, deadline_s=60,
+            max_kills_per_tree=20, orphan_min_age_s=172800, kill_grace_s=5,
+            ignored_untracked_dirs=set(), ignored_untracked_prefixes=(),
+        )
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            reap.run(opts)
+        payload = json.loads(out.getvalue())
+        wt_real = os.path.realpath(wt_path)
+        target = next(w for w in payload["repos"][0]["worktrees"] if w["path"] == wt_real)
+        return wt_path, target, err.getvalue(), payload
+
+    def test_lsof_failure_keeps_tree(self):
+        wt_path, target, err, payload = self._apply_with_failing(
+            lambda argv: argv[0] == "lsof")
+        self.assertTrue(wt_path.exists())
+        self.assertFalse(target["applied"]["removed"])
+        self.assertIn("observation", target["applied"]["detail"])
+        self.assertIn("lsof", err)
+        self.assertFalse(payload["process_observation_ok"])
+
+    def test_ps_failure_keeps_tree(self):
+        wt_path, target, err, payload = self._apply_with_failing(
+            lambda argv: argv[:2] == ["ps", "-axo"])
+        self.assertTrue(wt_path.exists())
+        self.assertFalse(target["applied"]["removed"])
+        self.assertIn("ps", err)
+        self.assertFalse(payload["process_observation_ok"])
 
 
 class RunRepeatedRepoTests(GitFixtureTestCase):

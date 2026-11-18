@@ -306,8 +306,8 @@ def _etime_to_seconds(text: str) -> int | None:
     return ((days * 24 + hours) * 60 + minutes) * 60 + seconds
 
 
-def ps_snapshot() -> dict[int, dict]:
-    """One process-table snapshot the whole run reasons from.
+def ps_snapshot() -> dict[int, dict] | None:
+    """One process-table snapshot the whole run reasons from; None when ps failed.
 
     uid= prints the numeric uid, matching os.getuid() comparisons downstream.
     Elapsed time is normalized to seconds under the "etimes" key.
@@ -318,9 +318,9 @@ def ps_snapshot() -> dict[int, dict]:
             capture_output=True, text=True, timeout=30, check=False,
         )
     except (subprocess.TimeoutExpired, OSError):
-        return {}
+        return None
     if proc.returncode != 0:
-        return {}
+        return None
     snap: dict[int, dict] = {}
     for line in proc.stdout.splitlines():
         parts = line.split(None, 6)
@@ -335,11 +335,12 @@ def ps_snapshot() -> dict[int, dict]:
             continue
         snap[pid] = {"ppid": ppid, "pgid": pgid, "uid": uid, "tty": parts[4],
                      "etimes": etimes, "command": parts[6]}
-    return snap
+    # Output that parsed to nothing, not even this process, was not read.
+    return snap if os.getpid() in snap else None
 
 
-def cwd_map() -> dict[int, str]:
-    """pid -> current working directory, from one lsof pass.
+def cwd_map() -> dict[int, str] | None:
+    """pid -> current working directory, from one lsof pass; None when lsof failed.
 
     lsof exits 1 when it cannot introspect some other-user processes while
     still printing valid records for the rest, so 1 is usable output.
@@ -350,9 +351,9 @@ def cwd_map() -> dict[int, str]:
             capture_output=True, text=True, timeout=30, check=False,
         )
     except (subprocess.TimeoutExpired, OSError):
-        return {}
+        return None
     if proc.returncode not in (0, 1):
-        return {}
+        return None
     cwds: dict[int, str] = {}
     pid: int | None = None
     for line in proc.stdout.splitlines():
@@ -1089,6 +1090,9 @@ def run_selftest() -> int:
 
         snap = ps_snapshot()
         cwds = cwd_map()
+        if snap is None or cwds is None:
+            failures.append("process observation failed (ps or lsof)")
+            snap, cwds = snap or {}, cwds or {}
         matched = _filter_killable(processes_rooted_in(fixture, snap, cwds), snap)
 
         if target.pid not in matched:
@@ -1187,7 +1191,16 @@ def run(opts: Any) -> int:
 
     snap = ps_snapshot()
     cwds = cwd_map()
-    real_apply = opts.apply and not opts.dry_run
+    # An unread process table looks empty; acting on it would kill and remove blind.
+    observed = snap is not None and cwds is not None
+    if not observed:
+        failed = ",".join(n for n, v in (("ps", snap), ("lsof", cwds)) if v is None)
+        log(f"SKIP-ALL process observation failed: {failed}")
+        print(f"reap: process observation failed ({failed}); nothing signalled or removed",
+              file=sys.stderr)
+        snap = {} if snap is None else snap
+        cwds = {} if cwds is None else cwds
+    real_apply = opts.apply and not opts.dry_run and observed
     killed_total = 0
     kill_failed_total = 0
 
@@ -1208,6 +1221,9 @@ def run(opts: Any) -> int:
             # branches below only ever overwrite these.
             wt["applied"] = None
             wt["blockers"] = []
+            if opts.apply and not observed:
+                wt["applied"] = {"removed": False, "detail": "skip: process observation failed"}
+                continue
             rooted_all = processes_rooted_in(tree, snap, cwds)
             rooted = _filter_killable(rooted_all, snap)
             tags = _match_tags(tree, rooted, snap, cwds)
@@ -1306,7 +1322,8 @@ def run(opts: Any) -> int:
     if opts.json:
         print(json.dumps({"generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                           "repos": results,
-                          "orphan_daemons": orphan_json}, indent=2))
+                          "orphan_daemons": orphan_json,
+                          "process_observation_ok": observed}, indent=2))
     else:
         print(render(results, apply_mode=opts.apply and not opts.dry_run))
 
