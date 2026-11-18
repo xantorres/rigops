@@ -30,7 +30,7 @@ EXEMPT_PACKAGES = {"core", "sources"}
 # recorded number is their size on the day it was recorded, which is the most
 # they are ever allowed to be again.
 LINE_ALLOWANCES = {
-    "rigops/reap.py": 956,
+    "rigops/reap.py": 955,
     "rigops/janitor.py": 422,
 }
 

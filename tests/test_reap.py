@@ -1446,8 +1446,13 @@ class OverCapTests(GitFixtureTestCase):
     def _run(self, cap, as_json=True):
         repo = self.tmp / "repo"
         _init_repo(repo)
-        for n in range(3):
+        for n in range(4):
             _run_git(["worktree", "add", "-b", f"wt-{n}", str(self.tmp / f"wt-{n}")], repo)
+        for n in range(2):
+            wt = self.tmp / f"wt-{n}"
+            (wt / "new.txt").write_text("work\n")
+            _run_git(["add", "new.txt"], wt)
+            _run_git(["commit", "-m", "local work"], wt)
         shutil.rmtree(self.tmp / "wt-2")
         sessions_dir = self.tmp / "sessions"
         sessions_dir.mkdir()
@@ -1473,6 +1478,13 @@ class OverCapTests(GitFixtureTestCase):
 
         self.assertEqual((repo["worktrees_left"], repo["over_cap"]), (2, True))
         self.assertIn("over_cap=1", self._summary())
+
+    def test_a_plan_run_counts_a_reap_verdict_as_removed(self):
+        repo = json.loads(self._run(1))["repos"][0]
+
+        verdicts = sorted(w["verdict"] for w in repo["worktrees"])
+        self.assertEqual(verdicts, ["needs-push", "needs-push", reap.PRUNE, reap.REAP])
+        self.assertEqual(repo["worktrees_left"], 2)
 
     def test_a_repo_at_the_cap_is_not_flagged(self):
         repo = json.loads(self._run(2))["repos"][0]

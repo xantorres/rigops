@@ -687,12 +687,11 @@ def reap(repo: Path, wt: dict, dry_run: bool) -> tuple[bool, str]:
     return True, f"removed{branch_note}"
 
 
-def worktrees_left(res: dict) -> int:
-    """Linked worktrees still registered once this run's removals and prunes land."""
-    return sum(
-        1 for w in res["worktrees"]
-        if w["verdict"] != PRUNE and not (w.get("applied") or {}).get("removed")
-    )
+def worktrees_left(res: dict, preview: bool) -> int:
+    """Linked worktrees left once this run's removals and prunes, made or previewed, land."""
+    gone = (PRUNE, REAP) if preview else (PRUNE,)
+    return sum(1 for w in res["worktrees"]
+               if w["verdict"] not in gone and not (w.get("applied") or {}).get("removed"))
 
 
 def render(results: list[dict], apply_mode: bool, cap: int = 0) -> str:
@@ -927,7 +926,7 @@ def run(opts: Any) -> int:
 
     cap = getattr(opts, "max_worktrees", 0)
     for res in results:
-        res["worktrees_left"] = worktrees_left(res)
+        res["worktrees_left"] = worktrees_left(res, not opts.apply or opts.dry_run)
         res["over_cap"] = cap > 0 and res["worktrees_left"] > cap
     all_worktrees = [w for res in results for w in res["worktrees"]]
     eligible = sum(1 for w in all_worktrees if w["verdict"] == REAP)
