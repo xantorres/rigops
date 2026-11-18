@@ -378,6 +378,41 @@ class OverflowTests(unittest.TestCase):
             self.assertEqual(result["rules"][1]["acted"], 0)
             self.assertEqual(result["total_deleted"], 2)
 
+    def _two_rule_overflows(self, tmp: Path, apply: bool, dirs: bool = False,
+                            max_delete: int = 4) -> tuple:
+        rules = []
+        for name in ("r1", "r2"):
+            base = tmp / name
+            base.mkdir()
+            if dirs:
+                nested = base / "d" / "e"
+                nested.mkdir(parents=True)
+            else:
+                for i in range(3):
+                    (base / f"f{i}.txt").write_text("x")
+            rules.append({"name": name, "path": str(base), "glob": "*", "dirs": dirs,
+                          "action": "delete"})
+        result = janitor.run_rules(rules, apply=apply, max_delete=max_delete, now=time.time())
+        return tuple(r["overflow"] for r in result["rules"]), result["total_deleted"]
+
+    def test_dry_run_overflows_where_apply_would(self):
+        with tempfile.TemporaryDirectory() as dry, tempfile.TemporaryDirectory() as wet:
+            dry_overflows, dry_total = self._two_rule_overflows(Path(dry), apply=False)
+            wet_overflows, _ = self._two_rule_overflows(Path(wet), apply=True)
+            self.assertEqual(wet_overflows, (False, True))
+            self.assertEqual(dry_overflows, wet_overflows)
+            self.assertEqual(dry_total, 0)
+
+    def test_dry_run_charges_a_nested_match_once_like_apply(self):
+        # Apply removes d and then finds d/e gone, so rule one costs 2, not 3.
+        with tempfile.TemporaryDirectory() as dry, tempfile.TemporaryDirectory() as wet:
+            dry_overflows, _ = self._two_rule_overflows(
+                Path(dry), apply=False, dirs=True, max_delete=5)
+            wet_overflows, _ = self._two_rule_overflows(
+                Path(wet), apply=True, dirs=True, max_delete=5)
+            self.assertEqual(wet_overflows, (False, False))
+            self.assertEqual(dry_overflows, wet_overflows)
+
 
 class SafetyTests(unittest.TestCase):
     def test_root_base_skipped(self):

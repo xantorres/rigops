@@ -164,7 +164,7 @@ def _delete_like_result(
         return {
             "name": rule.get("name", ""), "action": action, "path": str(base), "matched": matched,
             "acted": 0, "overflow": True, "skipped": None, "errors": [], "output": None,
-            "deleted_weight": 0,
+            "deleted_weight": 0, "cap_weight": 0,
         }
     acted = 0
     deleted_weight = 0
@@ -184,11 +184,30 @@ def _delete_like_result(
                 deleted_weight += weight
             except OSError as exc:
                 errors.append(f"{target}: {exc}")
+        cap_weight = deleted_weight
+    else:
+        cap_weight = _would_remove_weight(candidates, weights, base_real)
     return {
         "name": rule.get("name", ""), "action": action, "path": str(base), "matched": matched,
         "acted": acted, "overflow": False, "skipped": None, "errors": errors, "output": None,
-        "deleted_weight": deleted_weight,
+        "deleted_weight": deleted_weight, "cap_weight": cap_weight,
     }
+
+
+def _would_remove_weight(candidates, weights, base_real: str) -> int:
+    """The cap charge apply would make: a candidate under one removed before it
+    is already gone by then, so it is not charged twice."""
+    removed: list = []
+    total = 0
+    for target, weight in zip(candidates, weights):
+        path = str(target)
+        if any(path.startswith(p + os.sep) for p in removed):
+            continue
+        if not _safe_target(target, base_real):
+            continue
+        removed.append(path)
+        total += weight
+    return total
 
 
 def _run_delete_rule(rule, base, matches, apply, running_delete_total, max_delete) -> dict:
@@ -337,9 +356,12 @@ def run_rules(rules: list, apply: bool, max_delete: int, now: float | None = Non
     max_delete = 200 if max_delete is None else int(max_delete)
     results = []
     running_delete_total = 0
+    total_deleted = 0
     for rule in rules:
         result = _run_rule(rule, apply, max_delete, now, running_delete_total)
         results.append(result)
         if result["action"] in DELETE_ACTIONS:
-            running_delete_total += result.get("deleted_weight", 0)
-    return {"rules": results, "total_deleted": running_delete_total}
+            # A dry run charges what apply would delete, so it overflows where apply would.
+            running_delete_total += result.get("cap_weight", 0)
+            total_deleted += result.get("deleted_weight", 0)
+    return {"rules": results, "total_deleted": total_deleted}
