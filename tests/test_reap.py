@@ -1056,27 +1056,27 @@ class RunApplyJsonPurityTests(GitFixtureTestCase):
 
 
 class RunRecheckBeforeRemovalTests(GitFixtureTestCase):
-    def _apply_with_change_after_scan(self, change) -> tuple[Path, dict]:
+    def _apply_with_change_after_scan(self, change, dry_run=False) -> tuple[Path, dict]:
         repo = self.tmp / "repo"
         _init_repo(repo)
         wt_path = self.tmp / "wt-merged"
         _run_git(["worktree", "add", "-b", "feature-merged", str(wt_path)], repo)
         sessions_dir = self.tmp / "sessions"
         sessions_dir.mkdir()
-
-        # ps_snapshot is the first call after the scan loop, so this lands
-        # between the verdict and the removal.
-        orig = reap.ps_snapshot
-        self.addCleanup(setattr, reap, "ps_snapshot", orig)
-        reap.ps_snapshot = lambda: (change(wt_path, sessions_dir), orig())[1]
-
         opts = types.SimpleNamespace(
-            selftest=False, apply=True, dry_run=False, json=True,
+            selftest=False, apply=True, dry_run=dry_run, json=True,
             repo=[repo], roots=[], no_fetch=True, grace_days=14,
             sessions_dir=sessions_dir, deadline_s=60,
             max_kills_per_tree=20, orphan_min_age_s=172800, kill_grace_s=5,
             ignored_untracked_dirs=set(), ignored_untracked_prefixes=(),
         )
+
+        # ps_snapshot is the first call after the scan loop, so this lands
+        # between the verdict and anything acting on it.
+        orig = reap.ps_snapshot
+        self.addCleanup(setattr, reap, "ps_snapshot", orig)
+        reap.ps_snapshot = lambda: (change(wt_path, sessions_dir, opts), orig())[1]
+
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             reap.run(opts)
@@ -1085,7 +1085,7 @@ class RunRecheckBeforeRemovalTests(GitFixtureTestCase):
         return wt_path, next(w for w in worktrees if w["path"] == wt_real)
 
     def test_tree_dirtied_after_scan_survives_apply(self):
-        def dirty(wt_path, _sessions):
+        def dirty(wt_path, _sessions, _opts):
             (wt_path / "notes.txt").write_text("wip\n")
 
         wt_path, target = self._apply_with_change_after_scan(dirty)
@@ -1095,8 +1095,17 @@ class RunRecheckBeforeRemovalTests(GitFixtureTestCase):
         self.assertFalse(target["applied"]["removed"])
         self.assertIn("verdict changed", target["applied"]["detail"])
 
+    def test_dry_run_reports_the_changed_verdict(self):
+        def dirty(wt_path, _sessions, _opts):
+            (wt_path / "notes.txt").write_text("wip\n")
+
+        _wt_path, target = self._apply_with_change_after_scan(dirty, dry_run=True)
+
+        self.assertEqual(target["verdict"], "skip: dirty")
+        self.assertIn("verdict changed", target["applied"]["detail"])
+
     def test_session_started_after_scan_blocks_removal(self):
-        def occupy(wt_path, sessions):
+        def occupy(wt_path, sessions, _opts):
             (sessions / "x.json").write_text(json.dumps(
                 {"pid": os.getpid(), "cwd": os.path.realpath(wt_path)}))
 
@@ -1105,6 +1114,43 @@ class RunRecheckBeforeRemovalTests(GitFixtureTestCase):
         self.assertTrue(wt_path.exists())
         self.assertEqual(target["verdict"], "skip: in-use")
         self.assertFalse(target["applied"]["removed"])
+
+    def test_session_process_started_after_scan_is_not_signalled(self):
+        procs = []
+
+        def occupy(wt_path, sessions, _opts):
+            # Own session, no controlling tty: the kind of pid reap may signal.
+            proc = subprocess.Popen(["sleep", "60"], cwd=wt_path, start_new_session=True)
+            self.addCleanup(proc.wait)
+            self.addCleanup(proc.kill)
+            procs.append(proc)
+            (sessions / "x.json").write_text(json.dumps(
+                {"pid": proc.pid, "cwd": os.path.realpath(wt_path)}))
+
+        wt_path, target = self._apply_with_change_after_scan(occupy)
+
+        self.assertIsNone(procs[0].poll())
+        self.assertTrue(wt_path.exists())
+        self.assertEqual(target["verdict"], "skip: in-use")
+
+    def test_branch_detached_after_scan_is_kept(self):
+        def detach(wt_path, _sessions, _opts):
+            _run_git(["checkout", "--detach"], wt_path)
+            _run_git(["commit", "--allow-empty", "-m", "wip"], wt_path)
+
+        wt_path, target = self._apply_with_change_after_scan(detach)
+
+        self.assertTrue(wt_path.exists())
+        self.assertEqual(target["verdict"], "skip: detached")
+
+    def test_deadline_spent_before_recheck_keeps_tree(self):
+        def spend(_wt_path, _sessions, opts):
+            opts.deadline_s = 0
+
+        wt_path, target = self._apply_with_change_after_scan(spend)
+
+        self.assertTrue(wt_path.exists())
+        self.assertEqual(target["verdict"], reap.DEADLINE_SKIP)
 
 
 class RunObservationFailureTests(GitFixtureTestCase):

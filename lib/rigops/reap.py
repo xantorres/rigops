@@ -882,8 +882,8 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
               ignored_dirs: set[str], ignored_prefixes: tuple[str, ...],
               remaining_s: float | None = None) -> dict:
     scan_start = time.time()
-    result = {"repo": str(repo), "target": None, "worktrees": [], "note": None,
-              "timed_out": False, "listing_ok": True, "listing_skipped": False}
+    result = {"repo": str(repo), "target": None, "default_branch": None, "worktrees": [],
+              "note": None, "timed_out": False, "listing_ok": True, "listing_skipped": False}
 
     if fetch:
         fetch_timeout = clamp_timeout(180, remaining_s)
@@ -962,6 +962,7 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
         return out_of_time("deadline: default branch unresolved", entries[1:])
 
     default_branch_ref = default_branch(repo, timeout=branch_timeout)
+    result["default_branch"] = default_branch_ref
 
     # entries[0] is the primary checkout and is never a candidate.
     for wt in entries[1:]:
@@ -1146,6 +1147,30 @@ def run_selftest() -> int:
     return 0
 
 
+def refresh_verdict(wt: dict, res: dict, opts: Any, self_cwd: Path,
+                    remaining_s: float | None) -> str:
+    """Re-judge one scanned tree from its current registry record and sessions,
+    within the run deadline. Updates wt to that record."""
+    started = time.time()
+    timeout = clamp_timeout(120, remaining_s)
+    if timeout is None:
+        return DEADLINE_SKIP
+    repo = Path(res["repo"])
+    porcelain = git_ok(repo, "worktree", "list", "--porcelain", timeout=timeout)
+    if porcelain is None:
+        return "skip: unreadable"
+    record = next((e for e in parse_worktrees(porcelain) if e["path"] == wt["path"]), None)
+    if record is None:
+        return "skip: unregistered"
+    wt.update(record)
+    return classify(
+        wt, repo, res["target"], live_worktree_cwds(opts.sessions_dir), self_cwd,
+        res["default_branch"], opts.grace_days,
+        opts.ignored_untracked_dirs, opts.ignored_untracked_prefixes,
+        remaining_s=remaining_after(remaining_s, started),
+    )
+
+
 def run(opts: Any) -> int:
     """Body of a reap invocation: discover repos, scan, kill, remove, report."""
     if opts.dry_run and not opts.apply:
@@ -1225,6 +1250,18 @@ def run(opts: Any) -> int:
             if opts.apply and not observed:
                 wt["applied"] = {"removed": False, "detail": "skip: process observation failed"}
                 continue
+            if opts.apply:
+                # The scan verdict can be an hour old; edits, a checkout or a session
+                # since then must win before anything in the tree is signalled.
+                fresh = refresh_verdict(wt, res, opts, self_cwd,
+                                        remaining_after(opts.deadline_s, run_start))
+                if fresh != REAP:
+                    wt["verdict"] = fresh
+                    wt["applied"] = {"removed": False, "detail": f"verdict changed: {fresh}"}
+                    if not opts.json:
+                        print(f"skip: {Path(wt['path']).name} -- verdict changed: {fresh}")
+                    log(f"SKIP-CHANGED tree={tree} verdict={fresh}")
+                    continue
             rooted_all = processes_rooted_in(tree, snap, cwds)
             rooted = _filter_killable(rooted_all, snap)
             tags = _match_tags(tree, rooted, snap, cwds)
@@ -1244,19 +1281,6 @@ def run(opts: Any) -> int:
                         print(f"skip: {Path(wt['path']).name} -- "
                               f"{len(blockers)} live process(es) block removal (pids: {pids})")
                     log(f"SKIP-LIVE tree={tree} pids={pids}")
-                    continue
-                # The scan verdict can be an hour old; edits or a session since then must win.
-                fresh = classify(
-                    wt, repo, res["target"], live_worktree_cwds(opts.sessions_dir), self_cwd,
-                    default_branch(repo), opts.grace_days,
-                    opts.ignored_untracked_dirs, opts.ignored_untracked_prefixes,
-                )
-                if fresh != REAP:
-                    wt["verdict"] = fresh
-                    wt["applied"] = {"removed": False, "detail": f"verdict changed: {fresh}"}
-                    if not opts.json:
-                        print(f"skip: {Path(wt['path']).name} -- verdict changed: {fresh}")
-                    log(f"SKIP-CHANGED tree={tree} verdict={fresh}")
                     continue
                 ok, detail = reap(repo, wt, opts.dry_run)
                 wt["applied"] = {"removed": ok and not opts.dry_run, "detail": detail}
