@@ -201,7 +201,7 @@ locate_diff_hits() {
       loc = ""
       lead = substr($0, 1, 1)
       if ($0 ~ /^commit [0-9a-f]+/) {
-        sha = substr($2, 1, 12); path = ""; hunk = 0; state = "message"
+        sha = substr($2, 1, 12); path = ""; hunk = 0; state = "commit"
       } else if ($0 ~ /^diff --git /) {
         path = substr($0, 12)
         i = index(path, " b/")
@@ -223,7 +223,7 @@ locate_diff_hits() {
         hunk = 0
       }
       if (NR in want) {
-        if (loc == "") loc = (state == "message") ? "(message)" : "(file header)"
+        if (loc == "") loc = (state == "commit") ? "(commit header)" : "(file header)"
         print "commit " sha " " loc
       }
     }
@@ -321,8 +321,9 @@ run_history() {
   local diff_log="$WORK_DIR/diff.log" meta_log="$WORK_DIR/meta.log"
 
   # Captured first: piped into grep, a failed git log read as "no match".
-  # The fixed format and prefixes keep the location mapping exact.
-  if ! git log --all --full-history -m -p --pretty=medium --no-color \
+  # The fixed format and prefixes keep the location mapping exact; the
+  # diff log holds no metadata, which the meta log scans once.
+  if ! git log --all --full-history -m -p --pretty='tformat:commit %H' --no-color \
     --src-prefix=a/ --dst-prefix=b/ \
     -- . ':(exclude)tools/redaction-patterns.public.txt' >"$diff_log"; then
     echo "redaction gate: git log failed reading history diff" >&2
