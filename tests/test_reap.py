@@ -1261,6 +1261,8 @@ class RunObservationFailureTests(GitFixtureTestCase):
         def fake_run(argv, *args, **kwargs):
             if failing(argv):
                 raise subprocess.TimeoutExpired(cmd=argv, timeout=30)
+            if argv[0] == "lsof":  # a machine-wide listing that can outlast its timeout
+                return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
             return orig_run(argv, *args, **kwargs)
         subprocess.run = fake_run
         self.addCleanup(setattr, subprocess, "run", orig_run)
@@ -1317,6 +1319,10 @@ class RunObservationFailureTests(GitFixtureTestCase):
 
 
 class RunRepeatedRepoTests(GitFixtureTestCase):
+    def setUp(self):
+        super().setUp()
+        self.stub_process_observation()
+
     def _scanned(self, repos):
         sessions_dir = self.tmp / "sessions"
         sessions_dir.mkdir(exist_ok=True)
@@ -1353,6 +1359,10 @@ class RunRepeatedRepoTests(GitFixtureTestCase):
 
 
 class RunSummaryTests(GitFixtureTestCase):
+    def setUp(self):
+        super().setUp()
+        self.stub_process_observation()
+
     def test_summary_line_reports_the_deadline_skip_count(self):
         repo = self.tmp / "repo"
         _init_repo(repo)
