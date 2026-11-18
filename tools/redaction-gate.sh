@@ -71,6 +71,8 @@ emit_rules() {
   local lineno=0
   while IFS= read -r raw || [ -n "$raw" ]; do
     lineno=$((lineno + 1))
+    # A CRLF file would leave \r in every pattern, which then never matches.
+    raw="${raw%$'\r'}"
     case "$raw" in
       '' | '#'*) continue ;;
     esac

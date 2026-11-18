@@ -304,6 +304,13 @@ class PrivateLayerTests(unittest.TestCase):
         out = self.scan("nothing")
         self.assertEqual(out.returncode, 2, out.stdout + out.stderr)
 
+    def test_crlf_layer_still_matches(self):
+        layer = self.tmp / "crlf.txt"
+        layer.write_bytes(b"# comment\r\n\r\ns zz-alpha-[0-9]+\r\n")
+        out = self.scan("zz-alpha-" + "1", extra_env={"RIGOPS_REDACTION_PATTERNS": str(layer)})
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        self.assertIn("crlf.txt rule 3", out.stdout)
+
     def test_pattern_env_accepts_a_list(self):
         first = self.write_layer(self.tmp / "first.txt", "s zz-alpha-[0-9]+\n")
         second = self.write_layer(self.tmp / "second.txt", "s zz-beta-[0-9]+\n")
