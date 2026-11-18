@@ -90,6 +90,13 @@ class CliContractTests(unittest.TestCase):
         self.assertIn("--json", proc.stderr)
         self.assertEqual(proc.stdout, "")
 
+    def test_reap_dry_run_without_apply_is_a_usage_error(self):
+        proc = self.run_cmd("reap", "--dry-run")
+
+        self.assertEqual(proc.returncode, 2, proc.stdout)
+        self.assertIn("--dry-run", proc.stderr)
+        self.assertEqual(proc.stdout, "")
+
     def test_tax_rejects_a_missing_transcripts_dir(self):
         missing = self.home / "no-such-dir"
         for mode in ("--starts", "--dead"):

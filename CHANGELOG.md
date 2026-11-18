@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- reap: `--dry-run` without `--apply` exits 2, the usage-error code every
+  other command uses, instead of 64.
 - doctor: a job with an `always-on` or `keepalive` cadence is no longer
   judged hung and killed once it outlives `max_runtime_h`.
 - doctor, ledger: two runs writing the same state file at once both finish.

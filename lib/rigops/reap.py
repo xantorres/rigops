@@ -832,7 +832,7 @@ def run(opts: Any) -> int:
     """Body of a reap invocation: discover repos, scan, kill, remove, report."""
     if opts.dry_run and not opts.apply:
         print("--dry-run requires --apply", file=sys.stderr)
-        return 64
+        return 2
     if shutil.which("git") is None:
         print("git not found on PATH", file=sys.stderr)
         return 2
