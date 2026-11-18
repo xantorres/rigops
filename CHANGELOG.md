@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- doctor: a job with an `always-on` or `keepalive` cadence is no longer
+  judged hung and killed once it outlives `max_runtime_h`.
 - doctor, ledger: two runs writing the same state file at once both finish.
   Each write uses a temp file of its own instead of one fixed `.tmp` name.
 - ledger: friction counts no longer stop at a transcript row holding bytes

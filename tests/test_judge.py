@@ -3,10 +3,12 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from rigops.judge import ACTIONS, STATUSES, judge_job  # noqa: E402
+from rigops import launchd  # noqa: E402
+from rigops.judge import ACTIONS, STATUSES, _judge_launchd_item, judge_job  # noqa: E402
 
 # (name, runtime_h, max_h, last_exit_status, evidence_age_h, expected_interval_h,
 #  heal_cooldown_active, expected_status, expected_action)
@@ -109,6 +111,24 @@ class JudgeJobDecisionTableTests(unittest.TestCase):
             ),
             ("ok", "none"),
         )
+
+
+class KeepaliveCadenceTests(unittest.TestCase):
+    def judge(self, cadence):
+        item = {"id": "daemon", "cadence": cadence, "health": "-", "max_runtime_h": 6.0}
+        with mock.patch.object(launchd, "is_loaded", return_value=True), \
+                mock.patch.object(launchd, "job_snapshot", return_value=(True, 4242, None)), \
+                mock.patch.object(launchd, "runtime_hours", return_value=200.0):
+            job = _judge_launchd_item(item, ["local."], heal_cooldown_active=False)
+        return job["status"], job["action"]
+
+    def test_keepalive_job_past_its_ceiling_is_not_killed(self):
+        for cadence in ("always-on", "KeepAlive"):
+            with self.subTest(cadence=cadence):
+                self.assertEqual(self.judge(cadence), ("ok", "none"))
+
+    def test_scheduled_job_past_its_ceiling_is_still_hung(self):
+        self.assertEqual(self.judge("daily 02:00"), ("hung", "kill"))
 
 
 if __name__ == "__main__":

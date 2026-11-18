@@ -40,6 +40,7 @@ def judge_job(
     heal_cooldown_active,
     cause=None,
     hold_release=False,
+    keepalive=False,
 ):
     """Judge one job's health from point-in-time signals. No I/O, no side effects.
 
@@ -51,6 +52,7 @@ def judge_job(
 
     | runtime_h | exit / evidence                            | status  | action        |
     |-----------|---------------------------------------------|---------|---------------|
+    | live      | keepalive cadence (a daemon never finishes)  | ok      | none          |
     | > max_h   | (a live run always wins over anything else)  | hung    | kill          |
     | <= max_h  | (live, within its ceiling)                   | ok      | none          |
     | None      | last_exit_status not in (None, 0)            | failing | kickstart/notify* |
@@ -79,7 +81,7 @@ def judge_job(
     run must be judged -- and killed -- before anything else is considered.
     """
     if runtime_h is not None:
-        if runtime_h > max_runtime_h:
+        if runtime_h > max_runtime_h and not keepalive:
             return "hung", "kill"
         return "ok", "none"
 
@@ -227,6 +229,7 @@ def _judge_launchd_item(
         runtime_h=runtime_h, max_runtime_h=item["max_runtime_h"], last_exit_status=last_exit,
         evidence_age_h=evidence_age_h, expected_interval_h=interval_h,
         heal_cooldown_active=heal_cooldown_active,
+        keepalive=bool(CADENCE_KEEPALIVE_RE.search(item.get("cadence", ""))),
     )
     job = {
         "id": job_id, "status": status, "action": action, "runtime_h": runtime_h,

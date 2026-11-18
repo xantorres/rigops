@@ -29,6 +29,7 @@ Five statuses, first matching row wins (`lib/rigops/judge.py`, `judge_job`):
 
 | Runtime | Condition | Status | Action |
 |---|---|---|---|
+| Running | `always-on`/`keepalive` cadence | `ok` | none |
 | Running, over `max_runtime_h` | - | `hung` | kill |
 | Running, within `max_runtime_h` | - | `ok` | none |
 | Not running | last exit != 0 | `failing` | kickstart (or notify if cooling down) |
@@ -36,7 +37,7 @@ Five statuses, first matching row wins (`lib/rigops/judge.py`, `judge_job`):
 | Not running | no exit recorded and no evidence file at all | `unknown` | none |
 | Not running | else (clean exit and/or evidence fresh/absent) | `ok` | none |
 
-A running job is always judged on runtime alone - a hung job has to be caught before its exit code or evidence age matter at all, since launchd never starts a new run while the old one is still alive.
+A running job is always judged on runtime alone - a hung job has to be caught before its exit code or evidence age matter at all, since launchd never starts a new run while the old one is still alive. A keepalive daemon is meant to run forever, so its runtime never makes it `hung`.
 
 Staleness only applies when the cadence is interval-checkable. `cadence` strings map to an expected interval: `daily HH:MM` → 24h (or 24h / N for N distinct times), `every N min` → N/60 hours, `weekly` → 168h. `on-demand`/`manual`/`deadline`, `event`, and `always-on`/`keepalive` cadences are never staleness-checked - there's no "should have run by now" clock for them.
 
