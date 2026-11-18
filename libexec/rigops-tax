@@ -213,6 +213,12 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(transcripts.attach_dash_values(sys.argv[1:]))
 
+    if args.transcripts_dir is not None:
+        resolved = rigops_config.expand(args.transcripts_dir)
+        if not resolved.is_dir():
+            print(f"error: --dir not found: {resolved}", file=sys.stderr)
+            return 2
+
     cfg = rigops_config.load()
     if args.dead:
         return cmd_dead(args)

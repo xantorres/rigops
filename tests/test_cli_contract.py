@@ -90,6 +90,15 @@ class CliContractTests(unittest.TestCase):
         self.assertIn("--json", proc.stderr)
         self.assertEqual(proc.stdout, "")
 
+    def test_tax_rejects_a_missing_transcripts_dir(self):
+        missing = self.home / "no-such-dir"
+        for mode in ("--starts", "--dead"):
+            with self.subTest(mode=mode):
+                proc = self.run_cmd("tax", mode, "--dir", str(missing))
+
+                self.assertEqual(proc.returncode, 2, proc.stdout)
+                self.assertIn(f"error: --dir not found: {missing}", proc.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
