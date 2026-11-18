@@ -11,6 +11,6 @@ exist in every install - check before using it.
 
 2. Check the subcommand exists: `rigops help` and look for `backlog` in the command list, or just try `rigops backlog lint` and check the exit code. If it errors with "unknown command", this install predates backlog support - tell the user their rigops version doesn't have it yet, and skip the rest of this command. Do not try to fake backlog behavior yourself.
 
-3. If it exists: `rigops backlog lint` checks the backlog file for structural problems. `rigops backlog add "<text>"` appends an entry.
+3. If it exists: `rigops backlog lint` checks the backlog file for structural problems. `rigops backlog add "<text>"` appends an entry. `add` takes the area from `--area`, or from an `area: ` prefix on the text, and the date from `--date YYYY-MM-DD` (default today). Both subcommands take `--file <path>` to work on a file other than `backlog.path`.
 
 4. Verify actual flags against `rigops backlog --help` before using anything beyond `lint` and `add` - this doc predates the implementation and may not match it exactly.

@@ -87,7 +87,7 @@ Scopes the ledger's interaction-friction columns (`denials`, `denials_headless`,
 
 ## `context`
 
-Config for the plugin's `ctx-nudge` hook, the statusline, `rigops card` (the `doctor` section below documents the gates record it reads) and `rigops nudge`.
+Config for the plugin's `ctx-nudge` hook, the statusline, `rigops card` (the `doctor` section below documents the gates record it reads) and `rigops nudge`. Run by hand, `rigops card` and `rigops nudge "<prompt>"` print what their hook would for the working directory, or for the one `--cwd` names; `nudge --no-log` keeps its prefetch out of the retrieval log.
 
 - `nudge_tiers` (`array<int>`, minimum 3 items, default `[250000, 350000, 500000]`) - ascending token thresholds: low / heavy / critical.
 - `rearm_tokens` (`int`, default `50000`) - token climb past the lowest tier required to re-fire the nudge after it's already fired once in a session.
@@ -162,7 +162,7 @@ Config for `rigops doctor` (see [REGISTRY.md](REGISTRY.md) for the judgment mode
 
 ## `reaper`
 
-Config for `rigops reap` (see [SAFETY.md](SAFETY.md) for the kill/removal guards).
+Config for `rigops reap` (see [SAFETY.md](SAFETY.md) for the kill/removal guards). For one run, `--root <dir>` scans that tree in place of `roots`, `--repo <path>` (repeatable) scans only the named repositories and wins over both, and `--no-fetch` skips `git fetch`, so the merged check reads local refs only.
 
 - `roots` (`array<string>`, default `["~/projects"]`) - trees scanned for repositories. A repository is any directory with a `.git` directory two levels under a root (a `group/repo` layout).
 - `sessions_dir` (`string`, default `~/.claude/sessions`) - directory of live-session JSON files (`{"pid": N, "cwd": "..."}`). A worktree whose cwd is claimed by a live session (pid still alive) is never touched. A missing directory just disables this extra guard; it isn't an error.
