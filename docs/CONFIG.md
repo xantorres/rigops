@@ -192,9 +192,9 @@ Config for `rigops reap` (see [SAFETY.md](SAFETY.md) for the kill/removal guards
 Config for `rigops janitor` (see [SAFETY.md](SAFETY.md) for the delete cap). `--json` prints the run report as JSON.
 
 - `rules` (`array`, default `[]`) - applied in order. Each rule:
-  - `name`, `path` (base file or directory), `glob` (default `*`; matched against entry **names** only - a pattern containing `/` matches nothing), `older_than_days`, `max_depth`.
+  - `name`, `path` (base file or directory), `glob` (default `*`; matched against entry **names** only - a pattern containing `/` matches nothing), `older_than_days`, `max_depth`. `older_than_days` ages a file by its mtime and a directory by the newest mtime of anything under it, so a directory holding one recent file is not old; an entry that cannot be read is never old.
   - `action`: `delete` (remove every match) · `truncate` (keep the last `keep_lines` lines of a file, default `500`; with `archive: true` the dropped head is first appended to `<file>.<YYYY-MM-DD>`, left for a `delete` rule to age out) · `keep_newest_n` (delete all but the newest `keep` matches by mtime, default `3`) · `report` (list matches, never act) · `command` (run `command` via `/bin/sh -c` with `timeout_s`, default `120`, under `--apply` only).
-  - `dirs` (`bool`) - match directories instead of files. `only_empty` (`bool`) - with `dirs`, match only empty directories.
+  - `dirs` (`bool`) - match directories instead of files. `only_empty` (`bool`) - with `dirs`, match only empty directories; one that gains an entry before removal is left in place and reported as an error.
 - `watermarks` (`array`, default `[]`) - each `{name, path, max_files, max_kb, area}`; `path` is a glob: a directory match is judged by `max_files` and `max_kb`, a single-file match by `max_kb` only (`max_files` against a file is a configuration error and says so on stderr). A tripped watermark appends one deduplicated line to the backlog under `area` (default `"memory"`) - only under `--apply`.
 - `max_delete` (`int`, default `200`) - total delete/`keep_newest_n` budget for the whole run. A directory candidate counts as one plus every file and directory under it. A rule whose match total would push the running count over the cap is skipped **whole**, never partially applied.
 

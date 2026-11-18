@@ -44,13 +44,37 @@ def _safe_target(target: Path, base_real: str) -> bool:
     return parent_real == base_real or parent_real.startswith(base_real + os.sep)
 
 
-def _remove(target: Path) -> None:
+def _remove(target: Path, only_empty: bool = False) -> None:
     if target.is_symlink():
         os.remove(target)
     elif target.is_dir():
-        shutil.rmtree(target)
+        # rmdir refuses a directory that gained an entry since it matched as empty.
+        if only_empty:
+            os.rmdir(target)
+        else:
+            shutil.rmtree(target)
     else:
         os.remove(target)
+
+
+def _newest_mtime(entry: Path) -> float | None:
+    """Newest lstat mtime of entry and, for a real directory, of everything
+    under it. None when any part is unreadable: an unknown age is never old."""
+    try:
+        newest = os.lstat(entry).st_mtime
+    except OSError:
+        return None
+    if entry.is_symlink() or not entry.is_dir():
+        return newest
+    walk_errors: list = []
+    for root, dirnames, filenames in os.walk(entry, followlinks=False,
+                                             onerror=walk_errors.append):
+        for name in dirnames + filenames:
+            try:
+                newest = max(newest, os.lstat(os.path.join(root, name)).st_mtime)
+            except OSError:
+                return None
+    return None if walk_errors else newest
 
 
 def _iter_matches(base: Path, rule: dict, now: float) -> list:
@@ -102,11 +126,8 @@ def _iter_matches(base: Path, rule: dict, now: float) -> list:
                 except OSError:
                     continue
             if cutoff is not None:
-                try:
-                    mtime = os.lstat(entry).st_mtime
-                except OSError:
-                    continue
-                if mtime >= cutoff:
+                mtime = _newest_mtime(entry)
+                if mtime is None or mtime >= cutoff:
                     continue
             matches.append(entry)
     return sorted(matches, key=str)
@@ -148,6 +169,7 @@ def _delete_like_result(
     acted = 0
     deleted_weight = 0
     errors = []
+    only_empty = bool(rule.get("only_empty", False))
     if apply:
         for target, weight in zip(candidates, weights):
             if not os.path.lexists(target):
@@ -157,7 +179,7 @@ def _delete_like_result(
                 errors.append(f"{target}: safety re-check failed")
                 continue
             try:
-                _remove(target)
+                _remove(target, only_empty)
                 acted += 1
                 deleted_weight += weight
             except OSError as exc:

@@ -119,6 +119,67 @@ class DirsOnlyEmptyTests(unittest.TestCase):
             self.assertTrue(nonempty_dir.exists())
             self.assertEqual(result["rules"][0]["acted"], 1)
 
+    def test_entry_landing_after_the_match_survives(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "base"
+            base.mkdir()
+            empty_dir = base / "empty_dir"
+            empty_dir.mkdir()
+            late = empty_dir / "late.txt"
+
+            def land_then_weigh(path):
+                late.write_text("arrived between match and removal")
+                return 1
+
+            rule = {
+                "name": "r", "path": str(base), "glob": "*", "dirs": True,
+                "only_empty": True, "action": "delete",
+            }
+            with mock.patch.object(janitor, "_candidate_weight", side_effect=land_then_weigh):
+                result = janitor.run_rules([rule], apply=True, max_delete=200, now=time.time())
+            self.assertTrue(late.exists())
+            self.assertEqual(result["rules"][0]["acted"], 0)
+            self.assertEqual(len(result["rules"][0]["errors"]), 1)
+
+
+class DirAgeTests(unittest.TestCase):
+    def _old_dir_with_file(self, base: Path, now: float, file_days_old: float) -> Path:
+        old_dir = base / "old_dir"
+        nested = old_dir / "sub" / "f.txt"
+        nested.parent.mkdir(parents=True)
+        nested.write_text("x")
+        _age(nested, file_days_old, now)
+        _age(nested.parent, 40, now)
+        _age(old_dir, 40, now)
+        return old_dir
+
+    def _apply(self, base: Path, now: float) -> dict:
+        rule = {
+            "name": "r", "path": str(base), "glob": "*", "dirs": True,
+            "max_depth": 1, "older_than_days": 30, "action": "delete",
+        }
+        return janitor.run_rules([rule], apply=True, max_delete=200, now=now)
+
+    def test_dir_holding_a_recent_file_is_not_old(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "base"
+            base.mkdir()
+            now = time.time()
+            old_dir = self._old_dir_with_file(base, now, file_days_old=1)
+            result = self._apply(base, now)
+            self.assertTrue(old_dir.exists())
+            self.assertEqual(result["rules"][0]["matched"], [])
+
+    def test_dir_whose_whole_subtree_is_old_is_deleted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "base"
+            base.mkdir()
+            now = time.time()
+            old_dir = self._old_dir_with_file(base, now, file_days_old=40)
+            result = self._apply(base, now)
+            self.assertFalse(old_dir.exists())
+            self.assertEqual(result["rules"][0]["acted"], 1)
+
 
 class TruncateTests(unittest.TestCase):
     def test_truncate_keeps_last_500_mode_preserved(self):
