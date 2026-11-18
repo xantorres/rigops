@@ -499,6 +499,27 @@ PYEOF
 run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --prefix "$STATUSLINE_HOME/prefix-a" --yes
 [ "$RC" -eq 0 ] || fail "prefix-a uninstall exit $RC: $OUT"
 
+echo "smoke: uninstall finishes when settings.json is not UTF-8"
+printf '{"existing": true}' >"$SETTINGS"
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
+[ "$RC" -eq 0 ] || fail "statusline wire before the bad-bytes uninstall exit $RC: $OUT"
+printf '{"x": "\377"}' >"$SETTINGS"
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "uninstall over non-UTF-8 settings.json exit $RC: $OUT"
+case "$OUT" in
+    *"kept     statusLine"*) : ;;
+    *) fail "uninstall over non-UTF-8 settings.json did not keep statusLine: $OUT" ;;
+esac
+[ -f "$STATUSLINE_HOME/.local/share/rigops/install.manifest.json" ] \
+    && fail "uninstall over non-UTF-8 settings.json stopped before the manifest"
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
+[ "$RC" -ne 0 ] || fail "statusline wire over non-UTF-8 settings.json succeeded: $OUT"
+case "$OUT" in
+    *Traceback*) fail "statusline wire over non-UTF-8 settings.json crashed: $OUT" ;;
+    *"is not valid JSON"*) : ;;
+    *) fail "statusline wire over non-UTF-8 settings.json gave no clear error: $OUT" ;;
+esac
+
 echo "smoke: statusline error path (checkout without the script)"
 SRC_COPY="$(mktemp -d)"
 cp -R "$REPO_ROOT/." "$SRC_COPY/"

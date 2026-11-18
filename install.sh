@@ -563,10 +563,11 @@ from datetime import datetime
 settings_path, command_path, mode, manifest_path, tsv_path = sys.argv[1:6]
 
 if os.path.exists(settings_path):
-    old_text = open(settings_path, encoding="utf-8").read()
     try:
+        with open(settings_path, encoding="utf-8") as fh:
+            old_text = fh.read()
         data = json.loads(old_text) if old_text.strip() else {}
-    except ValueError as exc:
+    except (OSError, ValueError) as exc:
         print(f"error: {settings_path} is not valid JSON: {exc}", file=sys.stderr)
         sys.exit(1)
     if not isinstance(data, dict):
@@ -1031,10 +1032,11 @@ settings_path, command = record["settings"], record.get("command")
 if not os.path.exists(settings_path):
     print("     absent   " + settings_path)
     sys.exit(0)
-old_text = open(settings_path, encoding="utf-8").read()
 try:
+    with open(settings_path, encoding="utf-8") as fh:
+        old_text = fh.read()
     data = json.loads(old_text) if old_text.strip() else {}
-except ValueError:
+except (OSError, ValueError):
     data = None
 if not isinstance(data, dict):
     print(f"warn: {settings_path} is not a JSON object, leaving statusLine in place", file=sys.stderr)
