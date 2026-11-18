@@ -592,10 +592,14 @@ if isinstance(current_command, str) and current_command.endswith(suffix):
             earlier = json.load(fh).get("statusline")
     except (OSError, ValueError, AttributeError):
         earlier = None
-    if isinstance(earlier, dict) and earlier.get("command") == current_command and "previous" in earlier:
-        record["previous"] = earlier["previous"]
+    if isinstance(earlier, dict) and earlier.get("command") == current_command:
+        for key in ("previous", "created"):
+            if key in earlier:
+                record[key] = earlier[key]
 elif "statusLine" in data:
     record["previous"] = current
+if not existed:
+    record["created"] = True
 
 data["statusLine"] = {"type": "command", "command": command_path}
 new_text = json.dumps(data, indent=2, sort_keys=True) + "\n"
@@ -1052,6 +1056,13 @@ if "previous" in record:
 else:
     del data["statusLine"]
     verb = "removed statusLine"
+if not data and record.get("created") is True:
+    if mode != "apply":
+        print("     plan: would remove " + settings_path + " (created by install, nothing else in it)")
+        sys.exit(0)
+    os.remove(settings_path)
+    print("     removed  " + settings_path + " (created by install, nothing else in it)")
+    sys.exit(0)
 if mode != "apply":
     print("     plan: would " + verb.replace("restored", "restore").replace("removed", "remove"))
     sys.exit(0)

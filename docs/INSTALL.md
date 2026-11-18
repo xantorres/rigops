@@ -140,7 +140,7 @@ Config and registry are scaffolded from `config/config.example.json` and `config
 
 ### Statusline wiring
 
-`--statusline` (without `--plugin-only`) edits `~/.claude/settings.json`, setting its `statusLine` key to run the installed statusline script. It prints a unified diff of the change before writing, and on `--apply` writes a timestamped backup first: `~/.claude/settings.json.rigops-backup.<YYYYMMDDHHMMSS>`. If `settings.json` doesn't exist yet, it's created fresh with no backup needed. The manifest records the `statusLine` value it replaced, so `--uninstall` can put it back.
+`--statusline` (without `--plugin-only`) edits `~/.claude/settings.json`, setting its `statusLine` key to run the installed statusline script. It prints a unified diff of the change before writing, and on `--apply` writes a timestamped backup first: `~/.claude/settings.json.rigops-backup.<YYYYMMDDHHMMSS>`. If `settings.json` doesn't exist yet, it's created fresh with no backup needed, and `--uninstall` deletes it again while nothing else has been added to it. The manifest records the `statusLine` value it replaced, so `--uninstall` can put it back.
 
 ### Uninstall and purge
 

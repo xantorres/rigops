@@ -525,6 +525,40 @@ case "$OUT" in
     *) fail "statusline wire over non-UTF-8 settings.json gave no clear error: $OUT" ;;
 esac
 
+echo "smoke: uninstall deletes a settings.json that --statusline created"
+rm -f "$SETTINGS" "$SETTINGS".rigops-backup.*
+for pass in 1 2; do
+    run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
+    [ "$RC" -eq 0 ] || fail "statusline wire into a missing settings.json, pass $pass, exit $RC: $OUT"
+done
+rm -f "$SETTINGS".rigops-backup.*
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "uninstall of a created settings.json exit $RC: $OUT"
+[ -e "$SETTINGS" ] && fail "uninstall left the settings.json it created: $(cat "$SETTINGS")"
+[ -z "$(find "$STATUSLINE_HOME/.claude" -name 'settings.json.rigops-backup.*')" ] \
+    || fail "uninstall of a created settings.json left a backup"
+
+echo "smoke: uninstall keeps a created settings.json the user added to"
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
+[ "$RC" -eq 0 ] || fail "statusline wire into a missing settings.json exit $RC: $OUT"
+python3 - "$SETTINGS" <<'PYEOF'
+import json
+import sys
+
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+data["theme"] = "dark"
+json.dump(data, open(sys.argv[1], "w", encoding="utf-8"))
+PYEOF
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "uninstall of an edited created settings.json exit $RC: $OUT"
+python3 - "$SETTINGS" <<'PYEOF' || fail "uninstall lost what the user added: $(cat "$SETTINGS")"
+import json
+import sys
+
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+sys.exit(0 if data == {"theme": "dark"} else 1)
+PYEOF
+
 echo "smoke: statusline error path (checkout without the script)"
 SRC_COPY="$(mktemp -d)"
 cp -R "$REPO_ROOT/." "$SRC_COPY/"
