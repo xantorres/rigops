@@ -43,6 +43,46 @@ class CliContractTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("usage:", proc.stdout)
 
+    def json_out(self, proc):
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout)
+
+    def test_tax_json_is_valid_when_fixed_tax_is_not_configured(self):
+        payload = self.json_out(self.run_cmd("tax", "--json"))
+
+        self.assertEqual(payload, {"files": [], "total_bytes": 0})
+
+    def test_tax_json_is_valid_when_no_file_matches(self):
+        config = {"fixed_tax": {"paths": [str(self.home / "missing.md")]}}
+        payload = self.json_out(self.run_cmd("tax", "--json", config=config))
+
+        self.assertEqual(payload, {"files": [], "total_bytes": 0})
+
+    def test_tax_history_json_is_an_empty_list_without_ledger_rows(self):
+        self.assertEqual(self.json_out(self.run_cmd("tax", "--history", "--json")), [])
+
+    def test_ledger_diff_json_is_valid_with_fewer_than_two_rows(self):
+        payload = self.json_out(self.run_cmd("ledger", "diff", "--json"))
+
+        self.assertEqual(payload, {
+            "baseline": None, "latest": None, "deltas": {}, "interventions": [], "derived": [],
+        })
+
+    def test_backlog_lint_json_is_valid_without_a_backlog_file(self):
+        missing = str(self.home / "none.md")
+        payload = self.json_out(self.run_cmd("backlog", "lint", "--json", "--file", missing))
+
+        self.assertEqual(payload, {
+            "open": 0, "done": 0, "malformed": [], "unknown_area": [], "ok": True,
+        })
+
+    def test_janitor_json_is_valid_when_nothing_is_configured(self):
+        payload = self.json_out(self.run_cmd("janitor", "--json"))
+
+        self.assertEqual(payload, {
+            "rules": [], "total_deleted": 0, "watermarks": [], "apply": False,
+        })
+
 
 if __name__ == "__main__":
     unittest.main()

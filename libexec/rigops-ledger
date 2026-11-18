@@ -196,7 +196,11 @@ def cmd_diff(args) -> int:
     jsonl_path = state.state_dir() / "ledger.jsonl"
     rows = sorted(_load_ledger_rows(jsonl_path), key=lambda r: r.get("date", ""))
     if len(rows) < 2:
-        print("not enough ledger rows to diff yet (need at least 2)")
+        if args.json:
+            print(json.dumps({"baseline": None, "latest": None, "deltas": {},
+                              "interventions": [], "derived": []}, indent=2))
+        else:
+            print("not enough ledger rows to diff yet (need at least 2)")
         return 0
 
     latest = rows[-1]
