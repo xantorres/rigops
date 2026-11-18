@@ -35,9 +35,11 @@ itself, driven by an environment variable, since a plist has no timeout key.
 
 ## How rigops implements it
 
-The two shipped templates,
-[../templates/launchd/doctor.plist.in](../templates/launchd/doctor.plist.in) and
-[../templates/launchd/ledger.plist.in](../templates/launchd/ledger.plist.in), carry every
+The four shipped templates,
+[../templates/launchd/doctor.plist.in](../templates/launchd/doctor.plist.in),
+[../templates/launchd/ledger.plist.in](../templates/launchd/ledger.plist.in),
+[../templates/launchd/janitor.plist.in](../templates/launchd/janitor.plist.in) and
+[../templates/launchd/reap.plist.in](../templates/launchd/reap.plist.in), carry every
 template defense above. Quoting doctor's environment block exactly:
 
 ```xml
