@@ -22,10 +22,14 @@ cd "$REPO_ROOT" || exit 1
 PUBLIC_PATTERNS="tools/redaction-patterns.public.txt"
 PRIVATE_PATTERNS=""
 TMP_PRIVATE=""
+WORK_DIR=""
 
 cleanup() {
   if [ -n "$TMP_PRIVATE" ] && [ -f "$TMP_PRIVATE" ]; then
     rm -f "$TMP_PRIVATE"
+  fi
+  if [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ]; then
+    rm -rf "$WORK_DIR"
   fi
 }
 trap cleanup EXIT
@@ -163,6 +167,20 @@ run_default() {
 run_history() {
   local hits=0
   local rule_type pattern gflags label lineno raw matches add grep_rc
+  local diff_log meta_log
+
+  # Captured first: piped into grep, a failed git log read as "no match".
+  WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/rigops-redaction.XXXXXX")"
+  diff_log="$WORK_DIR/diff.log"
+  meta_log="$WORK_DIR/meta.log"
+  if ! git log --all --full-history -m -p -- . ':(exclude)tools/redaction-patterns.public.txt' >"$diff_log"; then
+    echo "redaction gate: git log failed reading history diff" >&2
+    exit 2
+  fi
+  if ! git log --all --format='%an %ae %s%n%b' >"$meta_log"; then
+    echo "redaction gate: git log failed reading commit metadata" >&2
+    exit 2
+  fi
 
   while IFS="$RULE_SEP" read -r label lineno raw; do
     rule_type="${raw%% *}"
@@ -177,7 +195,7 @@ run_history() {
     esac
 
     set +e
-    matches="$(git log --all --full-history -m -p -- . ':(exclude)tools/redaction-patterns.public.txt' | grep "$gflags" -- "$pattern")"
+    matches="$(grep "$gflags" -- "$pattern" "$diff_log")"
     grep_rc=$?
     set -e
     if [ "$grep_rc" -gt 1 ]; then
@@ -191,7 +209,7 @@ run_history() {
     fi
 
     set +e
-    matches="$(git log --all --format='%an %ae %s%n%b' | grep "$gflags" -- "$pattern")"
+    matches="$(grep "$gflags" -- "$pattern" "$meta_log")"
     grep_rc=$?
     set -e
     if [ "$grep_rc" -gt 1 ]; then

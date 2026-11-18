@@ -127,6 +127,72 @@ class ZeroRulesTests(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
 
 
+def commit_all(root, home):
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+    }
+    base = [
+        "git", "-c", "core.hooksPath=/dev/null", "-c", "user.name=Sample",
+        "-c", "user.email=sample@example.com", "-C", str(root),
+    ]
+    for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "init"]):
+        subprocess.run(base + args, check=True, capture_output=True, env=env)
+
+
+def git_shim(bin_dir, failing_arg):
+    """Puts a git on PATH that fails when called with `failing_arg`."""
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    shim = bin_dir / "git"
+    shim.write_text(
+        "#!/bin/sh\n"
+        'for a in "$@"; do\n'
+        f'  case "$a" in {failing_arg}) echo "shim: git failed" >&2; exit 128 ;; esac\n'
+        "done\n"
+        f'exec "{shutil.which("git")}" "$@"\n',
+        encoding="utf-8",
+    )
+    shim.chmod(0o755)
+    return {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+
+
+class HistoryGitFailureTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.home = self.tmp / "home"
+        self.home.mkdir()
+        self.repo = self.tmp / "repo"
+        self.script = sandbox_gate(self.repo)
+
+    def assert_fails_closed(self, out):
+        self.assertEqual(out.returncode, 2, out.stdout + out.stderr)
+        self.assertNotIn("clean", out.stdout)
+
+    def test_history_outside_a_repository_fails(self):
+        out = run_gate(self.script, "--history", home=self.home)
+        self.assert_fails_closed(out)
+
+    def test_history_diff_log_failure_fails(self):
+        commit_all(self.repo, self.home)
+        shim = git_shim(self.tmp / "bin", "-p")
+        out = run_gate(self.script, "--history", home=self.home, extra_env=shim)
+        self.assert_fails_closed(out)
+
+    def test_history_metadata_log_failure_fails(self):
+        commit_all(self.repo, self.home)
+        shim = git_shim(self.tmp / "bin", "--format=*")
+        out = run_gate(self.script, "--history", home=self.home, extra_env=shim)
+        self.assert_fails_closed(out)
+
+    def test_history_of_a_clean_repository_passes(self):
+        commit_all(self.repo, self.home)
+        out = run_gate(self.script, "--history", home=self.home)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+
+
 class PersonalDataShapeTests(unittest.TestCase):
     def test_each_shape_is_flagged(self):
         for name, text in SHAPES.items():
