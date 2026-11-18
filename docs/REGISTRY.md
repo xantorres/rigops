@@ -11,7 +11,7 @@ The plain-text list of automation jobs `rigops doctor` watches.
 
 ## Field reference
 
-Per the shipped example's own documented contract, each item is expected to carry:
+Every item must carry the required fields:
 
 **Required**: `id`, `domain`, `trigger`, `entry_point`, `output`, `cadence`, `last_verified`, `health`, `group`.
 
@@ -19,7 +19,7 @@ Per the shipped example's own documented contract, each item is expected to carr
 
 `health` format: a plain path, a brace-expansion like `foo.{log,err.log}` (every alternative is checked, the newest mtime wins), or `-` for "no evidence file, skip staleness for this job."
 
-**Enforcement note**: only `id` is structurally required by the parser - it's the item delimiter itself, a line must read `- id: <value>` to start a new item. The parser does not error if `domain`/`trigger`/`entry_point`/`output`/`last_verified`/`group` are missing from an item; those are a documented convention for humans and tooling, not a load-time check. `cadence` and `health` *do* change judgment output when absent (see below). A duplicate `id`, or a frontmatter `schema:` that isn't `rigops.v1` when an `items:` list is present, is a hard error.
+**Enforcement note**: `id` starts an item, so a line must read `- id: <value>` to begin one. Every other required field has to be present and non-blank, or the loader exits with an error naming the item and the missing fields, and the whole `doctor` run stops. Write `-` for a field with nothing to point at, as in `output: -` or `health: -`. A duplicate `id`, or a frontmatter `schema:` that isn't `rigops.v1` when an `items:` list is present, is also a hard error.
 
 ## Judgment model
 
@@ -84,7 +84,7 @@ disk-free     ok      400.2GB free on ~
 
 ## Registry hygiene
 
-`last_verified` is a plain human attestation, not machine-checked. Update it by hand whenever you actually re-verify a job - confirm `entry_point` still runs, `output`/`health` paths are still right. Nothing in `rigops doctor` reads or enforces it.
+`last_verified` is a plain human attestation. The loader requires it but never parses it as a date or checks its age. Update it by hand whenever you actually re-verify a job - confirm `entry_point` still runs, `output`/`health` paths are still right.
 
 ## See also
 

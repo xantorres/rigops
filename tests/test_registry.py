@@ -94,6 +94,18 @@ class ParseFrontMatterTests(unittest.TestCase):
             registry.parse_front_matter(text)
 
 
+def _item(item_id: str, **fields: str) -> str:
+    """One registry item carrying every required field, overridable per test."""
+    values = {
+        "domain": "x", "trigger": "launchd.daily", "entry_point": "x", "output": "x",
+        "cadence": "on-demand", "last_verified": "2026-08-01", "health": "-",
+        "group": "AUTOMATED-LAUNCHD", **fields,
+    }
+    return f"  - id: {item_id}\n" + "".join(
+        f"    {key}: {value}\n" for key, value in values.items() if value is not None
+    )
+
+
 class LoadRegistryTests(unittest.TestCase):
     def test_example_file_parses_three_items_with_defaults(self):
         items = registry.load_registry(EXAMPLE_REGISTRY)
@@ -122,9 +134,10 @@ class LoadRegistryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "reg.md"
             path.write_text(
-                "schema: rigops.v1\nitems:\n  - id: a\n    max_runtime_h: not-a-number\n---\n"
+                "schema: rigops.v1\nitems:\n" + _item("a", max_runtime_h="not-a-number")
+                + "---\n"
             )
-            with self.assertRaises(SystemExit):
+            with self.assertRaisesRegex(SystemExit, "invalid max_runtime_h"):
                 registry.load_registry(path)
 
     def test_max_runtime_h_non_positive_or_non_finite_exits(self):
@@ -133,9 +146,9 @@ class LoadRegistryTests(unittest.TestCase):
                 with tempfile.TemporaryDirectory() as tmp:
                     path = Path(tmp) / "reg.md"
                     path.write_text(
-                        f"schema: rigops.v1\nitems:\n  - id: a\n    max_runtime_h: {bad}\n---\n"
+                        "schema: rigops.v1\nitems:\n" + _item("a", max_runtime_h=bad) + "---\n"
                     )
-                    with self.assertRaises(SystemExit):
+                    with self.assertRaisesRegex(SystemExit, "invalid max_runtime_h"):
                         registry.load_registry(path)
 
     def test_duplicate_item_ids_exits(self):
@@ -143,12 +156,35 @@ class LoadRegistryTests(unittest.TestCase):
             path = Path(tmp) / "reg.md"
             path.write_text(
                 "schema: rigops.v1\nitems:\n"
-                "  - id: a\n    domain: x\n"
-                "  - id: a\n    domain: y\n"
-                "---\n"
+                + _item("a") + _item("a", domain="y")
+                + "---\n"
             )
-            with self.assertRaises(SystemExit):
+            with self.assertRaisesRegex(SystemExit, "duplicate registry item id"):
                 registry.load_registry(path)
+
+    def test_missing_required_field_exits_naming_item_and_field(self):
+        for field in registry.REQUIRED_FIELDS:
+            with self.subTest(field):
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "reg.md"
+                    path.write_text(
+                        "schema: rigops.v1\nitems:\n" + _item("a", **{field: None}) + "---\n"
+                    )
+                    with self.assertRaisesRegex(SystemExit, rf"item 'a': missing {field}$"):
+                        registry.load_registry(path)
+
+    def test_blank_required_field_counts_as_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "reg.md"
+            path.write_text("schema: rigops.v1\nitems:\n" + _item("a", cadence="") + "---\n")
+            with self.assertRaisesRegex(SystemExit, r"item 'a': missing cadence$"):
+                registry.load_registry(path)
+
+    def test_complete_item_loads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "reg.md"
+            path.write_text("schema: rigops.v1\nitems:\n" + _item("a") + "---\n")
+            self.assertEqual([it["id"] for it in registry.load_registry(path)], ["a"])
 
     def test_wrong_schema_exits(self):
         with tempfile.TemporaryDirectory() as tmp:
