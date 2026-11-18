@@ -1299,9 +1299,14 @@ def run(opts: Any) -> int:
 
         if not res.get("listing_ok", True):
             continue
+        # The scan's registry and sessions can be an hour old: a tree added since is not stale.
+        t = clamp_timeout(120, remaining_after(opts.deadline_s, run_start))
+        porcelain = git_ok(repo, "worktree", "list", "--porcelain", timeout=t) if t else None
         registered = {os.path.realpath(res["repo"])} | {
-            os.path.realpath(w["path"]) for w in res["worktrees"]}
-        for stale_path in stale_worktree_dirs(repo, registered, live):
+            os.path.realpath(w["path"]) for w in parse_worktrees(porcelain or "")}
+        stale_dirs = [] if porcelain is None else stale_worktree_dirs(
+            repo, registered, live_worktree_cwds(opts.sessions_dir))
+        for stale_path in stale_dirs:
             rooted = _filter_killable(processes_rooted_in(stale_path, snap, cwds), snap)
             tags = _match_tags(stale_path, rooted, snap, cwds)
             kr = kill_pids(f"stale={stale_path}", tags, snap, real_apply,

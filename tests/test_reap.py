@@ -1183,6 +1183,38 @@ class RunRecheckBeforeRemovalTests(GitFixtureTestCase):
         self.assertTrue(wt_path.exists())
         self.assertEqual(target["verdict"], "skip: in-use")
 
+    def _sleep_in(self, path: Path) -> subprocess.Popen:
+        proc = subprocess.Popen(["sleep", "60"], cwd=path, start_new_session=True)
+        self.addCleanup(proc.wait)
+        self.addCleanup(proc.kill)
+        return proc
+
+    def test_worktree_added_after_scan_is_not_swept_as_stale(self):
+        procs = []
+
+        def add_tree(_wt_path, _sessions, _opts):
+            fresh = self.tmp / "repo" / ".claude" / "worktrees" / "fresh"
+            _run_git(["worktree", "add", "-b", "fresh", str(fresh)], self.tmp / "repo")
+            procs.append(self._sleep_in(fresh))
+
+        self._apply_with_change_after_scan(add_tree)
+
+        self.assertIsNone(procs[0].poll())
+
+    def test_dir_claimed_by_a_session_after_scan_is_not_swept(self):
+        procs = []
+
+        def claim(_wt_path, sessions, _opts):
+            orphan = self.tmp / "repo" / ".claude" / "worktrees" / "orphan"
+            orphan.mkdir(parents=True)
+            procs.append(self._sleep_in(orphan))
+            (sessions / "y.json").write_text(json.dumps(
+                {"pid": procs[0].pid, "cwd": os.path.realpath(orphan)}))
+
+        self._apply_with_change_after_scan(claim)
+
+        self.assertIsNone(procs[0].poll())
+
     def test_branch_detached_after_scan_is_kept(self):
         def detach(wt_path, _sessions, _opts):
             _run_git(["checkout", "--detach"], wt_path)
