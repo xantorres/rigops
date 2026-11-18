@@ -16,9 +16,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - reap: a repository left with more linked worktrees than the new
   `reaper.max_worktrees` (default 5, `0` for off) is flagged in the report,
   the JSON and the log line. It is a report only; nothing extra is removed.
+- install: `--jobs` also ships a janitor job (weekly, Sunday 10:00) and a
+  reap job (daily, 08:30), both running `--apply`. They delete on a schedule,
+  so a bare first install does not place them, and a bare re-run keeps the ones
+  the manifest recorded.
+- install: a job that another enabled LaunchAgent already runs is skipped and
+  the plist that runs it is named. A copy this install placed earlier is booted
+  out and dropped from the manifest, like a job `--jobs` leaves out.
+
+### Changed
+
+- registry: an item missing a required field exits naming the item and every
+  missing or blank field, where only `id` was checked before. Presence only;
+  `last_verified` is not parsed.
+- gate: with no `RIGOPS_REDACTION_PATTERNS_B64`, both default private pattern
+  files load, as in CI, and `RIGOPS_REDACTION_PATTERNS` takes a
+  colon-separated list. A listed file that is missing exits 2; the two
+  defaults stay optional and warn.
+- gate: a hit prints where it is (file and line, or commit, part and layer
+  rule) and never the matched text. A tag hit prints the tag object sha, and a
+  tracked path that matches prints its `git ls-files` entry number.
+- gate: `--history` also scans committer name and email and every tag, name,
+  tagger and message, and the tree scan covers tracked file paths.
+- mine: redaction layers load as the gate loads them, so a colon list, the
+  base64 layer and the default files behave the same in both.
+
+### Removed
+
+- config: `config/config.schema.json` is gone. Nothing read it, it required
+  nothing, and it lagged the code by about twenty keys. `docs/CONFIG.md` is
+  the reference.
 
 ### Fixed
 
+- reap: `--help` and usage errors no longer need a valid config, and the
+  `--grace-days` help names the config key instead of a resolved number.
+- tax, ledger diff, backlog lint, janitor: `--json` prints valid JSON on empty
+  state, with the keys the populated payload has. Prose stays without `--json`.
+- render: `--json` without `--check` is a usage error, exit 2.
+- tax: a `--dir` that does not exist exits 2 with `error: --dir not found`, as
+  eit does.
+- reap: worktree status is read NUL-delimited, so a path with a space or a
+  non-ASCII character stays dirty instead of reading clean and letting a merged
+  branch go with uncommitted edits. A rename's source path is compared too, and
+  a name that is not UTF-8 no longer aborts the run.
+- reap: each worktree is judged again from its current record and session
+  files before anything in it is signalled or removed. One that gained work or
+  a session since the scan is kept with `verdict changed`.
+- reap: when the process snapshot fails (`ps` or `lsof` times out, is missing,
+  or lists nothing), the run is report-only: nothing is removed and no signal
+  is sent. The failure goes to stderr, the log and a `process_observation_ok`
+  JSON key. A liveness check that cannot be read counts as alive.
+- reap: a stale-directory sweep only takes real directories that sit directly
+  in the repository's own worktrees dir. A symlink there, or a worktrees dir
+  that is itself a link, no longer makes the target's processes kill targets,
+  and the sweep reads the current worktree list and sessions first.
+- janitor: a directory ages by its newest content, not its own mtime, and
+  `only_empty` removes it with `rmdir`, so a directory that gained a file is
+  left in place and reported.
+- janitor: a dry run charges the `max_delete` cap as `--apply` would, and a
+  home base reached through a symlinked ancestor is refused.
+- launchd: a hung job's process group keeps getting SIGKILL after its leader
+  exits, so a worker that ignores SIGTERM no longer outlives the doctor's
+  kill.
+- launchd: the doctor plist is well-formed XML, so `cause.log_paths` finds
+  the installed job's logs, and both job plists put the Homebrew prefixes first
+  on `PATH`, so a scheduled run finds `rtk` and `jq`.
+- doctor: a `heal-stamps` or `notified` state file holding a number, list or
+  string no longer crashes the run.
+- fixed tax: one test decides whether a rule loads in every session, so the
+  ledger, the context card and the doctor budget count the same rules, and a
+  rule file that is not UTF-8 counts toward the tax.
+- gate: a missing public layer, or a layer with no rules, exits 2 instead of
+  passing everything. So do an unreadable or undecodable layer (it exited 1,
+  the "hits found" code), a match file that cannot be written, and a failing
+  `git log` in `--history`, where grep's status had hidden it.
+- gate: a message holding a NUL byte is scanned, a rule file with CRLF
+  endings matches, a failed hit mapping in `--history` exits 2, an author hit
+  prints once, a hit in a renamed file names the new path, and same-named
+  layers get a position suffix such as `p.txt#2`.
+- install: the manifest is written around each launchd job, so a failed
+  bootstrap no longer leaves earlier jobs and the failing job's plist out of it.
+  Removal boots a job out of both the `gui` and `user` domains.
+- install: a `--jobs` run that leaves out an installed job unloads it and
+  removes its plist, and `--no-jobs` or `--plugin-only` keeps the job records.
+- install: `--uninstall` restores the `statusLine` the user had, or drops the
+  key if there was none, after a backup. It keeps a symlinked `settings.json` a
+  symlink, deletes a `settings.json` install created once it is empty, and
+  finishes when the file cannot be read. A second prefix records the user's
+  value, not the first prefix's script, and a settings backup is never
+  overwritten.
+- install: the manifest goes last in an uninstall, so a declined `--purge`
+  keeps it, and the records the uninstall removed are dropped so the next bare
+  install does not reschedule them. A plan says `would remove`, not `removed`.
 - install: a re-install removes files the previous install recorded that
   this version no longer ships. An edited one is kept with a warning, and a
   file neither manifest lists is never touched.
