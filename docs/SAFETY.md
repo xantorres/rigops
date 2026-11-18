@@ -20,7 +20,7 @@ Two independent kill paths, same shape, different scope.
 
 - Refuses to signal if the pid's process-group id is `<= 1`, or equals the doctor process's own group (self-protection, and a pgid of 0/1 can only be a lookup artifact here, never a real job's group).
 - Signals the whole process group only when the pid is that group's own leader; otherwise it signals the pid alone, so a non-leader match never takes unrelated siblings down with it.
-- SIGTERM, poll every 0.5s up to `kill_grace_s` (default 5s), SIGKILL once if the pid is still alive after that.
+- SIGTERM, poll every 0.5s up to `kill_grace_s` (default 5s), SIGKILL once if anything is still alive after that: the pid alone, or for a group any member, even after the leader has exited.
 
 **`rigops reap`** (`lib/rigops/reap.py`, `kill_pids` / `_filter_killable` / `removal_blockers`) signals a *set* of pids matched by cwd/argv under a worktree, plus their full descendant closure:
 
