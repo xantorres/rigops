@@ -29,6 +29,8 @@ LINK_DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(\S+)", re.M)
 FENCE = re.compile(r"^[ \t]*(```|~~~).*?^[ \t]*\1", re.S | re.M)
 CODE_SPAN = re.compile(r"`[^`\n]*`")
 HEADING = re.compile(r"^#{1,6} +(.+?)[ #]*$", re.M)
+# A blank line, a list item or a table row starts a new paragraph-sized unit.
+UNIT_START = re.compile(r"^(?:[ \t]*\n|[ \t]*(?:[-*+]|\d+\.)[ \t]|\|)", re.M)
 SKIP_DIRS = {".git", ".claude", "fixtures"}
 
 
@@ -47,25 +49,40 @@ def defined_flags() -> dict[tuple[str, str], str]:
     return flags
 
 
-def sections(text: str) -> list[str]:
+def split_at(text: str, boundary: re.Pattern) -> list[str]:
     fenced = [m.span() for m in FENCE.finditer(text)]
-    cuts = [m.start() for m in HEADING.finditer(text)
+    cuts = [m.start() for m in boundary.finditer(text)
             if not any(start <= m.start() < end for start, end in fenced)]
     bounds = [0] + cuts + [len(text)]
     return [text[a:b] for a, b in zip(bounds, bounds[1:])]
+
+
+def sections(text: str) -> list[str]:
+    return split_at(text, HEADING)
+
+
+def units(section: str) -> list[str]:
+    return split_at(section, UNIT_START)
 
 
 def mentions(text: str, word: str) -> bool:
     return re.search(r"(?<![\w-])" + re.escape(word) + r"(?![\w-])", text) is not None
 
 
+def names_command(text: str, command: str) -> bool:
+    return mentions(text, f"rigops {command}") or mentions(text, f"rigops-{command}")
+
+
 def documented(command: str, flag: str, doc_sections: list[tuple[Path, str]]) -> bool:
-    return any(
-        mentions(chunk, flag)
-        and (page == PLUGIN_COMMANDS / f"{command}.md"
-             or mentions(chunk, f"rigops {command}") or mentions(chunk, f"rigops-{command}"))
-        for page, chunk in doc_sections
-    )
+    for page, section in doc_sections:
+        if not mentions(section, flag):
+            continue
+        heading = section.split("\n", 1)[0] if section.startswith("#") else ""
+        if page == PLUGIN_COMMANDS / f"{command}.md" or names_command(heading, command):
+            return True
+        if any(mentions(unit, flag) and names_command(unit, command) for unit in units(section)):
+            return True
+    return False
 
 
 def anchors(page: Path) -> set[str]:
@@ -108,8 +125,15 @@ class DocsContractTests(unittest.TestCase):
             and not documented(command, flag, doc_sections)
         )
 
-        self.assertEqual(missing, [], "name each flag in a section that names `rigops <command>`, "
-                                      "or allowlist it with a reason")
+        self.assertEqual(missing, [], "name each flag beside `rigops <command>` or under a heading "
+                                      "naming it, or allowlist it with a reason")
+
+    def test_every_flag_source_maps_to_a_shipped_command(self):
+        shipped = {p.name[len("rigops-"):] for p in (REPO_ROOT / "libexec").glob("rigops-*")}
+        strays = {source for (command, _), source in defined_flags().items()
+                  if command not in shipped}
+
+        self.assertEqual(strays, set(), "teach command_of() which command these files parse for")
 
     def test_allowlist_holds_only_live_undocumented_flags(self):
         live = {f"{command} {flag}" for command, flag in defined_flags()}

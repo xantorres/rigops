@@ -87,7 +87,7 @@ Scopes the ledger's interaction-friction columns (`denials`, `denials_headless`,
 
 ## `context`
 
-Config for the plugin's `ctx-nudge` hook, the statusline, `rigops card` (the `doctor` section below documents the gates record it reads) and `rigops nudge`. Run by hand, `rigops card` and `rigops nudge "<prompt>"` print what their hook would for the working directory, or for the one `--cwd` names; `nudge --no-log` keeps its prefetch out of the retrieval log. Both take `--json` to print the result as JSON and `--registry` to read another roots registry.
+Config for the plugin's `ctx-nudge` hook, the statusline, `rigops card` (the `doctor` section below documents the gates record it reads) and `rigops nudge`. Run by hand, `rigops card` and `rigops nudge "<prompt>"` print what their hook would for the working directory, or for the one `--cwd` names; `nudge --no-log` keeps its prefetch out of the retrieval log. Both take `--registry` to read another roots registry. `card --json` prints the card as JSON, and `nudge --json` prints the run's metadata without the text. Under `--hook` each reads its hook's JSON payload on stdin (SessionStart for `card`; UserPromptSubmit, prompt included, for `nudge`), takes the working directory from it, and exits 0 even on an error.
 
 - `nudge_tiers` (`array<int>`, minimum 3 items, default `[250000, 350000, 500000]`) - ascending token thresholds: low / heavy / critical.
 - `rearm_tokens` (`int`, default `50000`) - token climb past the lowest tier required to re-fire the nudge after it's already fired once in a session.
