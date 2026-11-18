@@ -768,8 +768,10 @@ def worktree_has_real_changes(path: Path, status: str, default_branch_ref: str,
             continue
         tracked.append(rest)
         if "R" in code or "C" in code:
-            # A rename or copy carries its source path as the next entry.
-            next(entries, None)
+            # A rename or copy carries its source path as the next entry; a rename deletes it.
+            source = next(entries, None)
+            if "R" in code and source:
+                tracked.append(source)
 
     if not tracked:
         return False

@@ -665,6 +665,28 @@ class ClassifyTests(GitFixtureTestCase):
     def test_tracked_edit_in_path_with_rename_arrow_is_skip_dirty(self):
         self.assertEqual(self._verdict_after_tracked_edit("a -> b.txt"), "skip: dirty")
 
+    def test_staged_rename_onto_a_path_main_already_has_is_skip_dirty(self):
+        # The new path matches main, so only the deleted source shows the work.
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        (repo / "a.txt").write_text("base\n")
+        _run_git(["add", "a.txt"], repo)
+        _run_git(["commit", "-m", "add a"], repo)
+        wt_path = self.tmp / "wt-rename"
+        _run_git(["worktree", "add", "-b", "feature-rename", str(wt_path)], repo)
+        (repo / "b.txt").write_text("base\n")
+        _run_git(["add", "b.txt"], repo)
+        _run_git(["commit", "-m", "add b"], repo)
+        _run_git(["mv", "a.txt", "b.txt"], wt_path)
+        wt = {"path": str(wt_path), "branch": "feature-rename",
+              "head": _rev_parse(repo, "feature-rename"),
+              "bare": False, "detached": False, "locked": False, "prunable": False}
+        verdict = reap.classify(
+            wt, repo, "main", [], self.tmp / "outside", "main", 14,
+            ignored_dirs=set(), ignored_prefixes=(),
+        )
+        self.assertEqual(verdict, "skip: dirty")
+
     def test_unmerged_branch_with_local_commit_no_upstream_is_needs_push(self):
         repo = self.tmp / "repo"
         _init_repo(repo)
