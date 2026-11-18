@@ -193,6 +193,53 @@ class HistoryGitFailureTests(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
 
 
+class LocationOnlyOutputTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.home = self.tmp / "home"
+        self.home.mkdir()
+        self.repo = self.tmp / "repo"
+        self.script = sandbox_gate(self.repo)
+        (self.repo / "notes.txt").write_text(
+            "first\n" + PLACEHOLDER_HIT + " here\n", encoding="utf-8"
+        )
+
+    def assert_location_only(self, out, *locations):
+        text = out.stdout + out.stderr
+        self.assertEqual(out.returncode, 1, text)
+        self.assertNotIn(PLACEHOLDER_HIT, text)
+        for location in locations:
+            self.assertIn(location, text)
+
+    def test_message_hit_prints_file_and_line(self):
+        msg = self.tmp / "msg.txt"
+        msg.write_text("subject\n\nbody " + PLACEHOLDER_HIT + "\n", encoding="utf-8")
+        out = run_gate(self.script, "--message", str(msg), home=self.home)
+        self.assert_location_only(out, "msg.txt:3")
+
+    def test_tree_hit_prints_file_and_line(self):
+        out = run_gate(self.script, home=self.home)
+        self.assert_location_only(out, "notes.txt:2")
+
+    def test_history_hit_prints_commit_file_and_line(self):
+        commit_all(self.repo, self.home)
+        env = {
+            **os.environ,
+            "HOME": str(self.home),
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+        }
+        subprocess.run(
+            ["git", "-c", "core.hooksPath=/dev/null", "-c", "user.name=Sample",
+             "-c", "user.email=sample@example.com", "-C", str(self.repo),
+             "commit", "-q", "--allow-empty", "-m", "note", "-m", PLACEHOLDER_HIT],
+            check=True, capture_output=True, env=env,
+        )
+        out = run_gate(self.script, "--history", home=self.home)
+        self.assert_location_only(out, "notes.txt:2", "(message body)")
+
+
 class PersonalDataShapeTests(unittest.TestCase):
     def test_each_shape_is_flagged(self):
         for name, text in SHAPES.items():
