@@ -300,11 +300,15 @@ def main() -> int:
         argv = ["write", *argv]
     args = ap.parse_args(argv)
 
-    if args.cmd == "note":
-        return cmd_note(args)
-    if args.cmd == "diff":
-        return cmd_diff(args)
-    return cmd_write(args)
+    try:
+        if args.cmd == "note":
+            return cmd_note(args)
+        if args.cmd == "diff":
+            return cmd_diff(args)
+        return cmd_write(args)
+    except state.MalformedJsonl as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

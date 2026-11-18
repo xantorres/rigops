@@ -225,7 +225,11 @@ def main() -> int:
     if args.starts:
         return cmd_starts(args)
     if args.history:
-        return cmd_history(args.json)
+        try:
+            return cmd_history(args.json)
+        except state.MalformedJsonl as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
     return cmd_current(cfg, args.json)
 
 

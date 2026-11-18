@@ -99,6 +99,54 @@ class CliContractTests(unittest.TestCase):
                 self.assertEqual(proc.returncode, 2, proc.stdout)
                 self.assertIn(f"error: --dir not found: {missing}", proc.stderr)
 
+    def assert_malformed_state_exit(self, proc, path):
+        self.assertEqual(proc.returncode, 1, proc.stdout)
+        self.assertEqual(proc.stdout, "")
+        self.assertTrue(
+            proc.stderr.startswith(f"error: malformed JSON line in {path}:2:"), proc.stderr,
+        )
+        self.assertNotIn("Traceback", proc.stderr)
+
+    def test_tax_history_reports_a_malformed_ledger_line_and_exits_1(self):
+        self.state.mkdir()
+        (self.state / "ledger.jsonl").write_text('{"date":"2026-01-01"}\nnot json\n')
+
+        proc = self.run_cmd("tax", "--history")
+
+        self.assert_malformed_state_exit(proc, self.state / "ledger.jsonl")
+
+    def test_ledger_reports_a_malformed_line_and_exits_1(self):
+        self.state.mkdir()
+        (self.state / "ledger.jsonl").write_text('{"date":"2026-01-01"}\nnot json\n')
+        for args in (["diff"], ["write", "--show", "--json"], ["write", "--dry-run"]):
+            with self.subTest(args=args):
+                proc = self.run_cmd("ledger", *args)
+
+                self.assert_malformed_state_exit(proc, self.state / "ledger.jsonl")
+
+    def test_ledger_diff_reports_a_malformed_interventions_line_and_exits_1(self):
+        self.state.mkdir()
+        (self.state / "ledger.jsonl").write_text(
+            '{"date":"2026-01-01"}\n{"date":"2026-01-08"}\n'
+        )
+        (self.state / "interventions.jsonl").write_text('{"date":"2026-01-02"}\nnot json\n')
+
+        proc = self.run_cmd("ledger", "diff")
+
+        self.assert_malformed_state_exit(proc, self.state / "interventions.jsonl")
+
+    def test_eval_list_reports_a_malformed_results_line_and_exits_2(self):
+        self.state.mkdir()
+        (self.state / "eval.jsonl").write_text('{"a":1}\nnot json\n')
+
+        proc = self.run_cmd("eval", "list")
+
+        self.assertEqual(proc.returncode, 2, proc.stdout)
+        self.assertTrue(
+            proc.stderr.startswith(f"error: malformed JSON line in {self.state / 'eval.jsonl'}:2:"),
+            proc.stderr,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
