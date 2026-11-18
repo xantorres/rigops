@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
@@ -27,6 +28,11 @@ CLAUDE_DIR = HOME / ".claude"
 # The doctor writes this record and stamp; the card reads both.
 GATES_STATE_NAME = "doctor/gates.json"
 UTC_STAMP = "%Y-%m-%dT%H:%M:%SZ"
+
+# A rule loads in every session unless its leading frontmatter has a top-level
+# `paths:` key: no rendered surface honours `globs:`.
+_FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---", re.DOTALL)
+_PATHS_RE = re.compile(r"^paths:", re.MULTILINE)
 
 
 def expand(value) -> Path:
@@ -126,6 +132,14 @@ def read_bytes(path) -> bytes:
 def read_text(path) -> str:
     return read_bytes(path).decode("utf-8", errors="replace")
 
+
+def is_always_on(path) -> bool:
+    try:
+        head = read_text(path)[:2000]
+    except OSError:
+        return False
+    match = _FRONTMATTER_RE.match(head)
+    return not (match and _PATHS_RE.search(match.group(1)))
 
 def size(path) -> int:
     resolved = expand(path)

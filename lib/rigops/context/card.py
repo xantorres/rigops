@@ -28,25 +28,10 @@ SEARCH_LINE = ('search: rigops retrieval search "<q>" '
                '(this realm + mixed; --scope all only on an explicit ask)')
 MAX_NEED_LINES = 15
 
-# Mirrors rigops.doctor.check_budget: a rule with no `paths:` key in its
-# frontmatter loads in every session, scoped or not.
-FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---", re.DOTALL)
-PATHS_RE = re.compile(r"^paths:", re.MULTILINE)
-
-
 def _abspath(cwd) -> Path:
     """Absolute, not resolved: `registry.profile` matches a root the same way,
     so a cwd reached through a symlink (macOS `/tmp`) must not desync from it."""
     return Path(os.path.abspath(os.path.expanduser(str(cwd))))
-
-
-def _is_unscoped(path) -> bool:
-    try:
-        head = core.read_text(path)[:2000]
-    except OSError:
-        return False
-    match = FRONTMATTER_RE.match(head)
-    return not (match and PATHS_RE.search(match.group(1)))
 
 
 def _git_toplevel(cwd: Path):
@@ -115,7 +100,7 @@ def _project_instruction_files(cwd: Path) -> list:
 def _unscoped_rules(rules_dir: Path) -> list:
     if not rules_dir.is_dir():
         return []
-    return [p for p in sorted(rules_dir.rglob("*.md")) if _is_unscoped(p)]
+    return [p for p in sorted(rules_dir.rglob("*.md")) if core.is_always_on(p)]
 
 
 def _preload_components(cfg, cwd: Path) -> list:

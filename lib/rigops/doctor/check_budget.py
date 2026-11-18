@@ -15,7 +15,6 @@ under the true session cost, not the whole of it.
 from __future__ import annotations
 
 import json
-import re
 
 from rigops import core
 
@@ -23,18 +22,6 @@ AREA = "docs"
 CHECK = "budget"
 
 DEFAULT_CEILING = 6000
-FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---", re.DOTALL)
-PATHS_RE = re.compile(r"^paths:", re.MULTILINE)
-
-
-def _is_always_on(path) -> bool:
-    """A rule without ``paths:`` frontmatter loads in every session."""
-    try:
-        head = core.read_text(path)[:2000]
-    except OSError:
-        return False
-    match = FRONTMATTER_RE.match(head)
-    return not (match and PATHS_RE.search(match.group(1)))
 
 
 def _size(path) -> int:
@@ -80,7 +67,7 @@ def members(cfg):
     if law.is_file():
         files.append(law)
     for rule in sorted((core.CLAUDE_DIR / "rules").rglob("*.md")):
-        if _is_always_on(rule):
+        if core.is_always_on(rule):
             files.append(rule)
     files.extend(_memory_index())
     files.extend(_project_instructions(cfg))

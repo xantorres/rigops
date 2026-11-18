@@ -10,7 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from rigops import config as rigops_config
-from rigops import cost, fmt, modelmix, rebuilds, starts, transcripts
+from rigops import core, cost, fmt, modelmix, rebuilds, starts, transcripts
 from rigops.sources import caveman, ccusage, command, rtk
 
 WINDOW_DAYS = 7
@@ -78,7 +78,7 @@ def fixed_tax_entries(cfg=None) -> list[tuple[Path, int]]:
 
     fixed_tax.paths are flat files, always counted. fixed_tax.globs are glob
     patterns; a matched file is excluded when its frontmatter declares
-    paths: or globs: (it's path-scoped, not always-loaded).
+    a top-level paths: key (it's path-scoped, not always-loaded).
     """
     cfg = cfg if cfg is not None else rigops_config.load()
     entries: list[tuple[Path, int]] = []
@@ -99,13 +99,7 @@ def fixed_tax_entries(cfg=None) -> list[tuple[Path, int]]:
             p = Path(match)
             if not p.is_file():
                 continue
-            try:
-                text = p.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-            parts = text.split("---", 2)
-            fm = parts[1] if len(parts) >= 3 and not parts[0].strip() else ""
-            if re.search(r"^\s*(paths|globs)\s*:", fm, re.M):
+            if not core.is_always_on(p):
                 continue
             resolved = p.resolve()
             if resolved in seen:

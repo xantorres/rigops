@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,6 +41,26 @@ class UtcStampTests(unittest.TestCase):
         for value in (None, "", "2026-11-18 09:30:05", "2026-11-18T09:30:05+00:00", 5):
             with self.subTest(value=value):
                 self.assertIsNone(core.parse_utc_stamp(value))
+
+
+class AlwaysOnTests(unittest.TestCase):
+    def test_only_a_top_level_paths_key_in_the_leading_frontmatter_scopes_a_rule(self):
+        cases = {
+            "no frontmatter": ("# Rule\n", True),
+            "frontmatter without paths": ("---\nname: x\n---\n# Rule\n", True),
+            "top-level paths": ("---\npaths:\n  - '**/*.py'\n---\n", False),
+            "crlf paths": ("---\r\npaths: ['*.py']\r\n---\r\n", False),
+            "globs is not a scope": ("---\nglobs: '*.py'\n---\n", True),
+            "indented paths is not a scope": ("---\nmeta:\n  paths: x\n---\n", True),
+            "paths after the frontmatter": ("---\nname: x\n---\npaths: x\n", True),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, (text, expected) in cases.items():
+                with self.subTest(name):
+                    path = Path(tmp) / "rule.md"
+                    path.write_text(text)
+                    self.assertIs(core.is_always_on(path), expected)
+            self.assertFalse(core.is_always_on(Path(tmp) / "gone.md"))
 
 
 if __name__ == "__main__":
