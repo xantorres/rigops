@@ -39,6 +39,20 @@ cleanup() {
 trap cleanup EXIT
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/rigops-redaction.XXXXXX")"
 
+# Labels a layer by basename, suffixed with its position when another
+# layer already holds that name, so every hit names one rule file.
+layer_label() {
+  local name seen
+  name="$(basename "$1")"
+  for seen in public ${PRIVATE_LABELS[@]+"${PRIVATE_LABELS[@]}"}; do
+    if [ "$seen" = "$name" ]; then
+      name="$name#$((${#PRIVATE_FILES[@]} + 1))"
+      break
+    fi
+  done
+  printf '%s' "$name"
+}
+
 if [ -n "${RIGOPS_REDACTION_PATTERNS_B64:-}" ]; then
   if ! printf '%s' "$RIGOPS_REDACTION_PATTERNS_B64" | base64 -d >"$WORK_DIR/private.txt" 2>/dev/null &&
     ! printf '%s' "$RIGOPS_REDACTION_PATTERNS_B64" | base64 -D >"$WORK_DIR/private.txt" 2>/dev/null; then
@@ -52,8 +66,8 @@ else
   for candidate in ${candidates[@]+"${candidates[@]}"}; do
     [ -n "$candidate" ] || continue
     if [ -f "$candidate" ]; then
+      PRIVATE_LABELS+=("$(layer_label "$candidate")")
       PRIVATE_FILES+=("$candidate")
-      PRIVATE_LABELS+=("$(basename "$candidate")")
     elif [ -n "${RIGOPS_REDACTION_PATTERNS:-}" ]; then
       # A layer named on purpose is required; only the defaults are optional.
       echo "error: private redaction patterns not found: $candidate" >&2

@@ -353,6 +353,16 @@ class PrivateLayerTests(unittest.TestCase):
         self.assertEqual(out.returncode, 2, out.stdout + out.stderr)
         self.assertNotIn("clean", out.stdout)
 
+    def test_same_named_layers_get_distinct_labels(self):
+        (self.tmp / "a").mkdir()
+        (self.tmp / "b").mkdir()
+        first = self.write_layer(self.tmp / "a" / "p.txt", "s zz-alpha-[0-9]+\n")
+        second = self.write_layer(self.tmp / "b" / "p.txt", "s zz-beta-[0-9]+\n")
+        env = {"RIGOPS_REDACTION_PATTERNS": f"{first}{os.pathsep}{second}"}
+        out = self.scan("zz-beta-" + "2", extra_env=env)
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        self.assertIn("(p.txt#2 rule 1)", out.stdout)
+
     def test_crlf_layer_still_matches(self):
         layer = self.tmp / "crlf.txt"
         layer.write_bytes(b"# comment\r\n\r\ns zz-alpha-[0-9]+\r\n")
