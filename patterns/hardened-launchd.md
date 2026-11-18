@@ -52,7 +52,7 @@ template defense above. Quoting doctor's environment block exactly:
 	<key>HOME</key>
 	<string>@HOME@</string>
 	<key>PATH</key>
-	<string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+	<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
 @EXTRA_ENV@
 </dict>
 ```
@@ -84,11 +84,9 @@ fails. `load -w` never appears anywhere in the installer.
 The runtime-deadline defense lives in [../libexec/rigops-reap](../libexec/rigops-reap), not
 a plist key: `RIGOPS_RUN_DEADLINE_S` (default 3600s) bounds how long a single run may scan
 before it stops and reports partial results, on the reasoning in its own comment: "Per-fetch
-timeouts alone let a run crawl: three slow remotes stretched one run to 2h41m." `reap` isn't
-one of the two launchd-installed jobs (`install.sh`'s `AVAILABLE_JOBS=(doctor ledger)`), so
-this deadline is currently exercised on-demand and in `tests/smoke.sh` rather than under a
-scheduled trigger - but it's the same mechanism a scheduled job would need for the same
-reason: no plist key can express a wall-clock cap.
+timeouts alone let a run crawl: three slow remotes stretched one run to 2h41m." `reap` is
+an opt-in launchd job (`install.sh --jobs ...,reap`, daily 08:30), and this deadline is what
+bounds its scheduled run: no plist key can express a wall-clock cap.
 
 For hosts without launchd,
 [../templates/cron/crontab.example](../templates/cron/crontab.example) is the fallback: healing
