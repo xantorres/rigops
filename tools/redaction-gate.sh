@@ -153,6 +153,11 @@ grep_rule() {
   if [ "$rule_case" = i ]; then
     opts+=(-i)
   fi
+  # A failed redirect exits 1 like "no match", so it is opened on its own.
+  if ! : >"$WORK_DIR/match"; then
+    echo "redaction gate: cannot write match file on rule ${lineno} of ${label} patterns${context}" >&2
+    exit 2
+  fi
   grep "${opts[@]}" -- "$pattern" "$@" >"$WORK_DIR/match" || rc=$?
   if [ "$rc" -gt 1 ]; then
     echo "redaction gate: grep failed (exit $rc) on rule ${lineno} of ${label} patterns${context}" >&2

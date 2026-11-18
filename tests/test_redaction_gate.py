@@ -142,6 +142,27 @@ class ZeroRulesTests(unittest.TestCase):
         )
         self.assert_fails_closed(out)
 
+    @unittest.skipIf(os.geteuid() == 0, "root writes any file")
+    def test_unwritable_match_file_fails(self):
+        script = sandbox_gate(self.tmp / "repo", public="s zz-none-[0-9]+\n" + PLACEHOLDER_RULE)
+        self.msg.write_text(PLACEHOLDER_HIT + "\n", encoding="utf-8")
+        work = self.tmp / "work"
+        work.mkdir()
+        bin_dir = self.tmp / "bin"
+        bin_dir.mkdir()
+        shim = bin_dir / "grep"
+        shim.write_text(
+            "#!/bin/sh\n"
+            f'"{shutil.which("grep")}" "$@"; rc=$?\n'
+            f'chmod 000 "{work}"/rigops-redaction.*/match 2>/dev/null\n'
+            "exit $rc\n",
+            encoding="utf-8",
+        )
+        shim.chmod(0o755)
+        env = {"TMPDIR": str(work), "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+        out = run_gate(script, "--message", str(self.msg), home=self.home, extra_env=env)
+        self.assert_fails_closed(out)
+
     def test_loaded_rules_still_report_clean(self):
         script = sandbox_gate(self.tmp / "repo")
         out = run_gate(script, "--message", str(self.msg), home=self.home)
