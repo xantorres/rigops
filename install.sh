@@ -1085,9 +1085,17 @@ PYEOF
 }
 
 remove_job() {
-    local label="$1" plist="$2" sha="$3" domain="$4" current_hash disabled_path
+    local label="$1" plist="$2" sha="$3" domain="$4" current_hash disabled_path alt_domain
     if [ "$APPLY" -eq 1 ] && command -v launchctl >/dev/null 2>&1; then
         launchctl bootout "$domain/$label" >/dev/null 2>&1 || true
+        # The record written before a load says gui; bootstrap may have
+        # fallen back to user before the run was cut short.
+        case "$domain" in
+            gui/*) alt_domain="user/${domain#gui/}" ;;
+            user/*) alt_domain="gui/${domain#user/}" ;;
+            *) alt_domain="" ;;
+        esac
+        [ -z "$alt_domain" ] || launchctl bootout "$alt_domain/$label" >/dev/null 2>&1 || true
     fi
     if [ -f "$plist" ]; then
         current_hash="$(sha256_file "$plist")"

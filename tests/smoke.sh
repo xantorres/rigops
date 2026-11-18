@@ -61,9 +61,11 @@ for line in entries:
 PYEOF
 }
 
-# Puts a fake launchctl in $1/bin that keeps loaded labels as files under
-# $1/loaded and fails bootstrap for any label listed in $FAKE_LAUNCHD_FAIL,
-# so job paths run on any OS without touching the real launchd.
+# Puts a fake launchctl in $1/bin that keeps each loaded label's domain in
+# $1/loaded/<label>, so job paths run on any OS without the real launchd.
+# FAKE_LAUNCHD_FAIL lists labels and FAKE_LAUNCHD_FAIL_DOMAIN names a domain
+# kind (gui) whose bootstrap fails; FAKE_LAUNCHD_LOCK is a dir made read-only
+# after a load, to interrupt the install right after it.
 make_fake_launchctl() {
     mkdir -p "$1/bin" "$1/loaded"
     cat >"$1/bin/launchctl" <<'EOF'
@@ -74,11 +76,13 @@ case "$1" in
     bootstrap)
         label="$(basename "$3" .plist)"
         case " ${FAKE_LAUNCHD_FAIL:-} " in *" $label "*) exit 5 ;; esac
-        : >"$state/loaded/$label"
+        case "$2" in "${FAKE_LAUNCHD_FAIL_DOMAIN:-none}"/*) exit 5 ;; esac
+        echo "$2" >"$state/loaded/$label"
+        [ -z "${FAKE_LAUNCHD_LOCK:-}" ] || chmod a-w "$FAKE_LAUNCHD_LOCK"
         ;;
     bootout)
         label="${2##*/}"
-        [ -f "$state/loaded/$label" ] || exit 3
+        [ "$(cat "$state/loaded/$label" 2>/dev/null)" = "${2%/*}" ] || exit 3
         rm -f "$state/loaded/$label"
         ;;
     list)
@@ -721,6 +725,17 @@ jobs_install --uninstall --apply --yes
 [ "$RC" -eq 0 ] || fail "uninstall after failed load exit $RC: $OUT"
 [ -z "$(ls "$FAKE_LAUNCHD/loaded")" ] || fail "uninstall left jobs loaded: $(ls "$FAKE_LAUNCHD/loaded")"
 [ -z "$(ls "$JOBS_AGENTS")" ] || fail "uninstall left plists: $(ls "$JOBS_AGENTS")"
+
+echo "smoke: uninstall unloads a job an interrupted install loaded in the user domain"
+FAKE_LAUNCHD_FAIL_DOMAIN=gui FAKE_LAUNCHD_LOCK="$JOBS_HOME/.local/share/rigops" \
+    jobs_install --apply --jobs doctor --yes
+chmod u+w "$JOBS_HOME/.local/share/rigops"
+[ "$RC" -ne 0 ] || fail "install interrupted after the load exited 0: $OUT"
+[ "$(cat "$FAKE_LAUNCHD/loaded/$JOB_PREFIX.doctor" 2>/dev/null)" = "user/$(id -u)" ] \
+    || fail "doctor not loaded in the user domain before the interruption"
+jobs_install --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "uninstall after the interrupted install exit $RC: $OUT"
+[ -z "$(ls "$FAKE_LAUNCHD/loaded")" ] || fail "uninstall left the user-domain job loaded: $(ls "$FAKE_LAUNCHD/loaded")"
 
 echo "smoke: --jobs unloads a job it drops"
 jobs_install --apply --jobs doctor,ledger --yes
