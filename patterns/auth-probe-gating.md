@@ -74,10 +74,9 @@ Sample `--json` in the same disabled state:
 {"ok": null, "detail": "disabled (set authprobe.enabled true or pass --force)", "enabled": false}
 ```
 
-The gate into fleet health is documented directly in
-[../config/config.schema.json](../config/config.schema.json)'s own description
-of the `authprobe` section: "Wire it from doctor via checks.custom: rigops
-authprobe." `rigops doctor`'s `run_custom_check` (in
+The gate into fleet health is documented in the `authprobe` section of
+[../docs/CONFIG.md](../docs/CONFIG.md#authprobe): wire it into doctor with a
+`checks.custom` entry that runs `rigops authprobe`. `rigops doctor`'s `run_custom_check` (in
 [../libexec/rigops-doctor](../libexec/rigops-doctor)) runs any shell command
 and classifies its exit code as ok/warn/fail against configured thresholds -
 pointing one `checks.custom` entry at `rigops authprobe` turns the probe into

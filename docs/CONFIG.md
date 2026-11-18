@@ -6,7 +6,7 @@ Every key rigops reads, its type, its default, and one focused example per block
 
 Config file path: `${RIGOPS_CONFIG:-${XDG_CONFIG_HOME:-~/.config}/rigops/config.json}`.
 
-For any given setting, the mental model is CLI flag > config file value > built-in default. In practice this means: where a command exposes a matching flag (`--dir` for `transcripts_dir`, `--registry` for `doctor.registry`, `--max-delete` for `janitor.max_delete`, `--grace-days` for `reaper.grace_days`), that flag wins for that one run; otherwise the loaded config file's value wins; a key absent from the config file falls back to the built-in default. Config values are deep-merged onto the defaults, so a config file only needs to specify what it's overriding.
+For any given setting, the mental model is CLI flag > config file value > built-in default. In practice this means: where a command exposes a matching flag (`rigops tax --dir` for `transcripts_dir`, `rigops doctor --registry` for `doctor.registry`, `rigops janitor --max-delete` for `janitor.max_delete`, `rigops reap --grace-days` for `reaper.grace_days`), that flag wins for that one run; otherwise the loaded config file's value wins; a key absent from the config file falls back to the built-in default. Config values are deep-merged onto the defaults, so a config file only needs to specify what it's overriding.
 
 There is no generic "environment variable overrides any config key" layer. A small, fixed set of env vars exist, each with one specific job - see the table below.
 
@@ -87,7 +87,7 @@ Scopes the ledger's interaction-friction columns (`denials`, `denials_headless`,
 
 ## `context`
 
-Config for the plugin's `ctx-nudge` hook, the statusline, `rigops card` (the `doctor` section below documents the gates record it reads) and `rigops nudge`.
+Config for the plugin's `ctx-nudge` hook, the statusline, `rigops card` (the `doctor` section below documents the gates record it reads) and `rigops nudge`. Run by hand, `rigops card` and `rigops nudge "<prompt>"` print what their hook would for the working directory, or for the one `--cwd` names; `nudge --no-log` keeps its prefetch out of the retrieval log. Both take `--registry` to read another roots registry. `card --json` prints the card as JSON, and `nudge --json` prints the run's metadata without the text. Under `--hook` each reads its hook's JSON payload on stdin (SessionStart for `card`; UserPromptSubmit, prompt included, for `nudge`), takes the working directory from it, and exits 0 even on an error.
 
 - `nudge_tiers` (`array<int>`, minimum 3 items, default `[250000, 350000, 500000]`) - ascending token thresholds: low / heavy / critical.
 - `rearm_tokens` (`int`, default `50000`) - token climb past the lowest tier required to re-fire the nudge after it's already fired once in a session.
@@ -162,7 +162,7 @@ Config for `rigops doctor` (see [REGISTRY.md](REGISTRY.md) for the judgment mode
 
 ## `reaper`
 
-Config for `rigops reap` (see [SAFETY.md](SAFETY.md) for the kill/removal guards).
+Config for `rigops reap` (see [SAFETY.md](SAFETY.md) for the kill/removal guards). For one run, `--root <dir>` scans that tree in place of `roots`, `--repo <path>` (repeatable) limits the worktree scan to the named repositories, while the orphan-daemon sweep still walks `--root` or `roots`. `--no-fetch` skips `git fetch`, so the merged check reads local refs only, and `--json` prints the report as JSON.
 
 - `roots` (`array<string>`, default `["~/projects"]`) - trees scanned for repositories. A repository is any directory with a `.git` directory two levels under a root (a `group/repo` layout).
 - `sessions_dir` (`string`, default `~/.claude/sessions`) - directory of live-session JSON files (`{"pid": N, "cwd": "..."}`). A worktree whose cwd is claimed by a live session (pid still alive) is never touched. A missing directory just disables this extra guard; it isn't an error.
@@ -189,7 +189,7 @@ Config for `rigops reap` (see [SAFETY.md](SAFETY.md) for the kill/removal guards
 
 ## `janitor`
 
-Config for `rigops janitor` (see [SAFETY.md](SAFETY.md) for the delete cap).
+Config for `rigops janitor` (see [SAFETY.md](SAFETY.md) for the delete cap). `--json` prints the run report as JSON.
 
 - `rules` (`array`, default `[]`) - applied in order. Each rule:
   - `name`, `path` (base file or directory), `glob` (default `*`; matched against entry **names** only - a pattern containing `/` matches nothing), `older_than_days`, `max_depth`.
@@ -249,7 +249,7 @@ External CLIs mined for ledger row annotations, stored under `row.sources` in `l
 
 ## `authprobe`
 
-Headless-credential probe: does the unattended `claude -p` credential still work, independent of an interactive login session. Normally wired into `doctor` via a `checks.custom` entry that runs `rigops authprobe`.
+Headless-credential probe: does the unattended `claude -p` credential still work, independent of an interactive login session. Normally wired into `doctor` via a `checks.custom` entry that runs `rigops authprobe`. `--json` prints the result as one JSON object.
 
 - `enabled` (`bool`, default `false`) - ships off. Run with `--force` on the command line to bypass without touching config.
 - `command` (`array<string>`, default `["claude", "-p", "reply with exactly: ok", "--max-turns", "1"]`) - argv run under a scrubbed environment.

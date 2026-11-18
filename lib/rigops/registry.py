@@ -6,6 +6,9 @@ import re
 from rigops import config
 
 DEFAULT_MAX_RUNTIME_H = 6.0
+REQUIRED_FIELDS = (
+    "domain", "trigger", "entry_point", "output", "cadence", "last_verified", "health", "group",
+)
 
 _ITEM_START_RE = re.compile(r"^-\s+id:\s*(\S+)\s*$")
 _FIELD_RE = re.compile(r"^([a-z_]+):\s*(.*)$")
@@ -124,6 +127,9 @@ def load_registry(path) -> list[dict]:
         if item_id in seen_ids:
             raise SystemExit(f"error: duplicate registry item id: {item_id!r}")
         seen_ids.add(item_id)
+        missing = [key for key in REQUIRED_FIELDS if not item.get(key, "").strip()]
+        if missing:
+            raise SystemExit(f"error: item {item_id!r}: missing {', '.join(missing)}")
         item.setdefault("plist", "")
         item.setdefault("notes", "")
         item["max_runtime_h"] = _coerce_max_runtime_h(item.get("max_runtime_h"), item_id)
