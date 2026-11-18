@@ -18,7 +18,7 @@ What's first-class on which platform, the version floors, and exactly what CI co
 
 From `.github/workflows/ci.yml`:
 
-- **lint job** - `ubuntu-latest` only, Python 3.9 and 3.13 matrix. Runs `make check` (redaction gate over the tree and full history, shellcheck, ruff, unit tests, hook tests, manifest validation, strict plugin validation).
+- **lint job** - `ubuntu-latest` only, Python 3.9 and 3.13 matrix. Runs `make check` (redaction gate over the tree and full history, shellcheck, ruff, unit tests, hook tests, manifest validation, strict plugin validation), then re-runs the redaction gate unit tests with `mawk` as `awk` under GNU grep, and fails if either tool is another flavour.
 - **smoke job** - `ubuntu-latest` on Python 3.9, and `macos-latest` on Python 3.11. Runs `make smoke` (`tests/smoke.sh`) on both. `make smoke-launchd` (`tests/smoke-launchd.sh`) runs on the macOS leg only.
 
 So: the Python 3.9 floor is exercised on Linux; launchd-specific behavior is exercised on macOS; there is no Windows leg anywhere, and cron is templated but never actually executed by CI on Linux.

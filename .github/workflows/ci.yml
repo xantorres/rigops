@@ -45,6 +45,17 @@ jobs:
           RIGOPS_REDACTION_PATTERNS_B64: ${{ secrets.RIGOPS_REDACTION_PATTERNS_B64 }}
         run: make check STRICT=1
 
+      # The runner's default awk may be gawk; the gate must also hold under mawk.
+      - name: gate tests under GNU grep and mawk
+        env:
+          RIGOPS_TEST_EXPECT_AWK: mawk
+          RIGOPS_TEST_EXPECT_GREP: GNU grep
+        run: |
+          mawk_bin="$(command -v mawk)"
+          mkdir -p "$RUNNER_TEMP/mawk"
+          ln -sf "$mawk_bin" "$RUNNER_TEMP/mawk/awk"
+          PATH="$RUNNER_TEMP/mawk:$PATH" python3 -m unittest -v tests.test_tool_flavours tests.test_redaction_gate
+
   smoke:
     runs-on: macos-latest
     steps:
