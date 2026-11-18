@@ -1228,6 +1228,19 @@ def run(opts: Any) -> int:
                               f"{len(blockers)} live process(es) block removal (pids: {pids})")
                     log(f"SKIP-LIVE tree={tree} pids={pids}")
                     continue
+                # The scan verdict can be an hour old; edits or a session since then must win.
+                fresh = classify(
+                    wt, repo, res["target"], live_worktree_cwds(opts.sessions_dir), self_cwd,
+                    default_branch(repo), opts.grace_days,
+                    opts.ignored_untracked_dirs, opts.ignored_untracked_prefixes,
+                )
+                if fresh != REAP:
+                    wt["verdict"] = fresh
+                    wt["applied"] = {"removed": False, "detail": f"verdict changed: {fresh}"}
+                    if not opts.json:
+                        print(f"skip: {Path(wt['path']).name} -- verdict changed: {fresh}")
+                    log(f"SKIP-CHANGED tree={tree} verdict={fresh}")
+                    continue
                 ok, detail = reap(repo, wt, opts.dry_run)
                 wt["applied"] = {"removed": ok and not opts.dry_run, "detail": detail}
                 prefix = "would run" if opts.dry_run else ("ok" if ok else "FAILED")

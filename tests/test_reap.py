@@ -979,6 +979,58 @@ class RunApplyJsonPurityTests(GitFixtureTestCase):
         self.assertFalse(wt_path.exists())
 
 
+class RunRecheckBeforeRemovalTests(GitFixtureTestCase):
+    def _apply_with_change_after_scan(self, change) -> tuple[Path, dict]:
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        wt_path = self.tmp / "wt-merged"
+        _run_git(["worktree", "add", "-b", "feature-merged", str(wt_path)], repo)
+        sessions_dir = self.tmp / "sessions"
+        sessions_dir.mkdir()
+
+        # ps_snapshot is the first call after the scan loop, so this lands
+        # between the verdict and the removal.
+        orig = reap.ps_snapshot
+        self.addCleanup(setattr, reap, "ps_snapshot", orig)
+        reap.ps_snapshot = lambda: (change(wt_path, sessions_dir), orig())[1]
+
+        opts = types.SimpleNamespace(
+            selftest=False, apply=True, dry_run=False, json=True,
+            repo=[repo], roots=[], no_fetch=True, grace_days=14,
+            sessions_dir=sessions_dir, deadline_s=60,
+            max_kills_per_tree=20, orphan_min_age_s=172800, kill_grace_s=5,
+            ignored_untracked_dirs=set(), ignored_untracked_prefixes=(),
+        )
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            reap.run(opts)
+        worktrees = json.loads(buf.getvalue())["repos"][0]["worktrees"]
+        wt_real = os.path.realpath(wt_path)
+        return wt_path, next(w for w in worktrees if w["path"] == wt_real)
+
+    def test_tree_dirtied_after_scan_survives_apply(self):
+        def dirty(wt_path, _sessions):
+            (wt_path / "notes.txt").write_text("wip\n")
+
+        wt_path, target = self._apply_with_change_after_scan(dirty)
+
+        self.assertTrue(wt_path.exists())
+        self.assertEqual(target["verdict"], "skip: dirty")
+        self.assertFalse(target["applied"]["removed"])
+        self.assertIn("verdict changed", target["applied"]["detail"])
+
+    def test_session_started_after_scan_blocks_removal(self):
+        def occupy(wt_path, sessions):
+            (sessions / "x.json").write_text(json.dumps(
+                {"pid": os.getpid(), "cwd": os.path.realpath(wt_path)}))
+
+        wt_path, target = self._apply_with_change_after_scan(occupy)
+
+        self.assertTrue(wt_path.exists())
+        self.assertEqual(target["verdict"], "skip: in-use")
+        self.assertFalse(target["applied"]["removed"])
+
+
 class RunRepeatedRepoTests(GitFixtureTestCase):
     def _scanned(self, repos):
         sessions_dir = self.tmp / "sessions"
