@@ -1188,6 +1188,26 @@ os.replace(tmp_path, path)
 PYEOF
 }
 
+remove_recorded_file() {
+    local fpath="$1" sha="$2" current_hash
+    if [ -f "$fpath" ]; then
+        current_hash="$(sha256_file "$fpath")"
+        if [ "$current_hash" = "$sha" ]; then
+            if [ "$APPLY" -eq 1 ]; then
+                rm -f "$fpath"
+                printf '     removed  %s\n' "$fpath"
+            else
+                printf '     plan: would remove %s\n' "$fpath"
+            fi
+        else
+            echo "warn: $fpath modified since install, leaving in place" >&2
+            printf '     kept     %s (modified since install)\n' "$fpath"
+        fi
+    else
+        printf '     absent   %s\n' "$fpath"
+    fi
+}
+
 do_uninstall() {
     local manifest_path="$PREFIX/install.manifest.json"
     if [ ! -f "$manifest_path" ]; then
@@ -1229,7 +1249,7 @@ PYEOF
     m_state_dir_external="$(printf '%s\n' "$meta_line" | cut -f8)"
 
     step_log "uninstall jobs recorded in manifest"
-    local tag label plist sha domain current_hash
+    local tag label plist sha domain
     while IFS=$'\t' read -r tag label plist sha domain; do
         [ "$tag" = "JOB" ] || continue
         remove_job "$label" "$plist" "$sha" "$domain"
@@ -1238,26 +1258,10 @@ PYEOF
     undo_statusline "$manifest_path"
 
     step_log "uninstall files under $m_prefix"
-    local rel fpath
+    local rel
     while IFS=$'\t' read -r tag rel sha; do
         [ "$tag" = "FILE" ] || continue
-        fpath="$m_prefix/$rel"
-        if [ -f "$fpath" ]; then
-            current_hash="$(sha256_file "$fpath")"
-            if [ "$current_hash" = "$sha" ]; then
-                if [ "$APPLY" -eq 1 ]; then
-                    rm -f "$fpath"
-                    printf '     removed  %s\n' "$fpath"
-                else
-                    printf '     plan: would remove %s\n' "$fpath"
-                fi
-            else
-                echo "warn: $fpath modified since install, leaving in place" >&2
-                printf '     kept     %s (modified since install)\n' "$fpath"
-            fi
-        else
-            printf '     absent   %s\n' "$fpath"
-        fi
+        remove_recorded_file "$m_prefix/$rel" "$sha"
     done <"$dump"
 
     if [ "$APPLY" -eq 1 ]; then
