@@ -648,6 +648,21 @@ jobs_install --apply --yes
 jobs_install --uninstall --apply --yes
 [ "$RC" -eq 0 ] || fail "uninstall after janitor re-run exit $RC: $OUT"
 
+echo "smoke: a declined purge leaves no removed job for the next install"
+jobs_install --apply --jobs doctor,janitor --yes
+[ "$RC" -eq 0 ] || fail "opt-in janitor install exit $RC: $OUT"
+jobs_install --uninstall --apply --purge <<<n
+[ "$RC" -eq 0 ] || fail "declined purge exit $RC: $OUT"
+[ -f "$JOBS_MANIFEST" ] || fail "declined purge removed the manifest"
+[ -z "$(manifest_labels "$JOBS_MANIFEST")" ] \
+    || fail "declined purge kept removed jobs: $(manifest_labels "$JOBS_MANIFEST")"
+jobs_install --apply --yes
+[ "$RC" -eq 0 ] || fail "install after declined purge exit $RC: $OUT"
+[ "$(manifest_labels "$JOBS_MANIFEST" | tr '\n' ' ')" = "$JOB_PREFIX.doctor $JOB_PREFIX.ledger " ] \
+    || fail "install after declined purge job set: $(manifest_labels "$JOBS_MANIFEST")"
+jobs_install --uninstall --apply --purge --yes
+[ "$RC" -eq 0 ] || fail "purge after declined purge exit $RC: $OUT"
+
 echo "smoke: rendered job plists parse as well-formed plists"
 ALL_JOBS="doctor ledger janitor reap"
 jobs_install --apply --jobs "$(printf '%s' "$ALL_JOBS" | tr ' ' ',')" --yes

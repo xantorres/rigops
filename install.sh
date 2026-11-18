@@ -1090,6 +1090,28 @@ delete instead: rm \"$disabled_path\"" >&2
     fi
 }
 
+# Keeps a declined purge's manifest for a later --purge, minus the jobs,
+# files and wiring already removed, which a next install would revive.
+forget_removed() {
+    "$PY_ABS" - "$1" <<'PYEOF'
+import json
+import os
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as fh:
+    data = json.load(fh)
+for key in ("jobs", "files", "symlinks"):
+    data[key] = []
+data.pop("statusline", None)
+tmp_path = path + ".tmp"
+with open(tmp_path, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, indent=2, sort_keys=True)
+    fh.write("\n")
+os.replace(tmp_path, path)
+PYEOF
+}
+
 do_uninstall() {
     local manifest_path="$PREFIX/install.manifest.json"
     if [ ! -f "$manifest_path" ]; then
@@ -1224,6 +1246,7 @@ PYEOF
                     y | Y | yes | YES) : ;;
                     *)
                         echo "purge cancelled"
+                        forget_removed "$manifest_path"
                         exit 0
                         ;;
                 esac
