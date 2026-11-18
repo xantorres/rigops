@@ -629,6 +629,22 @@ jobs_install --uninstall --apply --yes
 [ "$RC" -eq 0 ] || fail "uninstall after skipped-jobs runs exit $RC: $OUT"
 [ -z "$(ls "$FAKE_LAUNCHD/loaded")" ] || fail "doctor still loaded after uninstall"
 
+echo "smoke: rendered job plists parse as well-formed plists"
+ALL_JOBS="doctor ledger"
+jobs_install --apply --jobs "$(printf '%s' "$ALL_JOBS" | tr ' ' ',')" --yes
+[ "$RC" -eq 0 ] || fail "all-jobs install exit $RC: $OUT"
+for job in $ALL_JOBS; do
+    python3 - "$JOBS_AGENTS/$JOB_PREFIX.$job.plist" <<'PYEOF' || fail "$job plist does not parse with plistlib"
+import plistlib
+import sys
+
+with open(sys.argv[1], "rb") as fh:
+    plistlib.load(fh)
+PYEOF
+done
+jobs_install --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "all-jobs uninstall exit $RC: $OUT"
+
 rm -rf "$JOBS_HOME"
 JOBS_HOME=""
 
