@@ -40,8 +40,10 @@ trap cleanup EXIT
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/rigops-redaction.XXXXXX")"
 
 if [ -n "${RIGOPS_REDACTION_PATTERNS_B64:-}" ]; then
-  if ! printf '%s' "$RIGOPS_REDACTION_PATTERNS_B64" | base64 -d >"$WORK_DIR/private.txt" 2>/dev/null; then
-    printf '%s' "$RIGOPS_REDACTION_PATTERNS_B64" | base64 -D >"$WORK_DIR/private.txt"
+  if ! printf '%s' "$RIGOPS_REDACTION_PATTERNS_B64" | base64 -d >"$WORK_DIR/private.txt" 2>/dev/null &&
+    ! printf '%s' "$RIGOPS_REDACTION_PATTERNS_B64" | base64 -D >"$WORK_DIR/private.txt" 2>/dev/null; then
+    echo "error: RIGOPS_REDACTION_PATTERNS_B64 is not valid base64" >&2
+    exit 2
   fi
   PRIVATE_FILES=("$WORK_DIR/private.txt")
   PRIVATE_LABELS=("private")
@@ -93,13 +95,19 @@ load_rules() {
     echo "error: public redaction patterns missing: $PUBLIC_PATTERNS" >&2
     exit 2
   fi
-  RULES="$(emit_rules "$PUBLIC_PATTERNS" "public")"
+  if ! RULES="$(emit_rules "$PUBLIC_PATTERNS" "public")"; then
+    echo "error: public redaction patterns unreadable: $PUBLIC_PATTERNS" >&2
+    exit 2
+  fi
   if [ -z "$RULES" ]; then
     echo "error: public redaction patterns load no rules: $PUBLIC_PATTERNS" >&2
     exit 2
   fi
   while [ "$i" -lt "${#PRIVATE_FILES[@]}" ]; do
-    layer="$(emit_rules "${PRIVATE_FILES[$i]}" "${PRIVATE_LABELS[$i]}")"
+    if ! layer="$(emit_rules "${PRIVATE_FILES[$i]}" "${PRIVATE_LABELS[$i]}")"; then
+      echo "error: private redaction patterns unreadable: ${PRIVATE_LABELS[$i]}" >&2
+      exit 2
+    fi
     if [ -z "$layer" ]; then
       echo "error: private redaction patterns load no rules: ${PRIVATE_LABELS[$i]}" >&2
       exit 2

@@ -121,6 +121,27 @@ class ZeroRulesTests(unittest.TestCase):
         )
         self.assert_fails_closed(out)
 
+    def test_undecodable_private_layer_fails(self):
+        script = sandbox_gate(self.tmp / "repo")
+        out = run_gate(
+            script, "--message", str(self.msg), home=self.home,
+            extra_env={"RIGOPS_REDACTION_PATTERNS_B64": "!!!not*base64"},
+        )
+        self.assert_fails_closed(out)
+
+    @unittest.skipIf(os.geteuid() == 0, "root reads any file")
+    def test_unreadable_private_layer_fails(self):
+        script = sandbox_gate(self.tmp / "repo")
+        layer = self.tmp / "locked.txt"
+        layer.write_text(PLACEHOLDER_RULE, encoding="utf-8")
+        layer.chmod(0)
+        self.addCleanup(layer.chmod, 0o600)
+        out = run_gate(
+            script, "--message", str(self.msg), home=self.home,
+            extra_env={"RIGOPS_REDACTION_PATTERNS": str(layer)},
+        )
+        self.assert_fails_closed(out)
+
     def test_loaded_rules_still_report_clean(self):
         script = sandbox_gate(self.tmp / "repo")
         out = run_gate(script, "--message", str(self.msg), home=self.home)
