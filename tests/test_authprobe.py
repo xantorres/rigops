@@ -14,6 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from rigops import authprobe, levers  # noqa: E402
 from rigops import config as rigops_config  # noqa: E402
 
+from tests.support import no_external_sources  # noqa: E402
+
 CFG = {
     "authprobe": {
         "command": ["fake", "cmd"],
@@ -186,6 +188,9 @@ class ProbeTests(unittest.TestCase):
 
 
 class LeversSourceAnnotationsTests(unittest.TestCase):
+    def setUp(self):
+        no_external_sources(self)
+
     def test_custom_entry_present_and_builtin_keys_always_present(self):
         cfg = {
             "sources": {

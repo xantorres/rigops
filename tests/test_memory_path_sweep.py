@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,6 +23,13 @@ def _store(tmp, notes):
 
 
 class SweepTest(unittest.TestCase):
+    def setUp(self):
+        # A never-created home outside the ephemeral prefixes, so a `~/` path here is
+        # dead whatever HOME the suite runs under (a temp HOME would read as /tmp).
+        patch = mock.patch.dict(os.environ, {"HOME": "/sweep-test-home-never-created"})
+        patch.start()
+        self.addCleanup(patch.stop)
+
     def run_modes(self, notes, skip=()):
         with tempfile.TemporaryDirectory() as tmp:
             _store(tmp, notes)

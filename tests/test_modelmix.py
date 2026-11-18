@@ -12,6 +12,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from rigops import levers, modelmix  # noqa: E402
 from rigops.doctor import check_levers  # noqa: E402
 
+from tests.support import no_external_sources  # noqa: E402
+
 
 def turn(mid: str, minutes: int, model: str, created: int) -> dict:
     ts = dt.datetime(2026, 8, 12, 9, minutes, tzinfo=dt.timezone.utc)
@@ -42,6 +44,9 @@ class DefaultFamilyTests(unittest.TestCase):
 
 
 class LedgerFieldsTests(unittest.TestCase):
+    def setUp(self):
+        no_external_sources(self)
+
     def test_share_of_main_thread_eit_on_the_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "projects"

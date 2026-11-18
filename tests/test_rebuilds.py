@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import levers, rebuilds  # noqa: E402
 
+from tests.support import no_external_sources  # noqa: E402
+
 EIT_SCRIPT = Path(__file__).resolve().parent.parent / "libexec" / "rigops-eit"
 UTC = dt.timezone.utc
 BASE = dt.datetime(2026, 8, 12, 9, 0, tzinfo=UTC)
@@ -60,6 +62,7 @@ def session_rows() -> list:
 
 class ScanTests(unittest.TestCase):
     def setUp(self):
+        no_external_sources(self)
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         write(self.root, session_rows())

@@ -658,10 +658,13 @@ class CheckPointersMemoryTests(unittest.TestCase):
             f"transcript {self.SESSION}.jsonl and {self.SESSION}/subagents/a.jsonl "
             f"but the note {self.NOTE} is a pointer\n"
         )
-        with tempfile.TemporaryDirectory() as tmp:
+        pointers = {"ignore_prefixes": ["/this-prefix-matches-nothing-doctor-test"]}
+        with fake_home() as home, tempfile.TemporaryDirectory() as tmp:
+            (home / ".claude").mkdir()
             source = Path(tmp) / "source.md"
             source.write_text(text)
-            findings = check_pointers.run({"doctor": {"pointers": {"sources": [str(source)]}}})
+            pointers["sources"] = [str(source)]
+            findings = check_pointers.run({"doctor": {"pointers": pointers}})
             label = core.expand(source)
         self.assertEqual(
             [f.key for f in findings if f.key.startswith("path:")],

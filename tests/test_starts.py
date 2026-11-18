@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import levers, starts  # noqa: E402
 
+from tests.support import no_external_sources  # noqa: E402
+
 TAX_SCRIPT = Path(__file__).resolve().parent.parent / "libexec" / "rigops-tax"
 UTC = dt.timezone.utc
 
@@ -95,6 +97,8 @@ def make_tree(tmp: str) -> Path:
 
 
 class CollectStartsTests(unittest.TestCase):
+    def setUp(self):
+        no_external_sources(self)
 
     def test_first_shape_per_main_session_inside_the_window(self):
         with tempfile.TemporaryDirectory() as tmp:

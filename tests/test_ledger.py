@@ -18,6 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import cost, levers, state  # noqa: E402
 
+from tests.support import no_external_sources, path_with_failing_sources  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LEDGER_SCRIPT = REPO_ROOT / "libexec" / "rigops-ledger"
 FIXTURE_TRANSCRIPTS = Path(__file__).resolve().parent / "fixtures" / "transcripts"
@@ -40,6 +42,7 @@ def _cfg_dict() -> dict:
 class EnvIsolatedTestCase(unittest.TestCase):
     def setUp(self):
         self._env = dict(os.environ)
+        no_external_sources(self)
 
     def tearDown(self):
         os.environ.clear()
@@ -134,7 +137,8 @@ class BuildRowTests(EnvIsolatedTestCase):
 def _run_ledger(args: list, env: dict) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(LEDGER_SCRIPT), *args],
-        env=env, capture_output=True, text=True, check=False,
+        env={**env, "PATH": path_with_failing_sources(env.get("PATH", ""))},
+        capture_output=True, text=True, check=False,
     )
 
 
