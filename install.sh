@@ -162,6 +162,8 @@ AVAILABLE_JOBS=(doctor ledger janitor reap)
 # janitor and reap delete on a schedule, so only --jobs installs them.
 DEFAULT_JOBS=(doctor ledger)
 SELECTED_JOBS=()
+# Selected jobs another LaunchAgent already runs; install.sh leaves them unscheduled.
+JOBS_ELSEWHERE=()
 if [ -n "$JOBS_FILTER" ]; then
     while IFS= read -r name; do
         [ -n "$name" ] || continue
@@ -716,9 +718,39 @@ load_launchd_job() {
     exit 1
 }
 
+# Prints the first LaunchAgent other than $2 that already runs job $1, as
+# `rigops <job>` or `rigops-<job>`, so a job is never scheduled twice.
+job_scheduled_elsewhere() {
+    [ -d "$LAUNCH_AGENTS_DIR" ] || return 0
+    "$PY_ABS" - "$1" "$LAUNCH_AGENTS_DIR" "$2" <<'PYEOF'
+import os
+import plistlib
+import sys
+
+name, agents, own = sys.argv[1:4]
+for entry in sorted(os.listdir(agents)):
+    path = os.path.join(agents, entry)
+    if not entry.endswith(".plist") or path == own:
+        continue
+    try:
+        with open(path, "rb") as fh:
+            data = plistlib.load(fh)
+    except Exception:  # unreadable or not a plist: nothing it schedules can be told
+        continue
+    if not isinstance(data, dict) or data.get("Disabled") is True:
+        continue
+    argv = data.get("ProgramArguments") or [data.get("Program", "")]
+    words = [os.path.basename(str(a)) for a in argv] if isinstance(argv, list) else []
+    for i, word in enumerate(words):
+        if word == "rigops-" + name or (word == "rigops" and words[i + 1:i + 2] == [name]):
+            print(path)
+            sys.exit(0)
+PYEOF
+}
+
 job_step() {
     local name="$1" tmpl label dest_plist tmp_plist rendered_hash dest_hash
-    local content_unchanged is_loaded file_status action used_domain
+    local content_unchanged is_loaded file_status action used_domain elsewhere
 
     tmpl="$ROOT_DIR/templates/launchd/$name.plist.in"
     if [ ! -f "$tmpl" ]; then
@@ -727,6 +759,13 @@ job_step() {
     fi
     label="${LABEL_PREFIX}.$name"
     dest_plist="$LAUNCH_AGENTS_DIR/$label.plist"
+    elsewhere="$(job_scheduled_elsewhere "$name" "$dest_plist")"
+    if [ -n "$elsewhere" ]; then
+        JOBS_ELSEWHERE+=("$name")
+        printf '     %-9s %-9s label=%s scheduled by %s; remove it, then re-run with --jobs to schedule %s here\n' \
+            "skipped" "elsewhere" "$label" "$elsewhere" "$name"
+        return 0
+    fi
     tmp_plist="$WORK_TMP/$label.plist"
     render_template "$tmpl" "$tmp_plist" "$label" "$PY_ABS" "$PREFIX" "$EFFECTIVE_HOME" "$LOG_DIR" \
         "$EXTRA_ENV_RIGOPS_CONFIG" "$EXTRA_ENV_RIGOPS_STATE_DIR" \
@@ -817,6 +856,9 @@ unload_dropped_jobs() {
         keep=0
         for name in "${SELECTED_JOBS[@]}"; do
             [ "$label" = "$LABEL_PREFIX.$name" ] && keep=1
+        done
+        for name in ${JOBS_ELSEWHERE[@]+"${JOBS_ELSEWHERE[@]}"}; do
+            [ "$label" = "$LABEL_PREFIX.$name" ] && keep=0
         done
         [ "$keep" -eq 0 ] || continue
         if [ "$logged" -eq 0 ]; then

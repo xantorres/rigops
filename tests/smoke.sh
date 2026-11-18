@@ -822,6 +822,57 @@ rm -f "$JOBS_AGENTS/$JOB_PREFIX.ledger.plist.rigops-disabled"
 jobs_install --uninstall --apply --yes
 [ "$RC" -eq 0 ] || fail "uninstall after the edited drop exit $RC: $OUT"
 
+# Writes LaunchAgent $1 whose ProgramArguments are the remaining args.
+hand_agent() {
+    local path="$1" label arg
+    shift
+    label="$(basename "$path" .plist)"
+    mkdir -p "$(dirname "$path")"
+    {
+        printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict>\n'
+        printf '<key>Label</key><string>%s</string>\n' "$label"
+        printf '<key>ProgramArguments</key><array>\n'
+        for arg in "$@"; do printf '<string>%s</string>\n' "$arg"; done
+        printf '</array></dict></plist>\n'
+    } >"$path"
+}
+
+echo "smoke: install skips a job another LaunchAgent already runs"
+HAND_JANITOR="$JOBS_AGENTS/com.example.own-janitor.plist"
+hand_agent "$HAND_JANITOR" /usr/local/bin/rigops janitor --apply
+jobs_install --jobs doctor,janitor
+[ "$RC" -eq 0 ] || fail "plan with a hand-made janitor exit $RC: $OUT"
+case "$OUT" in
+    *"$JOB_PREFIX.janitor"*"scheduled by $HAND_JANITOR"*) : ;;
+    *) fail "plan does not name the plist already running janitor: $OUT" ;;
+esac
+jobs_install --apply --jobs doctor,janitor --yes
+[ "$RC" -eq 0 ] || fail "install with a hand-made janitor exit $RC: $OUT"
+[ -f "$FAKE_LAUNCHD/loaded/$JOB_PREFIX.janitor" ] && fail "janitor scheduled a second time"
+[ -f "$JOBS_AGENTS/$JOB_PREFIX.janitor.plist" ] && fail "janitor plist placed beside the hand-made one"
+[ "$(manifest_labels "$JOBS_MANIFEST")" = "$JOB_PREFIX.doctor" ] \
+    || fail "manifest with a hand-made janitor: $(manifest_labels "$JOBS_MANIFEST")"
+/bin/rm -f "$HAND_JANITOR"
+jobs_install --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "uninstall after the skipped janitor exit $RC: $OUT"
+
+echo "smoke: install unloads its own job once another LaunchAgent runs it"
+jobs_install --apply --jobs doctor,reap --yes
+[ "$RC" -eq 0 ] || fail "doctor and reap install exit $RC: $OUT"
+[ -f "$FAKE_LAUNCHD/loaded/$JOB_PREFIX.reap" ] || fail "reap not loaded before the hand-made one"
+HAND_REAP="$JOBS_AGENTS/com.example.own-reap.plist"
+hand_agent "$HAND_REAP" /usr/bin/python3 /opt/elsewhere/libexec/rigops-reap --apply
+jobs_install --apply --yes
+[ "$RC" -eq 0 ] || fail "re-run with a hand-made reap exit $RC: $OUT"
+[ -f "$FAKE_LAUNCHD/loaded/$JOB_PREFIX.reap" ] && fail "reap still loaded beside the hand-made one"
+[ -f "$JOBS_AGENTS/$JOB_PREFIX.reap.plist" ] && fail "own reap plist left beside the hand-made one"
+[ -f "$HAND_REAP" ] || fail "install touched the hand-made reap plist"
+[ "$(manifest_labels "$JOBS_MANIFEST")" = "$JOB_PREFIX.doctor" ] \
+    || fail "manifest after the hand-made reap: $(manifest_labels "$JOBS_MANIFEST")"
+/bin/rm -f "$HAND_REAP"
+jobs_install --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "uninstall after the hand-made reap exit $RC: $OUT"
+
 echo "smoke: rendered job plists parse as well-formed plists"
 ALL_JOBS="doctor ledger janitor reap"
 jobs_install --apply --jobs "$(printf '%s' "$ALL_JOBS" | tr ' ' ',')" --yes
