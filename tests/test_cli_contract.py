@@ -159,6 +159,30 @@ class CliContractTests(unittest.TestCase):
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertTrue(proc.stdout.strip(), "empty --help output")
 
+    def test_empty_json_payloads_keep_the_populated_key_set(self):
+        doc = self.home / "fixed.md"
+        doc.write_text("x" * 10)
+        backlog = self.home / "backlog.md"
+        backlog.write_text("- [ ] 2026-01-01 rig: one\n")
+        ledger = self.state / "ledger.jsonl"
+        self.state.mkdir()
+        ledger.write_text('{"date":"2026-01-01"}\n{"date":"2026-01-08"}\n')
+        cases = [
+            (("tax", "--json"), {"fixed_tax": {"paths": [str(doc)]}},
+             ("tax", "--json"), {}),
+            (("backlog", "lint", "--json", "--file", str(backlog)), {"backlog": {"areas": ["rig"]}},
+             ("backlog", "lint", "--json", "--file", str(self.home / "none.md")), {}),
+            (("ledger", "diff", "--json"), {}, ("ledger", "diff", "--json"), {}),
+        ]
+        for full_args, full_cfg, empty_args, empty_cfg in cases:
+            with self.subTest(cmd=full_args[0]):
+                ledger.write_text('{"date":"2026-01-01"}\n{"date":"2026-01-08"}\n')
+                populated = self.json_out(self.run_cmd(*full_args, config=full_cfg))
+                ledger.unlink()
+                empty = self.json_out(self.run_cmd(*empty_args, config=empty_cfg))
+
+                self.assertEqual(set(empty), set(populated))
+
 
 if __name__ == "__main__":
     unittest.main()
