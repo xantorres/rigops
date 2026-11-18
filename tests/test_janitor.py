@@ -80,6 +80,27 @@ class DeleteRuleTests(unittest.TestCase):
             self.assertEqual(result["total_deleted"], 0)
 
 
+class OlderThanDaysUnitTests(unittest.TestCase):
+    def test_age_counts_in_seconds_not_whole_days(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "base"
+            base.mkdir()
+            entry = base / "a.txt"
+            entry.write_text("x")
+            now = time.time()
+            _age(entry, 1.5, now)
+            matched = {}
+            for days in (1, 2):
+                rule = {
+                    "name": "age", "path": str(base), "glob": "*.txt",
+                    "older_than_days": days, "action": "report",
+                }
+                result = janitor.run_rules([rule], apply=False, max_delete=200, now=now)
+                matched[days] = result["rules"][0]["matched"]
+            self.assertEqual(matched[1], [str(entry)])
+            self.assertEqual(matched[2], [])
+
+
 class MaxDepthTests(unittest.TestCase):
     def _tree(self, base: Path) -> None:
         base.mkdir()
