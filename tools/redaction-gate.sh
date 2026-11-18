@@ -4,14 +4,20 @@
 set -euo pipefail
 
 usage() {
-  cat <<'EOF'
+  cat <<'USAGE'
 Usage: redaction-gate.sh [--history] [--message <file>] [--help]
 
   (no args)         Scan tracked working-tree files for redaction hits.
   --history         Scan full git history (diffs, authors, subjects, bodies).
   --message <file>  Scan a single file (e.g. a commit message) for hits.
   --help            Show this help and exit.
-EOF
+
+Private pattern layers, on top of tools/redaction-patterns.public.txt:
+  RIGOPS_REDACTION_PATTERNS_B64  base64 rule file, the only private layer when set (CI).
+  RIGOPS_REDACTION_PATTERNS      colon-separated rule files; defaults to
+                                 ~/.config/rigops/redaction-patterns.txt and
+                                 ~/.config/rigops/redaction-patterns.rigops.txt.
+USAGE
 }
 
 ORIG_PWD="$(pwd)"
@@ -20,14 +26,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 
 PUBLIC_PATTERNS="tools/redaction-patterns.public.txt"
-PRIVATE_PATTERNS=""
-TMP_PRIVATE=""
+PRIVATE_FILES=()
+PRIVATE_LABELS=()
 WORK_DIR=""
 
 cleanup() {
-  if [ -n "$TMP_PRIVATE" ] && [ -f "$TMP_PRIVATE" ]; then
-    rm -f "$TMP_PRIVATE"
-  fi
   if [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ]; then
     rm -rf "$WORK_DIR"
   fi
@@ -36,17 +39,24 @@ trap cleanup EXIT
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/rigops-redaction.XXXXXX")"
 
 if [ -n "${RIGOPS_REDACTION_PATTERNS_B64:-}" ]; then
-  TMP_PRIVATE="$(mktemp "${TMPDIR:-/tmp}/rigops-redaction.XXXXXX")"
-  if ! printf '%s' "$RIGOPS_REDACTION_PATTERNS_B64" | base64 -d >"$TMP_PRIVATE" 2>/dev/null; then
-    printf '%s' "$RIGOPS_REDACTION_PATTERNS_B64" | base64 -D >"$TMP_PRIVATE"
+  if ! printf '%s' "$RIGOPS_REDACTION_PATTERNS_B64" | base64 -d >"$WORK_DIR/private.txt" 2>/dev/null; then
+    printf '%s' "$RIGOPS_REDACTION_PATTERNS_B64" | base64 -D >"$WORK_DIR/private.txt"
   fi
-  PRIVATE_PATTERNS="$TMP_PRIVATE"
+  PRIVATE_FILES=("$WORK_DIR/private.txt")
+  PRIVATE_LABELS=("private")
 else
-  candidate="${RIGOPS_REDACTION_PATTERNS:-$HOME/.config/rigops/redaction-patterns.txt}"
-  if [ -f "$candidate" ]; then
-    PRIVATE_PATTERNS="$candidate"
-  else
-    echo "warning: private redaction patterns not found; running public layer only" >&2
+  IFS=: read -r -a candidates <<<"${RIGOPS_REDACTION_PATTERNS:-$HOME/.config/rigops/redaction-patterns.txt:$HOME/.config/rigops/redaction-patterns.rigops.txt}"
+  for candidate in ${candidates[@]+"${candidates[@]}"}; do
+    [ -n "$candidate" ] || continue
+    if [ -f "$candidate" ]; then
+      PRIVATE_FILES+=("$candidate")
+      PRIVATE_LABELS+=("$(basename "$candidate")")
+    else
+      echo "warning: private redaction patterns not found: $candidate" >&2
+    fi
+  done
+  if [ "${#PRIVATE_FILES[@]}" -eq 0 ]; then
+    echo "warning: no private redaction patterns; running public layer only" >&2
   fi
 fi
 
@@ -54,13 +64,11 @@ fi
 RULE_SEP=$'\x1f'
 
 # Emits "<label><SEP><lineno><SEP><flag> <pattern>" lines from a rule
-# file, skipping blanks/comments. label is the source (public/private),
-# lineno its 1-based line number -- both used to report unparseable
-# rules without leaking pattern text.
+# file, skipping blanks/comments. label names the layer, lineno is the
+# rule's 1-based line: both identify a rule without leaking its text.
 emit_rules() {
   local f="$1" label="$2"
   local lineno=0
-  [ -n "$f" ] && [ -f "$f" ] || return 0
   while IFS= read -r raw || [ -n "$raw" ]; do
     lineno=$((lineno + 1))
     case "$raw" in
@@ -73,25 +81,25 @@ emit_rules() {
 # A layer that is present but yields no rules would let every scan
 # report clean, so it fails like a missing public layer.
 load_rules() {
-  local public private
+  local layer i=0
   if [ ! -f "$PUBLIC_PATTERNS" ]; then
     echo "error: public redaction patterns missing: $PUBLIC_PATTERNS" >&2
     exit 2
   fi
-  public="$(emit_rules "$PUBLIC_PATTERNS" "public")"
-  if [ -z "$public" ]; then
+  RULES="$(emit_rules "$PUBLIC_PATTERNS" "public")"
+  if [ -z "$RULES" ]; then
     echo "error: public redaction patterns load no rules: $PUBLIC_PATTERNS" >&2
     exit 2
   fi
-  private="$(emit_rules "$PRIVATE_PATTERNS" "private")"
-  if [ -n "$PRIVATE_PATTERNS" ] && [ -z "$private" ]; then
-    echo "error: private redaction patterns load no rules" >&2
-    exit 2
-  fi
-  RULES="$public"
-  if [ -n "$private" ]; then
-    RULES="$RULES"$'\n'"$private"
-  fi
+  while [ "$i" -lt "${#PRIVATE_FILES[@]}" ]; do
+    layer="$(emit_rules "${PRIVATE_FILES[$i]}" "${PRIVATE_LABELS[$i]}")"
+    if [ -z "$layer" ]; then
+      echo "error: private redaction patterns load no rules: ${PRIVATE_LABELS[$i]}" >&2
+      exit 2
+    fi
+    RULES="$RULES"$'\n'"$layer"
+    i=$((i + 1))
+  done
 }
 
 list_files() {

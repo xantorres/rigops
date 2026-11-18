@@ -240,6 +240,59 @@ class LocationOnlyOutputTests(unittest.TestCase):
         self.assert_location_only(out, "notes.txt:2", "(message body)")
 
 
+class PrivateLayerTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.home = self.tmp / "home"
+        self.config = self.home / ".config" / "rigops"
+        self.config.mkdir(parents=True)
+        self.script = sandbox_gate(self.tmp / "repo")
+        self.msg = self.tmp / "msg.txt"
+
+    def scan(self, text, extra_env=None):
+        self.msg.write_text(text + "\n", encoding="utf-8")
+        return run_gate(
+            self.script, "--message", str(self.msg), home=self.home, extra_env=extra_env
+        )
+
+    def write_layer(self, path, rule):
+        path.write_text(rule, encoding="utf-8")
+        return path
+
+    def test_default_loads_both_private_layers(self):
+        self.write_layer(self.config / "redaction-patterns.txt", "s zz-alpha-[0-9]+\n")
+        self.write_layer(self.config / "redaction-patterns.rigops.txt", "s zz-beta-[0-9]+\n")
+        for text, layer in (
+            ("zz-alpha-" + "1", "redaction-patterns.txt rule 1"),
+            ("zz-beta-" + "2", "redaction-patterns.rigops.txt rule 1"),
+        ):
+            with self.subTest(layer=layer):
+                out = self.scan(text)
+                self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+                self.assertIn(layer, out.stdout)
+
+    def test_missing_default_layer_warns_and_keeps_the_other(self):
+        self.write_layer(self.config / "redaction-patterns.txt", "s zz-alpha-[0-9]+\n")
+        out = self.scan("zz-alpha-" + "1")
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        self.assertIn("redaction-patterns.rigops.txt", out.stderr)
+
+    def test_empty_second_default_layer_fails(self):
+        self.write_layer(self.config / "redaction-patterns.txt", "s zz-alpha-[0-9]+\n")
+        self.write_layer(self.config / "redaction-patterns.rigops.txt", "# none\n")
+        out = self.scan("nothing")
+        self.assertEqual(out.returncode, 2, out.stdout + out.stderr)
+
+    def test_pattern_env_accepts_a_list(self):
+        first = self.write_layer(self.tmp / "first.txt", "s zz-alpha-[0-9]+\n")
+        second = self.write_layer(self.tmp / "second.txt", "s zz-beta-[0-9]+\n")
+        env = {"RIGOPS_REDACTION_PATTERNS": f"{first}{os.pathsep}{second}"}
+        out = self.scan("zz-beta-" + "2", extra_env=env)
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        self.assertIn("second.txt rule 1", out.stdout)
+
+
 class PersonalDataShapeTests(unittest.TestCase):
     def test_each_shape_is_flagged(self):
         for name, text in SHAPES.items():
