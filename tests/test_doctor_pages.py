@@ -266,6 +266,15 @@ class CorruptStateFileTests(PagingBase):
         self.run_doctor(_write_registry(self.tmp, FAILING_ITEM))
         self.assertEqual(len(self.events()), 1)
 
+    def test_a_state_file_holding_the_wrong_json_shape_falls_back_to_the_default(self):
+        self.state.mkdir(parents=True, exist_ok=True)
+        for shape in ("5", "[1, 2]", '"text"', "null"):
+            for name in ("notified.json", "kicked.json", "holds.json", "heal-stamps.json"):
+                (self.state / name).write_text(shape)
+            with self.subTest(shape=shape):
+                self.run_doctor(_write_registry(self.tmp, FAILING_ITEM))
+                self.assertGreaterEqual(len(self.events()), 1)
+
     def test_a_marker_list_of_unhashable_items_is_ignored(self):
         self.state.mkdir(parents=True, exist_ok=True)
         (self.state / "kicked.json").write_text(json.dumps([["a"], {"b": 1}, "job-failing"]))

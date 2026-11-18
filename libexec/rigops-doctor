@@ -42,6 +42,11 @@ def _load_json(path: Path, default):
         return default
 
 
+def _load_dict(path: Path) -> dict:
+    data = _load_json(path, {})
+    return data if isinstance(data, dict) else {}
+
+
 def _save_json(path: Path, data) -> None:
     state.atomic_write(path, json.dumps(data, indent=2, sort_keys=True))
 
@@ -365,7 +370,7 @@ def main(argv=None) -> int:
     doctor_state_dir = state.state_dir() / "doctor"
     heal_stamps_path = doctor_state_dir / "heal-stamps.json"
     events_path = doctor_state_dir / "events.jsonl"
-    heal_stamps = _load_json(heal_stamps_path, {})
+    heal_stamps = _load_dict(heal_stamps_path)
     cooldown_h = rigops_config.get(cfg, "doctor.heal_cooldown_h", 12)
     kill_grace_s = rigops_config.get(cfg, "doctor.kill_grace_s", 5)
     prefixes = rigops_config.get(cfg, "doctor.label_prefix", ["local."])
@@ -506,9 +511,8 @@ def main(argv=None) -> int:
         )
         if notify_command else set()
     )
-    stamps = _load_json(notify_stamps_path, {})
     due, stamps, held = rigops_notify.notify_due(
-        stamps if isinstance(stamps, dict) else {}, notify_keys, now,
+        _load_dict(notify_stamps_path), notify_keys, now,
     )
 
     event = {
