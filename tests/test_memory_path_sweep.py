@@ -4,6 +4,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location(
@@ -58,7 +59,9 @@ class SweepTest(unittest.TestCase):
             real = Path(tmp) / "data"
             (real / "Big Folder").mkdir(parents=True)
             _store(tmp, {"n.md": f"see {real}/Big Folder/ and {real}/Bigger thing\n"})
-            found, classes = sweep.scan(tmp, "default")
+            # The fixture lives in the system temp dir, which is ephemeral on Linux.
+            with mock.patch.object(sweep, "EPHEMERAL", ()):
+                found, classes = sweep.scan(tmp, "default")
         self.assertEqual(classes["cut"], 1)
         self.assertEqual(len(found), 1)
 

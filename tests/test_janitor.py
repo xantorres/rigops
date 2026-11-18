@@ -19,6 +19,19 @@ from rigops import backlog, janitor, watermarks  # noqa: E402
 from rigops.retrieval import roots  # noqa: E402
 
 
+def setUpModule():
+    # Watermark routing reads the realm registry under HOME; no test may lean on the real one.
+    tmp = tempfile.TemporaryDirectory()
+    unittest.addModuleCleanup(tmp.cleanup)
+    home = Path(tmp.name) / "home"
+    home.mkdir()
+    registry = Path(tmp.name) / "roots.json"
+    registry.write_text(json.dumps({"roots": []}))
+    env = mock.patch.dict(os.environ, {"HOME": str(home), "REALM_REGISTRY": str(registry)})
+    env.start()
+    unittest.addModuleCleanup(env.stop)
+
+
 def _age(path: Path, days_old: float, now: float) -> None:
     ts = now - days_old * 86400
     os.utime(path, (ts, ts))
@@ -118,6 +131,83 @@ class DirsOnlyEmptyTests(unittest.TestCase):
             self.assertFalse(empty_dir.exists())
             self.assertTrue(nonempty_dir.exists())
             self.assertEqual(result["rules"][0]["acted"], 1)
+
+    def test_entry_landing_after_the_match_survives(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "base"
+            base.mkdir()
+            empty_dir = base / "empty_dir"
+            empty_dir.mkdir()
+            late = empty_dir / "late.txt"
+
+            def land_then_weigh(path):
+                late.write_text("arrived between match and removal")
+                return 1
+
+            rule = {
+                "name": "r", "path": str(base), "glob": "*", "dirs": True,
+                "only_empty": True, "action": "delete",
+            }
+            with mock.patch.object(janitor, "_candidate_weight", side_effect=land_then_weigh):
+                result = janitor.run_rules([rule], apply=True, max_delete=200, now=time.time())
+            self.assertTrue(late.exists())
+            self.assertEqual(result["rules"][0]["acted"], 0)
+            self.assertEqual(len(result["rules"][0]["errors"]), 1)
+
+
+class DirAgeTests(unittest.TestCase):
+    def _old_dir_with_file(self, base: Path, now: float, file_days_old: float) -> Path:
+        old_dir = base / "old_dir"
+        nested = old_dir / "sub" / "f.txt"
+        nested.parent.mkdir(parents=True)
+        nested.write_text("x")
+        _age(nested, file_days_old, now)
+        _age(nested.parent, 40, now)
+        _age(old_dir, 40, now)
+        return old_dir
+
+    def _apply(self, base: Path, now: float) -> dict:
+        rule = {
+            "name": "r", "path": str(base), "glob": "*", "dirs": True,
+            "max_depth": 1, "older_than_days": 30, "action": "delete",
+        }
+        return janitor.run_rules([rule], apply=True, max_delete=200, now=now)
+
+    def test_dir_holding_a_recent_file_is_not_old(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "base"
+            base.mkdir()
+            now = time.time()
+            old_dir = self._old_dir_with_file(base, now, file_days_old=1)
+            result = self._apply(base, now)
+            self.assertTrue(old_dir.exists())
+            self.assertEqual(result["rules"][0]["matched"], [])
+
+    def test_dir_whose_whole_subtree_is_old_is_deleted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "base"
+            base.mkdir()
+            now = time.time()
+            old_dir = self._old_dir_with_file(base, now, file_days_old=40)
+            result = self._apply(base, now)
+            self.assertFalse(old_dir.exists())
+            self.assertEqual(result["rules"][0]["acted"], 1)
+
+    @unittest.skipIf(os.geteuid() == 0, "root lists any directory")
+    def test_dir_with_an_unlistable_subdir_is_never_old(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "base"
+            base.mkdir()
+            now = time.time()
+            old_dir = self._old_dir_with_file(base, now, file_days_old=40)
+            locked = old_dir / "sub"
+            locked.chmod(0)
+            try:
+                result = self._apply(base, now)
+            finally:
+                locked.chmod(0o700)
+            self.assertTrue((locked / "f.txt").exists())
+            self.assertEqual(result["rules"][0]["matched"], [])
 
 
 class TruncateTests(unittest.TestCase):
@@ -317,6 +407,41 @@ class OverflowTests(unittest.TestCase):
             self.assertEqual(result["rules"][1]["acted"], 0)
             self.assertEqual(result["total_deleted"], 2)
 
+    def _two_rule_overflows(self, tmp: Path, apply: bool, dirs: bool = False,
+                            max_delete: int = 4) -> tuple:
+        rules = []
+        for name in ("r1", "r2"):
+            base = tmp / name
+            base.mkdir()
+            if dirs:
+                nested = base / "d" / "e"
+                nested.mkdir(parents=True)
+            else:
+                for i in range(3):
+                    (base / f"f{i}.txt").write_text("x")
+            rules.append({"name": name, "path": str(base), "glob": "*", "dirs": dirs,
+                          "action": "delete"})
+        result = janitor.run_rules(rules, apply=apply, max_delete=max_delete, now=time.time())
+        return tuple(r["overflow"] for r in result["rules"]), result["total_deleted"]
+
+    def test_dry_run_overflows_where_apply_would(self):
+        with tempfile.TemporaryDirectory() as dry, tempfile.TemporaryDirectory() as wet:
+            dry_overflows, dry_total = self._two_rule_overflows(Path(dry), apply=False)
+            wet_overflows, _ = self._two_rule_overflows(Path(wet), apply=True)
+            self.assertEqual(wet_overflows, (False, True))
+            self.assertEqual(dry_overflows, wet_overflows)
+            self.assertEqual(dry_total, 0)
+
+    def test_dry_run_charges_a_nested_match_once_like_apply(self):
+        # Apply removes d and then finds d/e gone, so rule one costs 2, not 3.
+        with tempfile.TemporaryDirectory() as dry, tempfile.TemporaryDirectory() as wet:
+            dry_overflows, _ = self._two_rule_overflows(
+                Path(dry), apply=False, dirs=True, max_delete=5)
+            wet_overflows, _ = self._two_rule_overflows(
+                Path(wet), apply=True, dirs=True, max_delete=5)
+            self.assertEqual(wet_overflows, (False, False))
+            self.assertEqual(dry_overflows, wet_overflows)
+
 
 class SafetyTests(unittest.TestCase):
     def test_root_base_skipped(self):
@@ -328,6 +453,19 @@ class SafetyTests(unittest.TestCase):
         safe, reason = janitor._safe_base(Path.home())
         self.assertFalse(safe)
         self.assertIsNotNone(reason)
+
+    def test_home_behind_a_symlink_is_still_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            real = Path(os.path.realpath(tmp)) / "real"
+            (real / "home").mkdir(parents=True)
+            (Path(tmp) / "link").symlink_to(real)
+            home = Path(tmp) / "link" / "home"
+            with mock.patch.dict(os.environ, {"HOME": str(home)}):
+                for base in (home, real / "home", real):
+                    with self.subTest(base=base):
+                        safe, reason = janitor._safe_base(base)
+                        self.assertFalse(safe)
+                        self.assertIsNotNone(reason)
 
     def test_symlink_base_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:

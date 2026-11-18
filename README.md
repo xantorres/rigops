@@ -126,7 +126,7 @@ delta: -10215 B (-10.3%)
 
 The registry (`registry.md`) is plain markdown: one entry per automated job, with its cadence, its evidence file, and how long it's allowed to run before it counts as hung. `rigops doctor` reads it and judges each job - stale against its declared cadence, hung against `max_runtime_h`, cooling down after a repeated heal so a flapping job doesn't get restarted into the ground. It's report-only by default; `--heal` opts into the kill/kickstart side effects, and `--supervisor none` skips `launchctl` entirely on hosts that don't run launchd.
 
-The same command also lints the config that drives the rig. `rigops doctor --config-only` runs a package of checks, one module per check, discovered by filename: every path, agent, skill, plugin id, MCP server, launchd label and model id named in the instruction files has to resolve against the filesystem, the enabled-plugin list and `launchctl` (memory notes are held to paths under the rig's own trees only, since a note is also a dated record of other hosts and retired things); the always-on instruction surface has to stay under a token ceiling; plan files have to match their own documented grammar; configured ledger levers have to hold their level. Prose cannot be type-checked, so a pointer to something deleted months ago is the defect that survives longest. Findings print as backlog lines with a stable id, and any failing finding exits nonzero, which is what makes the check usable from a pre-commit hook. A lever regression prints under `warnings` and never changes the exit code: it describes last week's sessions, not the commit being judged. Add `--staged` there: the checks then read the staged content of the files the commit touches and report only findings about them, so an unrelated edit still sitting in the working tree can't fail someone else's commit.
+The same command also lints the config that drives the rig. `rigops doctor --config-only` runs a package of checks, one module per check, discovered by filename: every path, agent, skill, plugin id, MCP server, launchd label and model id named in the instruction files has to resolve against the filesystem, the enabled-plugin list and `launchctl` (memory notes are held to paths under the rig's own trees only, since a note is also a dated record of other hosts and retired things); the always-on instruction surface has to stay under a token ceiling; plan files have to match their own documented grammar; configured ledger levers have to hold their level. Prose cannot be type-checked, so a pointer to something deleted months ago is the defect that survives longest. Findings print as backlog lines with a stable id, and any failing finding exits nonzero, which is what makes the check usable from a pre-commit hook. A lever regression prints under `warnings` and never changes the exit code: it describes last week's sessions, not the commit being judged. Add `--staged` there: the checks then read the staged content of the files the commit touches and report only findings about them, so an unrelated edit still sitting in the working tree can't fail someone else's commit. A plain `rigops doctor` run includes the same checks; `--no-config` leaves them out, and `--check <name>` (repeatable) keeps only the named ones in either mode.
 
 ```text
 rigops doctor report 2026-08-23T10:53:12Z
@@ -203,6 +203,22 @@ REGRESSION safety: 2 newly failing, 3/3 -> 1/3 passing
 
 Case format, regression rules and CI wiring: [docs/EVAL.md](docs/EVAL.md).
 
+## Other commands
+
+### `rigops render`
+
+`rigops render` writes one source tree onto every surface that consumes it. `--check` reports drift without writing, and `doctor` turns that drift into findings. Targets and check semantics: [docs/RENDER.md](docs/RENDER.md).
+
+### `rigops retrieval`
+
+`rigops retrieval` keeps one FTS5 index of sections over every tree a roots registry claims; `build` rebuilds it and `update` re-indexes what changed. `search` ranks sections for a query: `--scope` narrows it (vault, brain, memory, plans, repo, rig or all; repeat it or comma-separate), `--top` caps the hits (default 10), `--budget` caps the returned text in tokens, and `--format` picks compact, snippet, paths, claims or json. `prefetch` takes realm and scopes from the working directory, never widens them, and stays silent below a score threshold; it returns at most 3 hits within 400 tokens. `--top` and the roots registry's `prefetch.max_rows` both cap the hits, so the lower of the two wins, and `--budget` sets the token ceiling; `--format json` prints the hits as JSON. Both cut each snippet at `--max-len` characters and take the realm from `--cwd` instead of the working directory.
+
+`roots` shows what the working directory may read and what is indexed. `stats` reports latency, fallback rate and prefetch silence over the last `--days` (default 7). `probe` scores a labelled question suite and exits 1 when precision drops, a row crosses a realm, a realm has fewer probes than the suite's minimum (default 5), the suite is empty, or the suite or roots registry can't be read. `probe --file` scores only that suite, where the default run also merges in every realm's own, and `--top` sets how deep a probe's expected path may rank (default 3). `--no-log` on `search`, `prefetch` and `probe` keeps a run out of the retrieval log. `--write` on `stats` and `probe` appends the summary to `retrieval-stats.jsonl` in the state directory, and `--json` on `roots`, `stats` and `probe` prints JSON. `--db` and `--registry` go before the subcommand and point any subcommand at another index or roots registry.
+
+### `rigops mine`
+
+`rigops mine --dry-run` calls no model and writes nothing: it reports the corrections that repeat across sessions over a window (`--since`, default 90d), with paths, amounts, domains, ids and addresses masked. `--min-sessions` sets how many sessions a group has to span (default 2; 1 lists one-off corrections too), `--transcripts-dir` reads a tree other than `transcripts_dir`, and `--registry` names another roots registry, the source of the realms and the retrieval index mine reads.
+
 ## Quickstart
 
 ### Plugin only - thirty seconds, zero daemons
@@ -262,9 +278,9 @@ Two halves, one config.
 
 **Plugin half** - a Claude Code marketplace plugin: five commands (`/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:backlog`, `/rigops:week`), two skills (`ops-loop`, `fleet-triage`), two hooks (`card` on `SessionStart`, `ctx-nudge` on `UserPromptSubmit`), and a statusline. The `rg -r`/`-rn`/`-rl` guard and the skill-forcing gate that used to ship here now live in the user's own dispatcher: which workflow a prompt must go through is rig policy, and two copies of one gate is one copy too many. Zero daemons. No agents - deliberately; which subagent handles a task is a decision that belongs to the rig, not to rigops.
 
-**Script half** - the `rigops` CLI (`eit`, `ledger`, `eval`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`, `card`, `nudge`, `version`), plus hardened launchd templates for the `doctor`, `ledger`, `janitor` and `reap` jobs, and a cron template for Linux hosts (unverified).
+**Script half** - the `rigops` CLI (`eit`, `ledger`, `eval`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`, `card`, `nudge`, `render`, `retrieval`, `mine`, `version`), plus hardened launchd templates for the `doctor`, `ledger`, `janitor` and `reap` jobs, and a cron template for Linux hosts (unverified).
 
-Both halves read the same `~/.config/rigops/config.json` (schema: [config/config.schema.json](config/config.schema.json)). Runtime state lives under `~/.local/state/rigops/`.
+Both halves read the same `~/.config/rigops/config.json` (keys: [docs/CONFIG.md](docs/CONFIG.md)). Runtime state lives under `~/.local/state/rigops/`.
 
 ## Extracted from a working rig
 
@@ -295,6 +311,7 @@ Python 3.9+, stdlib only. Full matrix: [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MAT
 - [docs/LEDGER.md](docs/LEDGER.md)
 - [docs/EVAL.md](docs/EVAL.md)
 - [docs/REGISTRY.md](docs/REGISTRY.md)
+- [docs/RENDER.md](docs/RENDER.md)
 - [docs/SAFETY.md](docs/SAFETY.md)
 - [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MATRIX.md)
 - [patterns/](patterns/) - the ideas, portable without the code: drift-ledger, context-tax, job-registry, hardened-launchd, tiered-refresh, auth-probe-gating, scope-gated-hooks.

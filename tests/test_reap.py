@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from rigops import reap, state  # noqa: E402
+from rigops import reap, reap_procs, state  # noqa: E402
 
 # Resolved before any test rewrites the environment: the log the operator's own
 # reaper runs append to, which no test may touch.
@@ -130,6 +130,14 @@ class RunCapturedKillsProcessGroupTests(EnvIsolatedTestCase):
                     break
                 time.sleep(0.05)
             self.assertTrue(gone, "process group still alive after _run_captured timeout")
+
+
+class RunCapturedUndecodableOutputTests(EnvIsolatedTestCase):
+    def test_non_utf8_bytes_round_trip_instead_of_raising(self):
+        argv = [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'bad\\xff\\0')"]
+        proc = reap._run_captured(argv, timeout=10, env=dict(os.environ))
+        name = proc.stdout.split("\0")[0]
+        self.assertEqual(os.fsencode(name), b"bad\xff")
 
 
 PARSE_WORKTREES_CASES = [
@@ -297,6 +305,47 @@ class LiveWorktreeCwdsNullPidTests(EnvIsolatedTestCase):
             self.assertEqual(live, [])
 
 
+class StaleWorktreeDirsTests(EnvIsolatedTestCase):
+    def test_symlink_under_worktrees_is_never_stale(self):
+        repo = self.tmp / "repo"
+        base = repo / ".claude" / "worktrees"
+        base.mkdir(parents=True)
+        outside = self.tmp / "outside"
+        outside.mkdir()
+        os.symlink(outside, base / "link-out")
+        leftover = base / "leftover"
+        leftover.mkdir()
+
+        stale = reap.stale_worktree_dirs(repo, set(), [])
+
+        self.assertEqual(stale, [os.path.realpath(leftover)])
+
+    def test_symlinked_base_never_yields_a_dir_outside_the_repo(self):
+        cases = {
+            "worktrees": lambda repo, shared: (
+                (repo / ".claude").mkdir(),
+                os.symlink(shared, repo / ".claude" / "worktrees")),
+            "claude": lambda repo, shared: os.symlink(shared.parent, repo / ".claude"),
+        }
+        for name, link in cases.items():
+            with self.subTest(name):
+                repo = self.tmp / name / "repo"
+                repo.mkdir(parents=True)
+                shared = self.tmp / name / "shared" / "worktrees"
+                (shared / "another-repos-tree").mkdir(parents=True)
+                link(repo, shared)
+
+                self.assertEqual(reap.stale_worktree_dirs(repo, set(), []), [])
+
+    def test_worktrees_dir_linked_into_the_repo_yields_nothing(self):
+        repo = self.tmp / "repo"
+        (repo / "src" / "pkgA").mkdir(parents=True)
+        (repo / ".claude").mkdir()
+        os.symlink("../src", repo / ".claude" / "worktrees")
+
+        self.assertEqual(reap.stale_worktree_dirs(repo, set(), []), [])
+
+
 # --- section 2: kill machinery, synthetic snapshots, no real signals --------
 
 
@@ -356,6 +405,22 @@ class KillPidsTests(EnvIsolatedTestCase):
         self.assertTrue(result["overflow"])
         self.assertEqual(result["killed"], 0)
 
+    def test_unreadable_liveness_is_a_failed_kill_not_gone(self):
+        def raising_run(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd="ps", timeout=10)
+        orig_run = subprocess.run
+        subprocess.run = raising_run
+        self.addCleanup(setattr, subprocess, "run", orig_run)
+        snap = {900001: {"ppid": 1, "pgid": 900001, "uid": os.getuid(), "tty": "??",
+                         "etimes": 10, "command": "sleep 300"}}
+
+        self.assertTrue(reap.process_alive(900001))
+        result = reap.kill_pids("tree-label", {900001: "cwd"}, snap, apply=True,
+                                max_kills=20, grace_s=0)
+
+        self.assertEqual(result["failed_pids"], [900001])
+        self.assertEqual(result["killed"], 0)
+
 
 class ProtectedPidsOwnPgidTests(EnvIsolatedTestCase):
     def test_complete_walk_same_pgid_stranger_not_protected(self):
@@ -375,12 +440,12 @@ class ProtectedPidsOwnPgidTests(EnvIsolatedTestCase):
             555555: {"ppid": 1, "pgid": os.getpgrp(), "uid": 0, "tty": "??",
                     "etimes": 10, "command": "stranger"},
         }
-        orig = reap._ppid_of
-        reap._ppid_of = lambda pid: None
+        orig = reap_procs._ppid_of
+        reap_procs._ppid_of = lambda pid: None
         try:
             protected = reap.protected_pids(snap)
         finally:
-            reap._ppid_of = orig
+            reap_procs._ppid_of = orig
         self.assertIn(555555, protected)
 
 
@@ -414,6 +479,53 @@ class AliveForBlockingStatusTests(EnvIsolatedTestCase):
             self.assertTrue(reap._alive_for_blocking(123))
         finally:
             subprocess.run = orig_run
+
+
+class SnapshotFailureTests(EnvIsolatedTestCase):
+    def _with_run(self, fake):
+        orig_run = subprocess.run
+        subprocess.run = fake
+        self.addCleanup(setattr, subprocess, "run", orig_run)
+
+    def _raising(self, exc):
+        def fake(*args, **kwargs):
+            raise exc
+        return fake
+
+    def _returning(self, rc, stdout):
+        def fake(*args, **kwargs):
+            return subprocess.CompletedProcess(args, rc, stdout=stdout, stderr="")
+        return fake
+
+    def test_ps_failure_is_none_not_empty(self):
+        cases = [
+            ("timeout", self._raising(subprocess.TimeoutExpired(cmd="ps", timeout=30))),
+            ("oserror", self._raising(FileNotFoundError("ps"))),
+            ("rc1", self._returning(1, "")),
+            ("own_pid_missing", self._returning(0, "garbage\n")),
+        ]
+        for name, fake in cases:
+            with self.subTest(name):
+                self._with_run(fake)
+                self.assertIsNone(reap.ps_snapshot())
+
+    def test_lsof_failure_is_none_not_empty(self):
+        cases = [
+            ("timeout", self._raising(subprocess.TimeoutExpired(cmd="lsof", timeout=30))),
+            ("oserror", self._raising(FileNotFoundError("lsof"))),
+            ("rc2", self._returning(2, "")),
+            ("rc1_empty", self._returning(1, "")),
+            ("own_pid_missing", self._returning(0, "p123\nn/x\n")),
+        ]
+        for name, fake in cases:
+            with self.subTest(name):
+                self._with_run(fake)
+                self.assertIsNone(reap.cwd_map())
+
+    def test_lsof_partial_rc1_is_still_usable(self):
+        me = os.getpid()
+        self._with_run(self._returning(1, f"p123\nn/x\np{me}\nn/here\n"))
+        self.assertEqual(reap.cwd_map(), {123: "/x", me: "/here"})
 
 
 REMOVAL_BLOCKERS_CASES = [
@@ -530,6 +642,58 @@ class ClassifyTests(GitFixtureTestCase):
             ignored_dirs={"node_modules"}, ignored_prefixes=(),
         )
         self.assertEqual(verdict, reap.REAP)
+
+    def _verdict_after_tracked_edit(self, rel: str) -> str:
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / rel).write_text("base\n")
+        _run_git(["add", "-A"], repo)
+        _run_git(["commit", "-m", "add unusual path"], repo)
+        wt_path = self.tmp / "wt-quoted"
+        _run_git(["worktree", "add", "-b", "feature-quoted", str(wt_path)], repo)
+        (wt_path / rel).write_text("base\nlocal edit\n")
+        wt = {"path": str(wt_path), "branch": "feature-quoted",
+              "head": _rev_parse(repo, "feature-quoted"),
+              "bare": False, "detached": False, "locked": False, "prunable": False}
+        return reap.classify(
+            wt, repo, "main", [], self.tmp / "outside", "main", 14,
+            ignored_dirs=set(), ignored_prefixes=(),
+        )
+
+    def test_tracked_edit_in_path_with_space_is_skip_dirty(self):
+        self.assertEqual(self._verdict_after_tracked_edit("d sp/f.txt"), "skip: dirty")
+
+    def test_tracked_edit_in_non_ascii_path_is_skip_dirty(self):
+        self.assertEqual(self._verdict_after_tracked_edit("café.txt"), "skip: dirty")
+
+    def test_tracked_edit_in_path_with_pathspec_magic_is_skip_dirty(self):
+        self.assertEqual(self._verdict_after_tracked_edit(":colon.txt"), "skip: dirty")
+
+    def test_tracked_edit_in_path_with_rename_arrow_is_skip_dirty(self):
+        self.assertEqual(self._verdict_after_tracked_edit("a -> b.txt"), "skip: dirty")
+
+    def test_staged_rename_onto_a_path_main_already_has_is_skip_dirty(self):
+        # The new path matches main, so only the deleted source shows the work.
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        (repo / "a.txt").write_text("base\n")
+        _run_git(["add", "a.txt"], repo)
+        _run_git(["commit", "-m", "add a"], repo)
+        wt_path = self.tmp / "wt-rename"
+        _run_git(["worktree", "add", "-b", "feature-rename", str(wt_path)], repo)
+        (repo / "b.txt").write_text("base\n")
+        _run_git(["add", "b.txt"], repo)
+        _run_git(["commit", "-m", "add b"], repo)
+        _run_git(["mv", "a.txt", "b.txt"], wt_path)
+        wt = {"path": str(wt_path), "branch": "feature-rename",
+              "head": _rev_parse(repo, "feature-rename"),
+              "bare": False, "detached": False, "locked": False, "prunable": False}
+        verdict = reap.classify(
+            wt, repo, "main", [], self.tmp / "outside", "main", 14,
+            ignored_dirs=set(), ignored_prefixes=(),
+        )
+        self.assertEqual(verdict, "skip: dirty")
 
     def test_unmerged_branch_with_local_commit_no_upstream_is_needs_push(self):
         repo = self.tmp / "repo"
@@ -871,14 +1035,14 @@ class ScanRepoDirSizeBudgetTests(GitFixtureTestCase):
 
 class WorktreeHasRealChangesPureTests(EnvIsolatedTestCase):
     def test_all_ignored_untracked_returns_false(self):
-        status = "?? node_modules/a.js\n"
+        status = "?? node_modules/a.js\0"
         result = reap.worktree_has_real_changes(
             Path("/nonexistent"), status, "main", {"node_modules"}, ()
         )
         self.assertFalse(result)
 
     def test_untracked_real_file_returns_true(self):
-        status = "?? src/real.py\n"
+        status = "?? src/real.py\0"
         result = reap.worktree_has_real_changes(Path("/nonexistent"), status, "main", set(), ())
         self.assertTrue(result)
 
@@ -887,16 +1051,23 @@ class WorktreeHasRealChangesGitTests(GitFixtureTestCase):
     def test_tracked_modified_line_with_no_actual_diff_returns_false(self):
         repo = self.tmp / "repo"
         _init_repo(repo)
-        status = " M README.md\n"
+        status = " M README.md\0"
         result = reap.worktree_has_real_changes(repo, status, "main", set(), ())
         self.assertFalse(result)
 
     def test_unreadable_diff_ref_fails_dirty(self):
         repo = self.tmp / "repo"
         _init_repo(repo)
-        status = " M README.md\n"
+        status = " M README.md\0"
         result = reap.worktree_has_real_changes(repo, status, "nonexistent-ref-xyz", set(), ())
         self.assertTrue(result)
+
+    def test_rename_source_path_is_not_read_as_an_entry(self):
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        status = "R  README.md\0?? scratch.txt\0"
+        result = reap.worktree_has_real_changes(repo, status, "main", set(), ())
+        self.assertFalse(result)
 
 
 # --- section 5: run(), apply + json purity, real fixture --------------------
@@ -932,6 +1103,208 @@ class RunApplyJsonPurityTests(GitFixtureTestCase):
         self.assertEqual(target["verdict"], reap.REAP)
         self.assertTrue(target["applied"]["removed"])
         self.assertFalse(wt_path.exists())
+
+
+class RunRecheckBeforeRemovalTests(GitFixtureTestCase):
+    def _apply_with_change_after_scan(self, change, dry_run=False) -> tuple[Path, dict]:
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        wt_path = self.tmp / "wt-merged"
+        _run_git(["worktree", "add", "-b", "feature-merged", str(wt_path)], repo)
+        sessions_dir = self.tmp / "sessions"
+        sessions_dir.mkdir()
+        opts = types.SimpleNamespace(
+            selftest=False, apply=True, dry_run=dry_run, json=True,
+            repo=[repo], roots=[], no_fetch=True, grace_days=14,
+            sessions_dir=sessions_dir, deadline_s=60,
+            max_kills_per_tree=20, orphan_min_age_s=172800, kill_grace_s=5,
+            ignored_untracked_dirs=set(), ignored_untracked_prefixes=(),
+        )
+
+        # ps_snapshot is the first call after the scan loop, so this lands
+        # between the verdict and anything acting on it.
+        orig = reap.ps_snapshot
+        self.addCleanup(setattr, reap, "ps_snapshot", orig)
+        reap.ps_snapshot = lambda: (change(wt_path, sessions_dir, opts), orig())[1]
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            reap.run(opts)
+        worktrees = json.loads(buf.getvalue())["repos"][0]["worktrees"]
+        wt_real = os.path.realpath(wt_path)
+        return wt_path, next(w for w in worktrees if w["path"] == wt_real)
+
+    def test_tree_dirtied_after_scan_survives_apply(self):
+        def dirty(wt_path, _sessions, _opts):
+            (wt_path / "notes.txt").write_text("wip\n")
+
+        wt_path, target = self._apply_with_change_after_scan(dirty)
+
+        self.assertTrue(wt_path.exists())
+        self.assertEqual(target["verdict"], "skip: dirty")
+        self.assertFalse(target["applied"]["removed"])
+        self.assertIn("verdict changed", target["applied"]["detail"])
+
+    def test_dry_run_reports_the_changed_verdict(self):
+        def dirty(wt_path, _sessions, _opts):
+            (wt_path / "notes.txt").write_text("wip\n")
+
+        _wt_path, target = self._apply_with_change_after_scan(dirty, dry_run=True)
+
+        self.assertEqual(target["verdict"], "skip: dirty")
+        self.assertIn("verdict changed", target["applied"]["detail"])
+
+    def test_session_started_after_scan_blocks_removal(self):
+        def occupy(wt_path, sessions, _opts):
+            (sessions / "x.json").write_text(json.dumps(
+                {"pid": os.getpid(), "cwd": os.path.realpath(wt_path)}))
+
+        wt_path, target = self._apply_with_change_after_scan(occupy)
+
+        self.assertTrue(wt_path.exists())
+        self.assertEqual(target["verdict"], "skip: in-use")
+        self.assertFalse(target["applied"]["removed"])
+
+    def test_session_process_started_after_scan_is_not_signalled(self):
+        procs = []
+
+        def occupy(wt_path, sessions, _opts):
+            # Own session, no controlling tty: the kind of pid reap may signal.
+            proc = subprocess.Popen(["sleep", "60"], cwd=wt_path, start_new_session=True)
+            self.addCleanup(proc.wait)
+            self.addCleanup(proc.kill)
+            procs.append(proc)
+            (sessions / "x.json").write_text(json.dumps(
+                {"pid": proc.pid, "cwd": os.path.realpath(wt_path)}))
+
+        wt_path, target = self._apply_with_change_after_scan(occupy)
+
+        self.assertIsNone(procs[0].poll())
+        self.assertTrue(wt_path.exists())
+        self.assertEqual(target["verdict"], "skip: in-use")
+
+    def _sleep_in(self, path: Path) -> subprocess.Popen:
+        proc = subprocess.Popen(["sleep", "60"], cwd=path, start_new_session=True)
+        self.addCleanup(proc.wait)
+        self.addCleanup(proc.kill)
+        return proc
+
+    def test_worktree_added_after_scan_is_not_swept_as_stale(self):
+        procs = []
+
+        def add_tree(_wt_path, _sessions, _opts):
+            fresh = self.tmp / "repo" / ".claude" / "worktrees" / "fresh"
+            _run_git(["worktree", "add", "-b", "fresh", str(fresh)], self.tmp / "repo")
+            procs.append(self._sleep_in(fresh))
+
+        self._apply_with_change_after_scan(add_tree)
+
+        self.assertIsNone(procs[0].poll())
+
+    def test_dir_claimed_by_a_session_after_scan_is_not_swept(self):
+        procs = []
+
+        def claim(_wt_path, sessions, _opts):
+            orphan = self.tmp / "repo" / ".claude" / "worktrees" / "orphan"
+            orphan.mkdir(parents=True)
+            procs.append(self._sleep_in(orphan))
+            (sessions / "y.json").write_text(json.dumps(
+                {"pid": procs[0].pid, "cwd": os.path.realpath(orphan)}))
+
+        self._apply_with_change_after_scan(claim)
+
+        self.assertIsNone(procs[0].poll())
+
+    def test_branch_detached_after_scan_is_kept(self):
+        def detach(wt_path, _sessions, _opts):
+            _run_git(["checkout", "--detach"], wt_path)
+            _run_git(["commit", "--allow-empty", "-m", "wip"], wt_path)
+
+        wt_path, target = self._apply_with_change_after_scan(detach)
+
+        self.assertTrue(wt_path.exists())
+        self.assertEqual(target["verdict"], "skip: detached")
+
+    def test_deadline_spent_before_recheck_keeps_tree(self):
+        def spend(_wt_path, _sessions, opts):
+            opts.deadline_s = 0
+
+        wt_path, target = self._apply_with_change_after_scan(spend)
+
+        self.assertTrue(wt_path.exists())
+        self.assertEqual(target["verdict"], reap.DEADLINE_SKIP)
+
+
+class RunObservationFailureTests(GitFixtureTestCase):
+    def _apply_with_failing(self, failing, setup=None) -> tuple[Path, dict, str, dict]:
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        wt_path = self.tmp / "wt-merged"
+        _run_git(["worktree", "add", "-b", "feature-merged", str(wt_path)], repo)
+        sessions_dir = self.tmp / "sessions"
+        sessions_dir.mkdir()
+        if setup:
+            setup(repo)
+
+        # git runs through Popen, so only ps, lsof and du see this.
+        orig_run = subprocess.run
+
+        def fake_run(argv, *args, **kwargs):
+            if failing(argv):
+                raise subprocess.TimeoutExpired(cmd=argv, timeout=30)
+            return orig_run(argv, *args, **kwargs)
+        subprocess.run = fake_run
+        self.addCleanup(setattr, subprocess, "run", orig_run)
+
+        opts = types.SimpleNamespace(
+            selftest=False, apply=True, dry_run=False, json=True,
+            repo=[repo], roots=[], no_fetch=True, grace_days=14,
+            sessions_dir=sessions_dir, deadline_s=60,
+            max_kills_per_tree=20, orphan_min_age_s=172800, kill_grace_s=5,
+            ignored_untracked_dirs=set(), ignored_untracked_prefixes=(),
+        )
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            reap.run(opts)
+        payload = json.loads(out.getvalue())
+        wt_real = os.path.realpath(wt_path)
+        target = next(w for w in payload["repos"][0]["worktrees"] if w["path"] == wt_real)
+        return wt_path, target, err.getvalue(), payload
+
+    def test_lsof_failure_keeps_tree(self):
+        wt_path, target, err, payload = self._apply_with_failing(
+            lambda argv: argv[0] == "lsof")
+        self.assertTrue(wt_path.exists())
+        self.assertFalse(target["applied"]["removed"])
+        self.assertIn("observation", target["applied"]["detail"])
+        self.assertIn("lsof", err)
+        self.assertFalse(payload["process_observation_ok"])
+
+    def test_ps_failure_keeps_tree(self):
+        wt_path, target, err, payload = self._apply_with_failing(
+            lambda argv: argv[:2] == ["ps", "-axo"])
+        self.assertTrue(wt_path.exists())
+        self.assertFalse(target["applied"]["removed"])
+        self.assertIn("ps", err)
+        self.assertFalse(payload["process_observation_ok"])
+
+    def test_lsof_failure_signals_nothing_in_a_stale_dir(self):
+        procs = []
+
+        def plant(repo):
+            stale = repo / ".claude" / "worktrees" / "stale1"
+            stale.mkdir(parents=True)
+            # Claimed by argv, the one match left with lsof down.
+            proc = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)", os.path.realpath(stale)],
+                start_new_session=True)
+            self.addCleanup(proc.wait)
+            self.addCleanup(proc.kill)
+            procs.append(proc)
+
+        self._apply_with_failing(lambda argv: argv[0] == "lsof", plant)
+
+        self.assertIsNone(procs[0].poll())
 
 
 class RunRepeatedRepoTests(GitFixtureTestCase):

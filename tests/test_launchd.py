@@ -53,6 +53,32 @@ class TerminateProcessGroupTests(unittest.TestCase):
         finally:
             proc.wait(timeout=5)
 
+    def test_group_member_ignoring_term_dies_after_leader_exits(self):
+        # The member prints its pid only once TERM is ignored, so the signal
+        # cannot land before the disposition is set.
+        member_code = ("import os, signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+                       "print(os.getpid(), flush=True); time.sleep(30)")
+        leader = subprocess.Popen(
+            ["sh", "-c", '"$0" -c "$1" & wait', sys.executable, member_code],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+            start_new_session=True,
+        )
+        try:
+            member = int(leader.stdout.readline())
+            self.assertTrue(launchd.terminate_process_group(leader.pid, GRACE_S))
+            deadline = time.time() + 5
+            while launchd._process_alive(member) and time.time() < deadline:
+                time.sleep(0.05)
+            self.assertFalse(launchd._process_alive(member))
+        finally:
+            # The unreaped leader pins its pid, so this group id cannot be anyone else's.
+            try:
+                os.killpg(leader.pid, 9)
+            except (ProcessLookupError, PermissionError):
+                pass
+            leader.stdout.close()
+            leader.wait(timeout=5)
+
     def test_pid_1_never_signalled(self):
         self.assertFalse(launchd.terminate_process_group(1, GRACE_S))
 

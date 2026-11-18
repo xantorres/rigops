@@ -213,15 +213,10 @@ run "$RIGOPS_LINK" tax --json
 [ "$RC" -eq 0 ] || fail "rigops tax exit $RC: $OUT"
 assert_json "$OUT" "rigops tax --json"
 
-# Fresh ledger: 0-1 rows print a plain "not enough rows" message and exit
-# 0 rather than emit JSON (see libexec/rigops-ledger cmd_diff) -- tolerate
-# that instead of asserting JSON unconditionally.
+# Fresh ledger: 0-1 rows still emit JSON (empty deltas) under --json.
 run "$RIGOPS_LINK" ledger diff --json
 [ "$RC" -eq 0 ] || fail "rigops ledger diff exit $RC: $OUT"
-case "$OUT" in
-    *"not enough ledger rows"*) : ;;
-    *) assert_json "$OUT" "rigops ledger diff --json" ;;
-esac
+assert_json "$OUT" "rigops ledger diff --json"
 
 REGISTRY_EXAMPLE="$REPO_ROOT/config/registry.example.md"
 run "$RIGOPS_LINK" doctor --report --supervisor=none --registry="$REGISTRY_EXAMPLE"

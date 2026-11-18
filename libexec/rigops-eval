@@ -34,7 +34,10 @@ def _results_path() -> Path:
 
 def _load_rows() -> list:
     path = _results_path()
-    rows = state.read_jsonl(path)
+    try:
+        rows = state.read_jsonl(path)
+    except state.MalformedJsonl as exc:
+        raise SystemExit(f"error: {exc}") from exc
     for row in rows:
         problem = rigops_eval.row_problem(row)
         if problem:

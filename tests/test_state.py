@@ -57,15 +57,14 @@ class JsonlTests(unittest.TestCase):
             path.write_text('{"a": 1}\n\n   \n{"b": 2}\n')
             self.assertEqual(state.read_jsonl(path), [{"a": 1}, {"b": 2}])
 
-    def test_malformed_line_raises_system_exit_with_lineno(self):
+    def test_malformed_line_raises_value_error_with_lineno(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "ledger.jsonl"
             path.write_text('{"a": 1}\nnot json\n')
-            with self.assertRaises(SystemExit) as ctx:
+            with self.assertRaises(ValueError) as ctx:
                 state.read_jsonl(path)
             message = str(ctx.exception)
-            self.assertIn(str(path), message)
-            self.assertIn("2", message)
+            self.assertIn(f"malformed JSON line in {path}:2", message)
 
 
 if __name__ == "__main__":

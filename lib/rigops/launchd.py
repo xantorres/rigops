@@ -128,6 +128,18 @@ def terminate_process_group(pid: int, grace_s: float) -> bool:
         else:
             os.kill(pid, sig)
 
+    def lingering() -> bool:
+        # A group outlives its leader: members that ignore TERM still need the KILL.
+        if not group:
+            return _process_alive(pid)
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            pass  # members we may not signal, or on Darwin only zombies, remain
+        return True
+
     try:
         send(signal.SIGTERM)
     except (ProcessLookupError, PermissionError):
@@ -135,7 +147,7 @@ def terminate_process_group(pid: int, grace_s: float) -> bool:
     deadline = time.time() + grace_s
     while time.time() < deadline:
         time.sleep(0.5)
-        if not _process_alive(pid):
+        if not lingering():
             return True
     try:
         send(signal.SIGKILL)

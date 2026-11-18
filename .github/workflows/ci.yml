@@ -9,7 +9,8 @@ permissions:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    # ubuntu-latest moved to 26.04, which has no python 3.9 build; the 3.9 floor needs 24.04
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ["3.9", "3.13"]
@@ -36,41 +37,27 @@ jobs:
       - name: install ruff
         run: pipx install ruff==0.16.4
 
+      - name: install claude code
+        run: npm install -g @anthropic-ai/claude-code
+
       - name: check
         env:
           RIGOPS_REDACTION_PATTERNS_B64: ${{ secrets.RIGOPS_REDACTION_PATTERNS_B64 }}
-        run: make check
-
-      - name: install claude code
-        if: matrix.python-version == '3.13'
-        run: npm install -g @anthropic-ai/claude-code
-
-      - name: strict plugin validate
-        if: matrix.python-version == '3.13'
-        run: |
-          claude plugin validate --strict .
-          claude plugin validate --strict plugin/
+        run: make check STRICT=1
 
   smoke:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            python-version: "3.9"
-          - os: macos-latest
-            # py3.9 floor covered by ubuntu leg; darwin-arm64 lacks 3.9 builds
-            python-version: "3.11"
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: set up python
         uses: actions/setup-python@v7
         with:
-          python-version: ${{ matrix.python-version }}
+          # py3.9 floor is covered by the lint job; darwin-arm64 lacks 3.9 builds
+          python-version: "3.11"
+
+      - run: make test
 
       - run: make smoke
 
-      - name: smoke-launchd
-        if: runner.os == 'macOS'
-        run: make smoke-launchd
+      - run: make smoke-launchd

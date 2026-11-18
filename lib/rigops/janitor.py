@@ -12,7 +12,12 @@ from rigops import config as rigops_config
 from rigops.watermarks import check_watermarks  # noqa: F401
 
 DELETE_ACTIONS = ("delete", "keep_newest_n")
-_UNSAFE_BASES = {Path("/"), Path.home(), Path.home().parent}
+
+
+def _unsafe_bases() -> set:
+    # Real paths, since _safe_base compares one: a HOME behind a symlink must still match.
+    home = Path(os.path.realpath(Path.home()))
+    return {Path("/"), home, home.parent, Path(os.path.realpath(Path.home().parent))}
 
 
 def _safe_base(base: Path):
@@ -29,7 +34,7 @@ def _safe_base(base: Path):
     if not base.exists():
         return False, "base does not exist"
     real = Path(os.path.realpath(base))
-    if real in _UNSAFE_BASES:
+    if real in _unsafe_bases():
         return False, f"refusing to operate on {real}"
     return True, None
 
@@ -44,13 +49,37 @@ def _safe_target(target: Path, base_real: str) -> bool:
     return parent_real == base_real or parent_real.startswith(base_real + os.sep)
 
 
-def _remove(target: Path) -> None:
+def _remove(target: Path, only_empty: bool = False) -> None:
     if target.is_symlink():
         os.remove(target)
     elif target.is_dir():
-        shutil.rmtree(target)
+        # rmdir refuses a directory that gained an entry since it matched as empty.
+        if only_empty:
+            os.rmdir(target)
+        else:
+            shutil.rmtree(target)
     else:
         os.remove(target)
+
+
+def _newest_mtime(entry: Path) -> float | None:
+    """Newest lstat mtime of entry and, for a real directory, of everything
+    under it. None when any part is unreadable: an unknown age is never old."""
+    try:
+        newest = os.lstat(entry).st_mtime
+    except OSError:
+        return None
+    if entry.is_symlink() or not entry.is_dir():
+        return newest
+    walk_errors: list = []
+    for root, dirnames, filenames in os.walk(entry, followlinks=False,
+                                             onerror=walk_errors.append):
+        for name in dirnames + filenames:
+            try:
+                newest = max(newest, os.lstat(os.path.join(root, name)).st_mtime)
+            except OSError:
+                return None
+    return None if walk_errors else newest
 
 
 def _iter_matches(base: Path, rule: dict, now: float) -> list:
@@ -102,11 +131,8 @@ def _iter_matches(base: Path, rule: dict, now: float) -> list:
                 except OSError:
                     continue
             if cutoff is not None:
-                try:
-                    mtime = os.lstat(entry).st_mtime
-                except OSError:
-                    continue
-                if mtime >= cutoff:
+                mtime = _newest_mtime(entry)
+                if mtime is None or mtime >= cutoff:
                     continue
             matches.append(entry)
     return sorted(matches, key=str)
@@ -143,11 +169,12 @@ def _delete_like_result(
         return {
             "name": rule.get("name", ""), "action": action, "path": str(base), "matched": matched,
             "acted": 0, "overflow": True, "skipped": None, "errors": [], "output": None,
-            "deleted_weight": 0,
+            "deleted_weight": 0, "cap_weight": 0,
         }
     acted = 0
     deleted_weight = 0
     errors = []
+    only_empty = bool(rule.get("only_empty", False))
     if apply:
         for target, weight in zip(candidates, weights):
             if not os.path.lexists(target):
@@ -157,16 +184,35 @@ def _delete_like_result(
                 errors.append(f"{target}: safety re-check failed")
                 continue
             try:
-                _remove(target)
+                _remove(target, only_empty)
                 acted += 1
                 deleted_weight += weight
             except OSError as exc:
                 errors.append(f"{target}: {exc}")
+        cap_weight = deleted_weight
+    else:
+        cap_weight = _would_remove_weight(candidates, weights, base_real)
     return {
         "name": rule.get("name", ""), "action": action, "path": str(base), "matched": matched,
         "acted": acted, "overflow": False, "skipped": None, "errors": errors, "output": None,
-        "deleted_weight": deleted_weight,
+        "deleted_weight": deleted_weight, "cap_weight": cap_weight,
     }
+
+
+def _would_remove_weight(candidates, weights, base_real: str) -> int:
+    """The cap charge apply would make: a candidate under one removed before it
+    is already gone by then, so it is not charged twice."""
+    removed: list = []
+    total = 0
+    for target, weight in zip(candidates, weights):
+        path = str(target)
+        if any(path.startswith(p + os.sep) for p in removed):
+            continue
+        if not _safe_target(target, base_real):
+            continue
+        removed.append(path)
+        total += weight
+    return total
 
 
 def _run_delete_rule(rule, base, matches, apply, running_delete_total, max_delete) -> dict:
@@ -315,9 +361,12 @@ def run_rules(rules: list, apply: bool, max_delete: int, now: float | None = Non
     max_delete = 200 if max_delete is None else int(max_delete)
     results = []
     running_delete_total = 0
+    total_deleted = 0
     for rule in rules:
         result = _run_rule(rule, apply, max_delete, now, running_delete_total)
         results.append(result)
         if result["action"] in DELETE_ACTIONS:
-            running_delete_total += result.get("deleted_weight", 0)
-    return {"rules": results, "total_deleted": running_delete_total}
+            # A dry run charges what apply would delete, so it overflows where apply would.
+            running_delete_total += result.get("cap_weight", 0)
+            total_deleted += result.get("deleted_weight", 0)
+    return {"rules": results, "total_deleted": total_deleted}

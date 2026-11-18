@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -25,6 +26,24 @@ from rigops.doctor import (  # noqa: E402
     check_rtk,
     pointer_grammar,
 )
+
+
+@contextlib.contextmanager
+def fake_home():
+    """A throwaway HOME, so a test can lay out files under ``~`` without touching the real one."""
+    with tempfile.TemporaryDirectory() as tmp:
+        home = Path(tmp) / "home"
+        home.mkdir()
+        with mock.patch.dict(os.environ, {"HOME": str(home)}):
+            yield home
+
+
+ABSENT_HOME_DIR = f"doctor-test-absent-{os.getpid()}"
+
+
+def absent_home_path(name):
+    """A path under the real home that is never created, so it is reliably missing."""
+    return Path.home() / ABSENT_HOME_DIR / name
 
 
 class FindingIdTests(unittest.TestCase):
@@ -257,7 +276,8 @@ class CheckBudgetTests(unittest.TestCase):
 
 
 class CheckPointersTests(unittest.TestCase):
-    """Pointer targets live under the real home directory and ``ignore_prefixes``
+    """A ``~`` target that must exist is laid out under a throwaway HOME; one that
+    must be missing uses a never-created name under the real home. ``ignore_prefixes``
     is overridden to a value nothing can match, so a temporary directory under the
     system temp tree is never mistaken for an ignored path.
     """
@@ -276,24 +296,22 @@ class CheckPointersTests(unittest.TestCase):
         return source
 
     def test_only_missing_path_is_reported(self):
-        with tempfile.TemporaryDirectory(dir=str(Path.home())) as home_tmp:
-            (Path(home_tmp) / "existing-file.txt").write_text("x")
-            base = f"~/{Path(home_tmp).name}"
+        with fake_home() as home:
+            (home / "existing-file.txt").write_text("x")
             with tempfile.TemporaryDirectory() as tmp:
-                text = f"see {base}/existing-file.txt and also {base}/missing-file.txt\n"
+                text = "see ~/existing-file.txt and also ~/missing-file.txt\n"
                 source = self._write_source(tmp, text)
                 findings = check_pointers.run(self._cfg(source))
         path_findings = [f for f in findings if f.key.startswith("path:")]
         self.assertEqual(len(path_findings), 1)
-        self.assertIn(f"{base}/missing-file.txt", path_findings[0].key)
+        self.assertIn("~/missing-file.txt", path_findings[0].key)
 
     @unittest.skipIf(core.HOME.parent == Path("/"), "a home directly under / has no absolute form")
     def test_absolute_home_path_is_a_pointer(self):
-        with tempfile.TemporaryDirectory(dir=str(Path.home())) as home_tmp:
-            missing = Path(home_tmp) / "missing-file.txt"
-            with tempfile.TemporaryDirectory() as tmp:
-                source = self._write_source(tmp, f"see {missing}\n")
-                findings = check_pointers.run(self._cfg(source))
+        missing = absent_home_path("missing-file.txt")
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._write_source(tmp, f"see {missing}\n")
+            findings = check_pointers.run(self._cfg(source))
         self.assertEqual(
             [f.key.split(":")[1] for f in findings if f.key.startswith("path:")], [str(missing)]
         )
@@ -305,15 +323,11 @@ class CheckPointersTests(unittest.TestCase):
             self.assertEqual(pointer_grammar._home_root(), "|/home/[A-Za-z0-9._-]+")
 
     def test_dollar_var_and_placeholder_segment_paths_not_reported(self):
-        with tempfile.TemporaryDirectory(dir=str(Path.home())) as home_tmp:
-            missing_root = Path(home_tmp) / "does-not-exist"
-            with tempfile.TemporaryDirectory() as tmp:
-                text = (
-                    f"see {missing_root}/$VAR/thing.md and "
-                    f"{missing_root}/example/thing.md\n"
-                )
-                source = self._write_source(tmp, text)
-                findings = check_pointers.run(self._cfg(source))
+        missing_root = absent_home_path("does-not-exist")
+        with tempfile.TemporaryDirectory() as tmp:
+            text = f"see {missing_root}/$VAR/thing.md and {missing_root}/example/thing.md\n"
+            source = self._write_source(tmp, text)
+            findings = check_pointers.run(self._cfg(source))
         path_findings = [f for f in findings if f.key.startswith("path:")]
         self.assertEqual(path_findings, [])
 
@@ -331,11 +345,10 @@ class CheckPointersTests(unittest.TestCase):
         self.assertFalse(any("tdd-guide" in k for k in agent_findings))
 
     def test_same_missing_path_twice_on_one_line_dedupes_to_one_finding(self):
-        with tempfile.TemporaryDirectory(dir=str(Path.home())) as home_tmp:
-            missing = f"~/{Path(home_tmp).name}/dup-missing-file.txt"
-            with tempfile.TemporaryDirectory() as tmp:
-                source = self._write_source(tmp, f"first {missing} then again {missing} done\n")
-                findings = check_pointers.run(self._cfg(source))
+        missing = f"~/{ABSENT_HOME_DIR}/dup-missing-file.txt"
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._write_source(tmp, f"first {missing} then again {missing} done\n")
+            findings = check_pointers.run(self._cfg(source))
         path_findings = [f for f in findings if missing in f.key]
         self.assertEqual(len(path_findings), 1)
 
@@ -387,9 +400,9 @@ class CheckPointersTests(unittest.TestCase):
             self.assertEqual(default_missing, [])
 
     def test_space_escape_applies_only_where_the_match_was_cut_at_a_space(self):
-        with tempfile.TemporaryDirectory(dir=str(Path.home())) as home_tmp:
-            (Path(home_tmp) / "report extra.md").write_text("x\n")
-            stem = f"~/{Path(home_tmp).name}/report"
+        with fake_home() as home:
+            (home / "report extra.md").write_text("x\n")
+            stem = "~/report"
             with tempfile.TemporaryDirectory() as tmp:
                 cut = self._write_source(tmp, f"open {stem} extra.md now\n")
                 self.assertEqual(
@@ -403,10 +416,10 @@ class CheckPointersTests(unittest.TestCase):
 
     def test_recursive_glob_pointer_stops_at_its_anchor(self):
         known = {"placeholders": [], "ignore": []}
-        with tempfile.TemporaryDirectory(dir=str(Path.home())) as home_tmp:
+        with tempfile.TemporaryDirectory() as tmp:
             started = time.monotonic()
-            self.assertTrue(check_pointers._path_ok(f"{home_tmp}/**/absent.md", known))
-            self.assertFalse(check_pointers._path_ok(f"{home_tmp}/gone/**/absent.md", known))
+            self.assertTrue(check_pointers._path_ok(f"{tmp}/**/absent.md", known))
+            self.assertFalse(check_pointers._path_ok(f"{tmp}/gone/**/absent.md", known))
         self.assertLess(time.monotonic() - started, 5)
 
     def test_two_segment_launchd_label_is_checked_and_a_filename_is_not(self):
@@ -454,11 +467,10 @@ class CheckPointersTests(unittest.TestCase):
         self.assertEqual([f for f in findings if f.key.startswith("launchd:")], [])
 
     def test_date_template_path_is_a_placeholder(self):
-        with tempfile.TemporaryDirectory(dir=str(Path.home())) as home_tmp:
-            template = f"~/{Path(home_tmp).name}/reports/YYYY-MM-DD.md"
-            with tempfile.TemporaryDirectory() as tmp:
-                source = self._write_source(tmp, f"write {template} then\n")
-                findings = check_pointers.run(self._cfg(source))
+        template = f"~/{ABSENT_HOME_DIR}/reports/YYYY-MM-DD.md"
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._write_source(tmp, f"write {template} then\n")
+            findings = check_pointers.run(self._cfg(source))
         self.assertEqual([f for f in findings if f.key.startswith("path:")], [])
 
     def test_default_sources_cover_the_vault_docs_an_agent_reads(self):
@@ -680,14 +692,13 @@ class CheckPointersMemoryNoteTests(unittest.TestCase):
                 return check_pointers.run({"doctor": {"pointers": pointers}})
 
     def test_only_paths_under_a_memory_root_are_judged(self):
-        with tempfile.TemporaryDirectory(dir=str(Path.home())) as home_tmp:
-            # A home directly under / has no absolute-home branch in the grammar.
-            root = f"~/{Path(home_tmp).name}/rig-root"
+        with fake_home():
+            root = "~/rig-root"
             core.expand(root).mkdir()
             (core.expand(root) / "present.md").write_text("x")
             text = (
                 f"gone {root}/absent.md, kept {root}/present.md, another host's "
-                f"~/{Path(home_tmp).name}/elsewhere/absent.conf and /etc/doctor-test-absent.conf\n"
+                "~/elsewhere/absent.conf and /etc/doctor-test-absent.conf\n"
             )
             findings = self._run(text, memory_roots=[root])
         self.assertEqual(

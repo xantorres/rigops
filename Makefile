@@ -1,3 +1,7 @@
+# STRICT=1 (exactly 1) turns a missing optional tool from a skip into a failure; CI sets it.
+STRICT ?=
+SKIP = if [ "$(STRICT)" = 1 ]; then echo "fail: $(1) not installed (STRICT)" >&2; exit 1; else echo "skip: $(1) not installed"; fi
+
 .PHONY: check gate gate-history shellcheck ruff test test-hooks validate-manifests plugin-validate hooks smoke smoke-launchd
 
 check: gate gate-history shellcheck ruff test test-hooks smoke validate-manifests plugin-validate
@@ -12,14 +16,14 @@ shellcheck:
 	@if command -v shellcheck >/dev/null 2>&1; then \
 		shellcheck $$(git ls-files '*.sh') .githooks/commit-msg .githooks/pre-push; \
 	else \
-		echo "skip: shellcheck not installed"; \
+		$(call SKIP,shellcheck); \
 	fi
 
 ruff:
 	@if command -v ruff >/dev/null 2>&1; then \
 		ruff check .; \
 	else \
-		echo "skip: ruff not installed"; \
+		$(call SKIP,ruff); \
 	fi
 
 test:
@@ -35,7 +39,7 @@ plugin-validate:
 	@if command -v claude >/dev/null 2>&1; then \
 		claude plugin validate --strict . && claude plugin validate --strict plugin/; \
 	else \
-		echo "skip: claude not installed"; \
+		$(call SKIP,claude); \
 	fi
 
 hooks:

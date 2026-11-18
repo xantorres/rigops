@@ -7,6 +7,10 @@ from pathlib import Path
 from rigops.config import expand
 
 
+class MalformedJsonl(ValueError):
+    pass
+
+
 def state_dir() -> Path:
     env_dir = os.environ.get("RIGOPS_STATE_DIR")
     if env_dir:
@@ -39,5 +43,5 @@ def read_jsonl(path) -> list:
             try:
                 rows.append(json.loads(line))
             except json.JSONDecodeError as exc:
-                raise SystemExit(f"error: malformed JSON line in {path}:{lineno}: {exc}") from exc
+                raise MalformedJsonl(f"malformed JSON line in {path}:{lineno}: {exc}") from exc
     return rows

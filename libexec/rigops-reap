@@ -21,9 +21,6 @@ def main() -> int:
     except ValueError:
         deadline_s = 3600
 
-    cfg = rigops_config.load()
-    default_grace_days = rigops_config.get(cfg, "reaper.grace_days", 14)
-
     parser = argparse.ArgumentParser(
         description="Reap merged, unused git worktrees.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -42,11 +39,15 @@ def main() -> int:
                         help="scan this tree only, overriding the configured reaper.roots list")
     parser.add_argument("--no-fetch", action="store_true",
                         help="skip git fetch; merged-check uses local refs only")
-    parser.add_argument("--grace-days", type=int, default=default_grace_days,
+    parser.add_argument("--grace-days", type=int, default=None,
                         help="an unmerged branch becomes eligible once its last commit is older "
                              "than this and it has no unpushed commits "
-                             f"(default {default_grace_days})")
+                             "(default: config reaper.grace_days, else 14)")
     args = parser.parse_args()
+
+    cfg = rigops_config.load()
+    if args.grace_days is None:
+        args.grace_days = rigops_config.get(cfg, "reaper.grace_days", 14)
 
     if args.selftest:
         return reap.run_selftest()

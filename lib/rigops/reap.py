@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import signal
 import subprocess
@@ -49,7 +48,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from rigops import config, state
+from rigops import config
+from rigops.reap_procs import (  # noqa: F401
+    ETIME_RE,
+    _alive_for_blocking,
+    _descendants,
+    _etime_to_seconds,
+    _filter_killable,
+    _match_tags,
+    _ppid_of,
+    cwd_map,
+    kill_pids,
+    log,
+    orphan_daemons,
+    path_claims,
+    process_alive,
+    processes_rooted_in,
+    protected_pids,
+    ps_snapshot,
+    removal_blockers,
+    verify_pid,
+)
 
 # Candidate merge targets, most authoritative first. A repository that resolves
 # none of these is skipped whole: without a target there is no merged-check, and
@@ -109,9 +128,11 @@ def _run_captured(
     exactly what a plain terminate leaves behind. The reaper's own process
     group is a different pgid and is never touched.
     """
+    # surrogateescape: a non-UTF-8 path from `status -z` survives and re-encodes
+    # to the same bytes when passed back to git as a pathspec.
     with subprocess.Popen(
         argv, start_new_session=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, env=env,
+        text=True, errors="surrogateescape", env=env,
     ) as proc:
         try:
             stdout, stderr = proc.communicate(timeout=timeout)
@@ -292,366 +313,6 @@ def live_worktree_cwds(sessions_dir: Path) -> list[Path]:
     return live
 
 
-ETIME_RE = re.compile(r"^(?:(?:(\d+)-)?(\d+):)?(\d+):(\d+)$")
-
-
-def _etime_to_seconds(text: str) -> int | None:
-    """[[dd-]hh:]mm:ss -> seconds. macOS ps has no etimes keyword."""
-    m = ETIME_RE.match(text.strip())
-    if not m:
-        return None
-    days, hours, minutes, seconds = (int(g) if g else 0 for g in m.groups())
-    return ((days * 24 + hours) * 60 + minutes) * 60 + seconds
-
-
-def ps_snapshot() -> dict[int, dict]:
-    """One process-table snapshot the whole run reasons from.
-
-    uid= prints the numeric uid, matching os.getuid() comparisons downstream.
-    Elapsed time is normalized to seconds under the "etimes" key.
-    """
-    try:
-        proc = subprocess.run(
-            ["ps", "-axo", "pid=,ppid=,pgid=,uid=,tty=,etime=,command="],
-            capture_output=True, text=True, timeout=30, check=False,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return {}
-    if proc.returncode != 0:
-        return {}
-    snap: dict[int, dict] = {}
-    for line in proc.stdout.splitlines():
-        parts = line.split(None, 6)
-        if len(parts) < 7:
-            continue
-        try:
-            pid, ppid, pgid, uid = (int(p) for p in parts[:4])
-        except ValueError:
-            continue
-        etimes = _etime_to_seconds(parts[5])
-        if etimes is None:
-            continue
-        snap[pid] = {"ppid": ppid, "pgid": pgid, "uid": uid, "tty": parts[4],
-                     "etimes": etimes, "command": parts[6]}
-    return snap
-
-
-def cwd_map() -> dict[int, str]:
-    """pid -> current working directory, from one lsof pass.
-
-    lsof exits 1 when it cannot introspect some other-user processes while
-    still printing valid records for the rest, so 1 is usable output.
-    """
-    try:
-        proc = subprocess.run(
-            ["lsof", "-a", "-d", "cwd", "-Fpn"],
-            capture_output=True, text=True, timeout=30, check=False,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return {}
-    if proc.returncode not in (0, 1):
-        return {}
-    cwds: dict[int, str] = {}
-    pid: int | None = None
-    for line in proc.stdout.splitlines():
-        if line.startswith("p"):
-            try:
-                pid = int(line[1:])
-            except ValueError:
-                pid = None
-        elif line.startswith("n") and pid is not None:
-            cwds[pid] = line[1:]
-    return cwds
-
-
-def path_claims(path: str | None, target: str) -> bool:
-    """True when path is target or lies under it. Trailing-slash-safe.
-
-    Absolute paths only: a relative argv token would otherwise resolve against
-    this process's own cwd and match whatever tree the reaper was run from.
-    """
-    if not path or not os.path.isabs(path):
-        return False
-    try:
-        real_path = os.path.realpath(path)
-        real_target = os.path.realpath(target)
-    except OSError:
-        return False
-    return real_path == real_target or real_path.startswith(real_target + os.sep)
-
-
-def _ppid_of(pid: int) -> int | None:
-    """ppid of pid via a direct ps lookup, for an ancestor missing from the
-    snapshot. None when ps can't answer (gone, timeout, error)."""
-    try:
-        out = subprocess.run(["ps", "-o", "ppid=", "-p", str(pid)],
-                             capture_output=True, text=True, timeout=10,
-                             check=False).stdout.strip()
-        return int(out)
-    except (ValueError, subprocess.TimeoutExpired, OSError):
-        return None
-
-
-def protected_pids(snap: dict[int, dict]) -> set[int]:
-    """Never-signal set: init, kernel, this process, and its ancestor chain.
-
-    An ancestor missing from the snapshot (dropped line) must not truncate the
-    walk and leave the rest of the chain signalable; ask ps directly instead.
-    """
-    protected = {0, 1, os.getpid()}
-    pid = os.getpid()
-    seen: set[int] = set()
-    walk_truncated = False
-    while pid not in (0, 1) and pid not in seen:
-        seen.add(pid)
-        if pid in snap:
-            pid = snap[pid]["ppid"]
-        else:
-            next_pid = _ppid_of(pid)
-            if next_pid is None:
-                walk_truncated = True
-                break
-            pid = next_pid
-        protected.add(pid)
-    if walk_truncated:
-        # A truncated ancestor walk above must not leave the reaper's own
-        # process group signalable.
-        pgrp = os.getpgrp()
-        protected |= {p for p, i in snap.items() if i.get("pgid") == pgrp}
-    return protected
-
-
-def processes_rooted_in(tree: str, snap: dict[int, dict],
-                        cwds: dict[int, str]) -> set[int]:
-    """Pids whose cwd or argv is rooted in tree, plus all their descendants.
-
-    Argv matching is per whitespace token, never a substring of the whole
-    command line, so an editor daemon whose log path merely mentions a parent
-    directory does not match.
-    """
-    roots: set[int] = set()
-    for pid, cwd in cwds.items():
-        if pid in snap and path_claims(cwd, tree):
-            roots.add(pid)
-    for pid, info in snap.items():
-        if pid in roots:
-            continue
-        if any(path_claims(tok, tree) for tok in info["command"].split()):
-            roots.add(pid)
-    if not roots:
-        return roots
-    return _descendants(roots, snap)
-
-
-def _filter_killable(pids: set[int], snap: dict[int, dict]) -> set[int]:
-    """Own-uid, terminal-less processes only, minus the never-signal set.
-
-    A controlling tty means an interactive session -- a user's shell parked in
-    an old worktree directory, not a leaked build daemon. Those are never
-    signalled; every orphan this module exists for runs detached (tty `??` on
-    macOS, `?` on Linux).
-    """
-    uid = os.getuid()
-    keep = {p for p in pids
-            if p in snap and snap[p]["uid"] == uid and snap[p]["tty"].strip("?") == ""}
-    return keep - protected_pids(snap)
-
-
-def _descendants(roots: set[int], snap: dict[int, dict]) -> set[int]:
-    """roots plus every process reachable through ppid chains."""
-    children: dict[int, list[int]] = {}
-    for pid, info in snap.items():
-        children.setdefault(info["ppid"], []).append(pid)
-    matched = set(roots)
-    queue = list(roots)
-    while queue:
-        for child in children.get(queue.pop(), []):
-            if child not in matched:
-                matched.add(child)
-                queue.append(child)
-    return matched
-
-
-def _match_tags(tree: str, pids: set[int], snap: dict[int, dict],
-                cwds: dict[int, str]) -> dict[int, str]:
-    """Why each already-matched pid matched: cwd, argv, or child (closure only)."""
-    tags: dict[int, str] = {}
-    for pid in pids:
-        if path_claims(cwds.get(pid), tree):
-            tags[pid] = "cwd"
-        elif pid in snap and any(path_claims(tok, tree) for tok in snap[pid]["command"].split()):
-            tags[pid] = "argv"
-        else:
-            tags[pid] = "child"
-    return tags
-
-
-def process_alive(pid: int) -> bool:
-    """True while the pid exists and is not a zombie."""
-    try:
-        proc = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)],
-                              capture_output=True, text=True, timeout=10, check=False)
-    except (subprocess.TimeoutExpired, OSError):
-        return False
-    stat = proc.stdout.strip()
-    return bool(stat) and not stat.startswith("Z")
-
-
-def _alive_for_blocking(pid: int) -> bool:
-    """Like process_alive, but fails CLOSED: removal must not proceed on an
-    unreadable liveness check, so an unknown pid counts as alive here."""
-    try:
-        proc = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)],
-                              capture_output=True, text=True, timeout=10, check=False)
-    except (subprocess.TimeoutExpired, OSError):
-        return True
-    if proc.returncode != 0:
-        return False
-    stat = proc.stdout.strip()
-    return bool(stat) and not stat.startswith("Z")
-
-
-def verify_pid(pid: int, expected_command: str) -> bool:
-    """Guard against pid reuse: the command line must still match the snapshot."""
-    try:
-        proc = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
-                              capture_output=True, text=True, timeout=10, check=False)
-    except (subprocess.TimeoutExpired, OSError):
-        return False
-    if proc.returncode != 0:
-        return False
-    return proc.stdout.strip() == expected_command.strip()
-
-
-def kill_pids(label: str, pids: dict[int, str], snap: dict[int, dict], apply: bool,
-             max_kills: int, grace_s: int) -> dict:
-    """TERM, grace, KILL for an already-matched pid set. Explicit pids only.
-
-    Group signalling is useless here -- the orphans this hunts have dead group
-    leaders -- and pattern kills are banned; every signal goes to one verified
-    pid. Over the cap means the match is not trusted: no signals at all.
-    """
-
-    def comm(pid: int) -> str:
-        tokens = snap[pid]["command"].split() if pid in snap else []
-        return Path(tokens[0]).name if tokens else "?"
-
-    would = [{"pid": pid, "comm": comm(pid), "match": tag, "tree": label}
-             for pid, tag in sorted(pids.items())]
-    result = {"would": would, "killed": 0, "kill_failed": 0, "overflow": False, "failed_pids": []}
-    if len(pids) > max_kills:
-        log(f"FAIL kill-overflow {label} count={len(pids)}")
-        result["overflow"] = True
-        return result
-    if not apply:
-        return result
-
-    def send(pid: int, sig: int) -> str:
-        try:
-            os.kill(pid, sig)
-            return "sent"
-        except ProcessLookupError:
-            return "gone"
-        except PermissionError:
-            return "denied"
-
-    def fail(pid: int, tag: str, reason: str) -> None:
-        # A bare counter is undiagnosable after the fact: record which process
-        # survived and why, in the same shape as the KILL lines.
-        failed.add(pid)
-        log(f"KILL-FAIL pid={pid} comm={comm(pid)} match={tag} tree={label} reason={reason}")
-
-    survivors: list[int] = []
-    failed: set[int] = set()
-    gone: set[int] = set()  # dead before any signal: neither killed nor failed
-    tag_of = dict(pids)
-    for pid, tag in sorted(pids.items()):
-        if not process_alive(pid):
-            gone.add(pid)
-            continue
-        expected = snap[pid]["command"] if pid in snap else ""
-        if not verify_pid(pid, expected):
-            fail(pid, tag, "pid-reused")  # alive under a different command
-            continue
-        outcome = send(pid, signal.SIGTERM)
-        if outcome == "gone":
-            gone.add(pid)
-            continue
-        if outcome == "denied":
-            fail(pid, tag, "term-denied")
-            continue
-        log(f"KILL pid={pid} comm={comm(pid)} match={tag} tree={label}")
-        survivors.append(pid)
-
-    deadline = time.time() + grace_s
-    while survivors and time.time() < deadline:
-        time.sleep(0.5)
-        survivors = [p for p in survivors if process_alive(p)]
-
-    for pid in list(survivors):
-        if not process_alive(pid):
-            continue
-        expected = snap[pid]["command"] if pid in snap else ""
-        if not verify_pid(pid, expected):
-            fail(pid, tag_of.get(pid, "?"), "pid-reused")
-            continue
-        send(pid, signal.SIGKILL)
-    if survivors:
-        time.sleep(0.3)
-    for pid in survivors:
-        if pid not in failed and process_alive(pid):
-            fail(pid, tag_of.get(pid, "?"), "survived-sigkill")
-    result["kill_failed"] = len(failed)
-    result["killed"] = len(pids) - len(failed) - len(gone)
-    result["failed_pids"] = sorted(failed)
-    return result
-
-
-def removal_blockers(rooted: set, attempted: dict, kill_result: dict,
-                     alive=_alive_for_blocking) -> list:
-    """Pids that leave a to-be-removed tree not provably clear.
-
-    Removing a directory out from under a live process leaves it on an
-    unlinked inode; a tree that could not be fully cleared is not removed.
-    """
-    blockers = [
-        {"pid": pid, "reason": "excluded-by-policy"}
-        for pid in sorted(rooted - set(attempted))
-        if alive(pid)
-    ]
-    blockers += [
-        {"pid": pid, "reason": "kill-failed"}
-        for pid in sorted(kill_result.get("failed_pids", []))
-    ]
-    return blockers
-
-
-def orphan_daemons(snap: dict[int, dict], cwds: dict[int, str],
-                   root: str, min_age_s: int) -> set[int]:
-    """Long-lived build daemons reparented to launchd, rooted in the tree.
-
-    ppid 1 excludes anything a live editor still owns; the node_modules gate
-    excludes both system daemons that share tool names and every launchd
-    agent of ours; 48h of runtime rules out anything still doing real work.
-    """
-    uid = os.getuid()
-    matched: set[int] = set()
-    for pid, info in snap.items():
-        if info["uid"] != uid or info["ppid"] != 1:
-            continue
-        if "/node_modules/" not in info["command"]:
-            continue
-        if info["etimes"] <= min_age_s:
-            continue
-        if path_claims(cwds.get(pid), root) or any(
-                path_claims(tok, root) for tok in info["command"].split()):
-            matched.add(pid)
-    if matched:
-        # A daemon's own children die with it or leak next; take the tree.
-        matched = _descendants(matched, snap)
-    return matched - protected_pids(snap)
-
-
 def stale_worktree_dirs(repo: Path, registered_paths: set[str],
                         live: list[Path]) -> list[str]:
     """Worktree directories on disk that git no longer registers.
@@ -662,11 +323,16 @@ def stale_worktree_dirs(repo: Path, registered_paths: set[str],
     base = repo / ".claude" / "worktrees"
     if not base.is_dir():
         return []
+    home = os.path.join(os.path.realpath(repo), ".claude", "worktrees")
     stale: list[str] = []
     for entry in sorted(base.iterdir()):
-        if not entry.is_dir():
+        # git never creates a worktree as a symlink; following one makes its target a kill zone.
+        if entry.is_symlink() or not entry.is_dir():
             continue
         real = os.path.realpath(entry)
+        # A symlinked .claude or worktrees dir can land on another repo's trees or this one's src.
+        if os.path.dirname(real) != home:
+            continue
         if real in registered_paths:
             continue
         if any(path_claims(str(cwd), real) for cwd in live):
@@ -738,7 +404,7 @@ def default_branch(repo: Path, timeout: int = 120) -> str:
 def worktree_has_real_changes(path: Path, status: str, default_branch_ref: str,
                               ignored_dirs: set[str], ignored_prefixes: tuple[str, ...],
                               timeout: int = 120) -> bool:
-    """Decide whether porcelain output represents real work.
+    """Decide whether `git status --porcelain -z` output represents real work.
 
     Untracked entries matching the ignored dirs/prefixes never count. A
     tracked file that git considers modified only counts if its content
@@ -748,21 +414,28 @@ def worktree_has_real_changes(path: Path, status: str, default_branch_ref: str,
     to lose.
     """
     tracked: list[str] = []
-    for line in status.splitlines():
-        if len(line) < 4:
+    entries = iter(status.split("\0"))
+    for entry in entries:
+        if len(entry) < 4:
             continue
-        code, rest = line[:2], line[3:]
+        code, rest = entry[:2], entry[3:]
         if code == "??":
             if not is_ignored_untracked(rest, ignored_dirs, ignored_prefixes):
                 return True
             continue
-        tracked.append(rest.split(" -> ", 1)[-1])
+        tracked.append(rest)
+        if "R" in code or "C" in code:
+            # A rename or copy carries its source path as the next entry; a rename deletes it.
+            source = next(entries, None)
+            if "R" in code and source:
+                tracked.append(source)
 
     if not tracked:
         return False
 
-    diff = git_ok(path, "diff", default_branch_ref, "--stat", "--", *tracked,
-                  timeout=timeout)
+    # Literal: a path such as ":name" would otherwise parse as pathspec magic.
+    diff = git_ok(path, "--literal-pathspecs", "diff", default_branch_ref, "--stat",
+                  "--", *tracked, timeout=timeout)
     # Unreadable comparison must not clear a dirty flag.
     return diff is None or bool(diff)
 
@@ -853,8 +526,9 @@ def classify(wt: dict, repo: Path, target: str, live: list[Path], self_cwd: Path
     if timeout is None:
         return DEADLINE_SKIP
     # -uall so build output and other untracked leftovers count as work in
-    # progress rather than being silently discarded.
-    status = git_lines(path, "status", "--porcelain", "-uall", timeout=timeout)
+    # progress rather than being silently discarded. -z leaves paths unquoted,
+    # so a name with a space or non-ASCII character still works as a pathspec.
+    status = git_lines(path, "status", "--porcelain", "-z", "-uall", timeout=timeout)
     if status is None:
         return "skip: unreadable"
     if status:
@@ -872,8 +546,8 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
               ignored_dirs: set[str], ignored_prefixes: tuple[str, ...],
               remaining_s: float | None = None) -> dict:
     scan_start = time.time()
-    result = {"repo": str(repo), "target": None, "worktrees": [], "note": None,
-              "timed_out": False, "listing_ok": True, "listing_skipped": False}
+    result = {"repo": str(repo), "target": None, "default_branch": None, "worktrees": [],
+              "note": None, "timed_out": False, "listing_ok": True, "listing_skipped": False}
 
     if fetch:
         fetch_timeout = clamp_timeout(180, remaining_s)
@@ -952,6 +626,7 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
         return out_of_time("deadline: default branch unresolved", entries[1:])
 
     default_branch_ref = default_branch(repo, timeout=branch_timeout)
+    result["default_branch"] = default_branch_ref
 
     # entries[0] is the primary checkout and is never a candidate.
     for wt in entries[1:]:
@@ -972,13 +647,6 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
         wt["age_days"] = age_days(Path(wt["path"]))
         result["worktrees"].append(wt)
     return result
-
-
-def log(message: str) -> None:
-    log_file = state.state_dir() / "reap.log"
-    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    with log_file.open("a") as fh:
-        fh.write(f"{stamp} {message}\n")
 
 
 def reap(repo: Path, wt: dict, dry_run: bool) -> tuple[bool, str]:
@@ -1081,6 +749,9 @@ def run_selftest() -> int:
 
         snap = ps_snapshot()
         cwds = cwd_map()
+        if snap is None or cwds is None:
+            failures.append("process observation failed (ps or lsof)")
+            snap, cwds = snap or {}, cwds or {}
         matched = _filter_killable(processes_rooted_in(fixture, snap, cwds), snap)
 
         if target.pid not in matched:
@@ -1133,6 +804,30 @@ def run_selftest() -> int:
     return 0
 
 
+def refresh_verdict(wt: dict, res: dict, opts: Any, self_cwd: Path,
+                    remaining_s: float | None) -> str:
+    """Re-judge one scanned tree from its current registry record and sessions,
+    within the run deadline. Updates wt to that record."""
+    started = time.time()
+    timeout = clamp_timeout(120, remaining_s)
+    if timeout is None:
+        return DEADLINE_SKIP
+    repo = Path(res["repo"])
+    porcelain = git_ok(repo, "worktree", "list", "--porcelain", timeout=timeout)
+    if porcelain is None:
+        return "skip: unreadable"
+    record = next((e for e in parse_worktrees(porcelain) if e["path"] == wt["path"]), None)
+    if record is None:
+        return "skip: unregistered"
+    wt.update(record)
+    return classify(
+        wt, repo, res["target"], live_worktree_cwds(opts.sessions_dir), self_cwd,
+        res["default_branch"], opts.grace_days,
+        opts.ignored_untracked_dirs, opts.ignored_untracked_prefixes,
+        remaining_s=remaining_after(remaining_s, started),
+    )
+
+
 def run(opts: Any) -> int:
     """Body of a reap invocation: discover repos, scan, kill, remove, report."""
     if opts.dry_run and not opts.apply:
@@ -1179,7 +874,16 @@ def run(opts: Any) -> int:
 
     snap = ps_snapshot()
     cwds = cwd_map()
-    real_apply = opts.apply and not opts.dry_run
+    # An unread process table looks empty; acting on it would kill and remove blind.
+    observed = snap is not None and cwds is not None
+    if not observed:
+        failed = ",".join(n for n, v in (("ps", snap), ("lsof", cwds)) if v is None)
+        log(f"SKIP-ALL process observation failed: {failed}")
+        print(f"reap: process observation failed ({failed}); nothing signalled or removed",
+              file=sys.stderr)
+        snap = {} if snap is None else snap
+        cwds = {} if cwds is None else cwds
+    real_apply = opts.apply and not opts.dry_run and observed
     killed_total = 0
     kill_failed_total = 0
 
@@ -1200,6 +904,21 @@ def run(opts: Any) -> int:
             # branches below only ever overwrite these.
             wt["applied"] = None
             wt["blockers"] = []
+            if opts.apply and not observed:
+                wt["applied"] = {"removed": False, "detail": "skip: process observation failed"}
+                continue
+            if opts.apply:
+                # The scan verdict can be an hour old; edits, a checkout or a session
+                # since then must win before anything in the tree is signalled.
+                fresh = refresh_verdict(wt, res, opts, self_cwd,
+                                        remaining_after(opts.deadline_s, run_start))
+                if fresh != REAP:
+                    wt["verdict"] = fresh
+                    wt["applied"] = {"removed": False, "detail": f"verdict changed: {fresh}"}
+                    if not opts.json:
+                        print(f"skip: {Path(wt['path']).name} -- verdict changed: {fresh}")
+                    log(f"SKIP-CHANGED tree={tree} verdict={fresh}")
+                    continue
             rooted_all = processes_rooted_in(tree, snap, cwds)
             rooted = _filter_killable(rooted_all, snap)
             tags = _match_tags(tree, rooted, snap, cwds)
@@ -1230,9 +949,14 @@ def run(opts: Any) -> int:
 
         if not res.get("listing_ok", True):
             continue
+        # The scan's registry and sessions can be an hour old: a tree added since is not stale.
+        t = clamp_timeout(120, remaining_after(opts.deadline_s, run_start))
+        porcelain = git_ok(repo, "worktree", "list", "--porcelain", timeout=t) if t else None
         registered = {os.path.realpath(res["repo"])} | {
-            os.path.realpath(w["path"]) for w in res["worktrees"]}
-        for stale_path in stale_worktree_dirs(repo, registered, live):
+            os.path.realpath(w["path"]) for w in parse_worktrees(porcelain or "")}
+        stale_dirs = [] if porcelain is None else stale_worktree_dirs(
+            repo, registered, live_worktree_cwds(opts.sessions_dir))
+        for stale_path in stale_dirs:
             rooted = _filter_killable(processes_rooted_in(stale_path, snap, cwds), snap)
             tags = _match_tags(stale_path, rooted, snap, cwds)
             kr = kill_pids(f"stale={stale_path}", tags, snap, real_apply,
@@ -1285,7 +1009,8 @@ def run(opts: Any) -> int:
     if opts.json:
         print(json.dumps({"generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                           "repos": results,
-                          "orphan_daemons": orphan_json}, indent=2))
+                          "orphan_daemons": orphan_json,
+                          "process_observation_ok": observed}, indent=2))
     else:
         print(render(results, apply_mode=opts.apply and not opts.dry_run))
 
