@@ -229,6 +229,12 @@ class HistoryGitFailureTests(unittest.TestCase):
         out = run_gate(self.script, "--history", home=self.home, extra_env=shim)
         self.assert_fails_closed(out)
 
+    def test_history_tag_listing_failure_fails(self):
+        commit_all(self.repo, self.home)
+        shim = git_shim(self.tmp / "bin", "for-each-ref")
+        out = run_gate(self.script, "--history", home=self.home, extra_env=shim)
+        self.assert_fails_closed(out)
+
     def test_history_locator_failure_fails(self):
         (self.repo / "notes.txt").write_text(PLACEHOLDER_HIT + "\n", encoding="utf-8")
         commit_all(self.repo, self.home)
@@ -338,6 +344,44 @@ class LocationOnlyOutputTests(unittest.TestCase):
                  committer_email=PLACEHOLDER_HIT + "@example.com")
         out = run_gate(self.script, "--history", home=self.home)
         self.assert_location_only(out, "(author, committer or subject)", "redaction gate: 2 hit(s)")
+
+    def test_tree_path_hit_prints_its_ls_files_entry(self):
+        (self.repo / (PLACEHOLDER_HIT + ".txt")).write_text("plain\n", encoding="utf-8")
+        commit_all(self.repo, self.home)
+        out = run_gate(self.script, home=self.home)
+        self.assert_location_only(out, "git ls-files entry 4 (file path)", "notes.txt:2")
+
+    def test_tree_content_hit_in_a_hit_path_hides_the_path(self):
+        hit_path = self.repo / (PLACEHOLDER_HIT + ".txt")
+        hit_path.write_text(PLACEHOLDER_HIT + "\n", encoding="utf-8")
+        commit_all(self.repo, self.home)
+        out = run_gate(self.script, home=self.home)
+        self.assert_location_only(out, "git ls-files entry 4 (file path)", "git ls-files entry 4:1")
+
+    def tag_sha(self, name):
+        out = subprocess.run(["git", "-C", str(self.repo), "rev-parse", name],
+                             check=True, capture_output=True, text=True)
+        return out.stdout.strip()[:12]
+
+    def test_history_tagger_hit_is_reported(self):
+        commit_all(self.repo, self.home)
+        self.git("tag", "-a", "v1", "-m", "release",
+                 committer_email=PLACEHOLDER_HIT + "@example.com")
+        out = run_gate(self.script, "--history", home=self.home)
+        self.assert_location_only(out, f"tag {self.tag_sha('v1')} (name, tagger or subject)")
+
+    def test_history_tag_message_hit_is_reported(self):
+        commit_all(self.repo, self.home)
+        self.git("tag", "-a", "v1", "-m", "release", "-m", PLACEHOLDER_HIT)
+        out = run_gate(self.script, "--history", home=self.home)
+        self.assert_location_only(out, f"tag {self.tag_sha('v1')} (message body)")
+
+    def test_history_tag_name_hit_prints_no_name(self):
+        commit_all(self.repo, self.home)
+        self.git("tag", PLACEHOLDER_HIT)
+        out = run_gate(self.script, "--history", home=self.home)
+        sha = self.tag_sha(PLACEHOLDER_HIT)
+        self.assert_location_only(out, f"tag {sha} (name, tagger or subject)")
 
 
 class PrivateLayerTests(unittest.TestCase):

@@ -7,8 +7,9 @@ usage() {
   cat <<'USAGE'
 Usage: redaction-gate.sh [--history] [--message <file>] [--help]
 
-  (no args)         Scan tracked working-tree files for redaction hits.
-  --history         Scan full git history (diffs, authors, committers, subjects, bodies).
+  (no args)         Scan tracked working-tree files and their paths for redaction hits.
+  --history         Scan full git history (diffs, authors, committers, subjects, bodies)
+                    and tags (names, taggers, messages).
   --message <file>  Scan a single file (e.g. a commit message) for hits.
   --help            Show this help and exit.
 
@@ -232,9 +233,10 @@ locate_diff_hits() {
   ' "$1"
 }
 
-# Maps grep -n hits on the metadata log to the commit they belong to.
+# Maps grep -n hits on metadata log $1 to the $2 (commit or tag) they
+# belong to; $3 names what the object's first line holds.
 locate_meta_hits() {
-  awk -v matches="$WORK_DIR/match" '
+  awk -v matches="$WORK_DIR/match" -v kind="$2" -v head="$3" '
     BEGIN {
       while ((getline line < matches) > 0) {
         want[substr(line, 1, index(line, ":") - 1)] = 1
@@ -243,18 +245,18 @@ locate_meta_hits() {
     substr($0, 1, 1) == "\037" { sha = substr($0, 2, 12); first = 1; next }
     {
       if (NR in want) {
-        print "commit " sha (first ? " (author, committer or subject)" : " (message body)")
+        print kind " " sha (first ? " (" head ")" : " (message body)")
       }
       first = 0
     }
   ' "$1"
 }
 
-# Runs locator $1 over log $2 into $WORK_DIR/located. A failed or short
-# mapping would drop hits and read as clean, so either ends the gate.
+# Runs locator "$@" into $WORK_DIR/located. A failed or short mapping
+# would drop hits and read as clean, so either ends the gate.
 locate_hits() {
   local want got
-  if ! "$1" "$2" >"$WORK_DIR/located"; then
+  if ! "$@" >"$WORK_DIR/located"; then
     echo "redaction gate: locating hits failed on rule ${lineno} of ${label} patterns" >&2
     exit 2
   fi
@@ -285,19 +287,56 @@ finish() {
   return 0
 }
 
+# Names file $1 by its git ls-files entry when its path is itself a hit.
+shown_path() {
+  local i=1 p
+  if [ "${#PATH_HITS[@]}" -gt 0 ]; then
+    for p in "${ALL_PATHS[@]}"; do
+      if [ "$p" = "$1" ] && [ -n "${PATH_HITS[$i]:-}" ]; then
+        printf 'git ls-files entry %s' "$i"
+        return
+      fi
+      i=$((i + 1))
+    done
+  fi
+  printf '%s' "$1"
+}
+
 run_default() {
   local hits=0
-  local label lineno raw rule_case pattern f
-  local -a FILES=()
+  local label lineno raw rule_case pattern f n
+  local -a FILES=() ALL_PATHS=() PATH_HITS=()
+  local paths="$WORK_DIR/paths"
 
+  if ! : >"$paths"; then
+    echo "redaction gate: cannot write the file path list" >&2
+    exit 2
+  fi
   while IFS= read -r -d '' f; do
     f="${f#./}"
+    case "$f" in
+      .git/*) continue ;;
+    esac
+    ALL_PATHS+=("$f")
+    printf '%s\0' "$f" >>"$paths"
     case "$f" in
       "$PUBLIC_PATTERNS" | .git/*) continue ;;
     esac
     [ -f "$f" ] || continue
     FILES+=("$f")
   done < <(list_files)
+
+  if [ "${#ALL_PATHS[@]}" -gt 0 ]; then
+    while IFS="$RULE_SEP" read -r label lineno raw; do
+      parse_rule "$label" "$lineno" "$raw"
+      # -z: one record per path, so a newline in a name keeps entries exact.
+      grep_rule " scanning file paths" -nza -- "$paths" || continue
+      while IFS=: read -r -d '' n _; do
+        PATH_HITS[n]=1
+        report "git ls-files entry $n (file path)"
+      done <"$WORK_DIR/match"
+    done <<<"$RULES"
+  fi
 
   if [ "${#FILES[@]}" -eq 0 ]; then
     finish
@@ -310,7 +349,7 @@ run_default() {
     mv "$WORK_DIR/match" "$WORK_DIR/files"
     while IFS= read -r -d '' f; do
       grep_rule "" -nI -- "$f" || continue
-      report "$(match_lines "$f")"
+      report "$(match_lines "$(shown_path "$f")")"
     done <"$WORK_DIR/files"
   done <<<"$RULES"
 
@@ -320,7 +359,7 @@ run_default() {
 run_history() {
   local hits=0
   local label lineno raw rule_case pattern
-  local diff_log="$WORK_DIR/diff.log" meta_log="$WORK_DIR/meta.log"
+  local diff_log="$WORK_DIR/diff.log" meta_log="$WORK_DIR/meta.log" tag_log="$WORK_DIR/tags.log"
 
   # Captured first: piped into grep, a failed git log read as "no match".
   # The fixed format and prefixes keep the location mapping exact; the
@@ -335,6 +374,12 @@ run_history() {
     echo "redaction gate: git log failed reading commit metadata" >&2
     exit 2
   fi
+  # Lightweight tags carry only a name; the commit they name is in meta_log.
+  if ! git for-each-ref --format='%1f%(objectname)%0a%(refname:short)%(if:equals=tag)%(objecttype)%(then) %(taggername) %(taggeremail) %(contents:subject)%0a%(contents:body)%(end)' \
+    refs/tags >"$tag_log"; then
+    echo "redaction gate: git for-each-ref failed reading tags" >&2
+    exit 2
+  fi
 
   while IFS="$RULE_SEP" read -r label lineno raw; do
     parse_rule "$label" "$lineno" "$raw"
@@ -343,7 +388,11 @@ run_history() {
       report "$(cat "$WORK_DIR/located")"
     fi
     if grep_rule " scanning commit metadata" -an -- "$meta_log"; then
-      locate_hits locate_meta_hits "$meta_log"
+      locate_hits locate_meta_hits "$meta_log" commit "author, committer or subject"
+      report "$(cat "$WORK_DIR/located")"
+    fi
+    if grep_rule " scanning tags" -an -- "$tag_log"; then
+      locate_hits locate_meta_hits "$tag_log" tag "name, tagger or subject"
       report "$(cat "$WORK_DIR/located")"
     fi
   done <<<"$RULES"
