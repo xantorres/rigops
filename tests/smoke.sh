@@ -388,6 +388,53 @@ PYEOF
 )"
 [ "$before_hashes" = "$after_hashes" ] || fail "manifest file hashes changed across idempotent re-run"
 
+echo "smoke: a re-install prunes files the new version no longer ships"
+PRUNE_PREFIX="$SMOKE_HOME/.local/share/rigops"
+printf 'retired\n' >"$PRUNE_PREFIX/lib/rigops/retired.py"
+printf 'edited\n' >"$PRUNE_PREFIX/lib/rigops/retired_edited.py"
+printf 'hand\n' >"$PRUNE_PREFIX/lib/rigops/hand_copied.py"
+printf 'outside\n' >"$SMOKE_HOME/.local/share/outside.txt"
+python3 - "$MANIFEST" "$PRUNE_PREFIX" <<'PYEOF'
+import hashlib
+import json
+import sys
+
+manifest, prefix = sys.argv[1:3]
+data = json.load(open(manifest, encoding="utf-8"))
+for rel in ("lib/rigops/retired.py", "lib/rigops/retired_edited.py", "../outside.txt"):
+    with open(prefix + "/" + rel, "rb") as fh:
+        data["files"].append({"path": rel, "sha256": hashlib.sha256(fh.read()).hexdigest()})
+with open(manifest, "w", encoding="utf-8") as fh:
+    json.dump(data, fh)
+PYEOF
+printf 'local edit\n' >>"$PRUNE_PREFIX/lib/rigops/retired_edited.py"
+
+run bash "$INSTALL_SH" --no-jobs
+[ "$RC" -eq 0 ] || fail "prune plan exit $RC: $OUT"
+case "$OUT" in
+    *"plan: would remove $PRUNE_PREFIX/lib/rigops/retired.py"*) : ;;
+    *) fail "prune plan does not name the file it would remove: $OUT" ;;
+esac
+[ -f "$PRUNE_PREFIX/lib/rigops/retired.py" ] || fail "prune plan removed a file"
+
+run bash "$INSTALL_SH" --apply --no-jobs --yes
+[ "$RC" -eq 0 ] || fail "prune apply exit $RC: $OUT"
+case "$OUT" in
+    *"removed  $PRUNE_PREFIX/lib/rigops/retired.py"*) : ;;
+    *) fail "prune apply does not name the file it removed: $OUT" ;;
+esac
+case "$OUT" in
+    *"warn: $PRUNE_PREFIX/lib/rigops/retired_edited.py modified since install"*) : ;;
+    *) fail "prune apply does not warn about the edited file: $OUT" ;;
+esac
+[ -e "$PRUNE_PREFIX/lib/rigops/retired.py" ] && fail "prune apply left the retired file"
+[ -f "$PRUNE_PREFIX/lib/rigops/retired_edited.py" ] || fail "prune apply removed an edited file"
+[ -f "$PRUNE_PREFIX/lib/rigops/hand_copied.py" ] || fail "prune apply removed a file in neither manifest"
+[ -f "$SMOKE_HOME/.local/share/outside.txt" ] || fail "prune apply removed a file outside the prefix"
+if grep -q 'retired' "$MANIFEST"; then fail "manifest still lists a pruned file"; fi
+rm -f "$PRUNE_PREFIX/lib/rigops/retired_edited.py" "$PRUNE_PREFIX/lib/rigops/hand_copied.py" \
+    "$SMOKE_HOME/.local/share/outside.txt"
+
 echo "smoke: uninstall plan purity (no --apply must not touch disk)"
 before_tree="$(snapshot_tree "$SMOKE_HOME")"
 run bash "$INSTALL_SH" --uninstall

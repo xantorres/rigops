@@ -239,6 +239,8 @@ WORK_TMP="$(mktemp -d "${TMPDIR:-/tmp}/rigops-install.XXXXXX")"
 trap 'rm -rf "$WORK_TMP"' EXIT
 MANIFEST_TSV="$WORK_TMP/manifest-data.tsv"
 : >"$MANIFEST_TSV"
+SHIPPED_TXT="$WORK_TMP/shipped.txt"
+: >"$SHIPPED_TXT"
 
 if [ ! -d "$ROOT_DIR/bin" ] || [ ! -d "$ROOT_DIR/libexec" ] || [ ! -d "$ROOT_DIR/lib" ]; then
     echo "error: run install.sh from a rigops checkout (git clone ...)" >&2
@@ -424,6 +426,7 @@ copy_file_step() {
 
     note=""
     [ "$locally_modified" -eq 1 ] && note=" (locally modified, overwriting)"
+    printf '%s\n' "$rel" >>"$SHIPPED_TXT"
 
     if [ "$APPLY" -eq 1 ]; then
         if [ "$status" != "unchanged" ]; then
@@ -486,6 +489,29 @@ step_copy_tree() {
         fi
     fi
     copy_file_step "$ROOT_DIR/LICENSE" "$PREFIX/LICENSE" "LICENSE" 0
+}
+
+# Only roots this run copied: a plugin-only run skips templates and the
+# statusline, so their absence from it says nothing about what ships.
+step_prune() {
+    local stale="$WORK_TMP/stale.tsv" tag rel sha
+    : >"$stale"
+    while IFS=$'\t' read -r tag rel sha; do
+        [ "$tag" = "FILE" ] || continue
+        case "$rel" in /* | .. | ../* | */../* | */..) continue ;; esac
+        case "$rel" in
+            bin/* | libexec/* | lib/* | LICENSE) : ;;
+            templates/* | plugin/statusline/*) [ "$PLUGIN_ONLY" -eq 0 ] || continue ;;
+            *) continue ;;
+        esac
+        grep -Fxq -- "$rel" "$SHIPPED_TXT" && continue
+        printf '%s\t%s\n' "$rel" "$sha" >>"$stale"
+    done <"$OLD_DATA_TSV"
+    [ -s "$stale" ] || return 0
+    step_log "remove files this version no longer ships"
+    while IFS=$'\t' read -r rel sha; do
+        remove_recorded_file "$PREFIX/$rel" "$sha"
+    done <"$stale"
 }
 
 do_symlink() {
@@ -1389,6 +1415,7 @@ else
 print(json.load(open(sys.argv[1]))["version"])' "$ROOT_DIR/plugin/.claude-plugin/plugin.json")"
     step_preflight
     step_copy_tree
+    step_prune
     step_symlink
     step_scaffold
     # Checkpoint after tree+symlink+scaffold, and again after statusline, so

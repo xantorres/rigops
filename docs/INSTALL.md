@@ -133,6 +133,8 @@ Env: `RIGOPS_INSTALL_LABEL_PREFIX` - launchd label prefix for the jobs it instal
 
 Every installed file is hashed (SHA-256, `shasum -a 256` if present, else `sha256sum`) and recorded in `install.manifest.json` under the install prefix. A re-run hashes the source tree again and compares: a file whose hash already matches is left alone (`unchanged`). A genuine no-op re-run reports `installed=0 updated=0` in the final summary line - the unchanged count carries the rest.
 
+A re-run also removes files the previous manifest recorded that this version no longer ships, naming each one. A file edited since install is kept with a warning, and a file neither manifest lists is never touched.
+
 launchd jobs follow the same idea: if the rendered plist's hash matches what's on disk *and* the job is currently loaded, it's left alone. Otherwise the plist is written and reloaded through `launchctl bootout` then `launchctl bootstrap`, in that order (trying the `gui/<uid>` domain first, falling back to `user/<uid>`) - this covers both a brand-new job and a changed one.
 
 Config and registry are scaffolded from `config/config.example.json` and `config/registry.example.md` **only if the destination doesn't already exist** - `install.sh` never overwrites a config file you've edited.

@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- install: a re-install removes files the previous install recorded that
+  this version no longer ships. An edited one is kept with a warning, and a
+  file neither manifest lists is never touched.
 - reap: `--dry-run` without `--apply` exits 2, the usage-error code every
   other command uses, instead of 64.
 - doctor: a job with an `always-on` or `keepalive` cadence is no longer
