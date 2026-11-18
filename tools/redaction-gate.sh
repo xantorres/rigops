@@ -214,6 +214,22 @@ locate_meta_hits() {
   ' "$1"
 }
 
+# Runs locator $1 over log $2 into $WORK_DIR/located. A failed or short
+# mapping would drop hits and read as clean, so either ends the gate.
+locate_hits() {
+  local want got
+  if ! "$1" "$2" >"$WORK_DIR/located"; then
+    echo "redaction gate: locating hits failed on rule ${lineno} of ${label} patterns" >&2
+    exit 2
+  fi
+  want="$(wc -l <"$WORK_DIR/match")"
+  got="$(wc -l <"$WORK_DIR/located")"
+  if [ "$want" -ne "$got" ]; then
+    echo "redaction gate: located ${got} of ${want} hit(s) on rule ${lineno} of ${label} patterns" >&2
+    exit 2
+  fi
+}
+
 # Prints each location in $1 tagged with the current rule, and counts it.
 report() {
   local loc
@@ -286,10 +302,12 @@ run_history() {
   while IFS="$RULE_SEP" read -r label lineno raw; do
     parse_rule "$label" "$lineno" "$raw"
     if grep_rule " scanning history diff" -an -- "$diff_log"; then
-      report "$(locate_diff_hits "$diff_log")"
+      locate_hits locate_diff_hits "$diff_log"
+      report "$(cat "$WORK_DIR/located")"
     fi
     if grep_rule " scanning commit metadata" -an -- "$meta_log"; then
-      report "$(locate_meta_hits "$meta_log")"
+      locate_hits locate_meta_hits "$meta_log"
+      report "$(cat "$WORK_DIR/located")"
     fi
   done <<<"$RULES"
 

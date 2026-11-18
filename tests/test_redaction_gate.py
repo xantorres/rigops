@@ -187,6 +187,20 @@ class HistoryGitFailureTests(unittest.TestCase):
         out = run_gate(self.script, "--history", home=self.home, extra_env=shim)
         self.assert_fails_closed(out)
 
+    def test_history_locator_failure_fails(self):
+        (self.repo / "notes.txt").write_text(PLACEHOLDER_HIT + "\n", encoding="utf-8")
+        commit_all(self.repo, self.home)
+        for name, body in (("crash", "exit 3"), ("silent drop", "exit 0")):
+            with self.subTest(awk=name):
+                bin_dir = self.tmp / name.replace(" ", "-")
+                bin_dir.mkdir()
+                shim = bin_dir / "awk"
+                shim.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
+                shim.chmod(0o755)
+                env = {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+                out = run_gate(self.script, "--history", home=self.home, extra_env=env)
+                self.assert_fails_closed(out)
+
     def test_history_of_a_clean_repository_passes(self):
         commit_all(self.repo, self.home)
         out = run_gate(self.script, "--history", home=self.home)
