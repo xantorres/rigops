@@ -205,11 +205,19 @@ Case format, regression rules and CI wiring: [docs/EVAL.md](docs/EVAL.md).
 
 ## Other commands
 
+### `rigops render`
+
 `rigops render` writes one source tree onto every surface that consumes it. `--check` reports drift without writing, and `doctor` turns that drift into findings. Targets and check semantics: [docs/RENDER.md](docs/RENDER.md).
 
-`rigops retrieval` keeps one FTS5 index of sections over every tree a roots registry claims. `search` ranks sections under a token budget and a scope filter. `prefetch` takes realm and scopes from the working directory, never widens them, and stays silent below a score threshold. `probe` scores a labelled question suite and exits 1 when precision drops or a row crosses a realm. `search` narrows with `--scope` (vault, brain, memory, plans, repo, rig or all; repeat it or comma-separate). `search` and `prefetch` cut each snippet at `--max-len` characters and take the realm from `--cwd` instead of the working directory. `--no-log` keeps a run out of the retrieval log, `probe --file` scores only that suite, where the default run also merges in every realm's own, `--write` on `stats` and `probe` appends the summary to `retrieval-stats.jsonl` in the state directory. `--db` and `--registry` go before the subcommand and point any subcommand at another index or roots registry.
+### `rigops retrieval`
 
-`rigops mine --dry-run` calls no model and writes nothing: it reports the corrections that repeat across sessions over a window (`--since`, default 90d), with paths, amounts, domains, ids and addresses masked. `--min-sessions` sets how many sessions a group has to span (default 2; 1 lists one-off corrections too), and `--transcripts-dir` reads a tree other than `transcripts_dir`.
+`rigops retrieval` keeps one FTS5 index of sections over every tree a roots registry claims; `build` rebuilds it and `update` re-indexes what changed. `search` ranks sections for a query: `--scope` narrows it (vault, brain, memory, plans, repo, rig or all; repeat it or comma-separate), `--top` caps the hits (default 10), `--budget` caps the returned text in tokens, and `--format` picks compact, snippet, paths, claims or json. `prefetch` takes realm and scopes from the working directory, never widens them, and stays silent below a score threshold; it returns at most 3 hits within 400 tokens unless `--top` or `--budget` say otherwise, and `--format json` prints them as JSON. Both cut each snippet at `--max-len` characters and take the realm from `--cwd` instead of the working directory.
+
+`roots` shows what the working directory may read and what is indexed. `stats` reports latency, fallback rate and prefetch silence over the last `--days` (default 7). `probe` scores a labelled question suite and exits 1 when precision drops, a row crosses a realm, a realm has fewer probes than the suite's minimum (default 5), or the suite is empty. `probe --file` scores only that suite, where the default run also merges in every realm's own, and `--top` sets how deep a probe's expected path may rank (default 3). `--no-log` on `search`, `prefetch` and `probe` keeps a run out of the retrieval log. `--write` on `stats` and `probe` appends the summary to `retrieval-stats.jsonl` in the state directory, and `--json` on `roots`, `stats` and `probe` prints JSON. `--db` and `--registry` go before the subcommand and point any subcommand at another index or roots registry.
+
+### `rigops mine`
+
+`rigops mine --dry-run` calls no model and writes nothing: it reports the corrections that repeat across sessions over a window (`--since`, default 90d), with paths, amounts, domains, ids and addresses masked. `--min-sessions` sets how many sessions a group has to span (default 2; 1 lists one-off corrections too), `--transcripts-dir` reads a tree other than `transcripts_dir`, and `--registry` names another roots registry, the source of the realms and the retrieval index mine reads.
 
 ## Quickstart
 
