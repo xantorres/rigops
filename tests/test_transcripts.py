@@ -266,6 +266,26 @@ class UndecodableFrictionTests(unittest.TestCase):
         self.assertEqual(fr["corrections"], 1)
 
 
+class UndecodableTurnTests(unittest.TestCase):
+    def test_a_row_with_bytes_that_are_not_utf8_does_not_stop_the_collection(self):
+        def row(mid: str, minute: int, text: bytes) -> bytes:
+            return (b'{"type": "assistant", "timestamp": "2026-11-03T12:0%d:00Z", '
+                    b'"sessionId": "s1", "note": "%s", "message": {"id": "%s", '
+                    b'"usage": {"input_tokens": 1, "output_tokens": 1}, "content": []}}\n'
+                    % (minute, text, mid.encode()))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "-work-alpha" / "s1.jsonl"
+            path.parent.mkdir(parents=True)
+            path.write_bytes(row("m1", 0, b"caf\xe9") + row("m2", 1, b"plain"))
+            turns = transcripts.collect_turns(
+                transcripts.parse_ts("2026-11-03T00:00:00Z"),
+                transcripts.parse_ts("2026-11-04T00:00:00Z"),
+                transcripts_dir=tmp,
+            )
+        self.assertEqual(len(turns), 2)
+
+
 class WindowBoundaryTests(EnvIsolatedTestCase):
     def test_7day_windows_do_not_overlap_at_boundary(self):
         with tempfile.TemporaryDirectory() as tmp:

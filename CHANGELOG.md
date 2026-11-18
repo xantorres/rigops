@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Each write uses a temp file of its own instead of one fixed `.tmp` name.
 - ledger: friction counts no longer stop at a transcript row holding bytes
   that are not UTF-8.
+- tax, eit, rebuilds: a transcript row holding bytes that are not UTF-8 no
+  longer stops the run.
 
 ## [0.9.0] - 2026-11-17
 

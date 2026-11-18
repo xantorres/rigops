@@ -137,6 +137,27 @@ AUG_10 = dt.datetime(2026, 8, 10, tzinfo=UTC)
 AUG_17 = dt.datetime(2026, 8, 17, tzinfo=UTC)
 
 
+class UndecodableStartsTests(unittest.TestCase):
+    def _tree(self, tmp: str, row: dict) -> Path:
+        path = Path(tmp) / "-Users-alice-app" / "sess-bad.jsonl"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b'{"type": "attachment", "note": "caf\xe9"}\n'
+                         + (json.dumps(row) + "\n").encode())
+        return path
+
+    def test_a_row_with_bytes_that_are_not_utf8_does_not_stop_the_start_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._tree(tmp, shape_row("sess-bad", "2026-08-12T09:00:00Z", BUILTIN_TOOLS))
+            found = starts.read_start(str(path))
+        self.assertEqual(found["session"], "sess-bad")
+
+    def test_a_row_with_bytes_that_are_not_utf8_does_not_stop_the_call_count(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._tree(tmp, call_row("sess-bad", "2026-08-12T09:00:00Z", "Read"))
+            calls = starts.count_calls(AUG_10, AUG_17, transcripts_dir=tmp)
+        self.assertEqual(dict(calls), {"Read": 1})
+
+
 class DeadWeightTests(unittest.TestCase):
     def test_calls_count_subagents_and_respect_the_window(self):
         with tempfile.TemporaryDirectory() as tmp:

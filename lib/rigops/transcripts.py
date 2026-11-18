@@ -181,7 +181,7 @@ def collect_turns(since, until, transcripts_dir=None) -> list[dict]:
         none_key = 0
         entrypoint = None
         try:
-            fh = open(path)
+            fh = open(path, encoding="utf-8", errors="replace")
         except OSError:
             continue
         with fh:

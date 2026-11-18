@@ -67,6 +67,12 @@ class ScanTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def test_a_row_with_bytes_that_are_not_utf8_does_not_stop_the_scan(self):
+        path = self.root / "-Users-alice-app" / "sess-1.jsonl"
+        path.write_bytes(b'{"type": "attachment", "note": "caf\xe9"}\n' + path.read_bytes())
+        found, _ = rebuilds.collect(None, None, transcripts_dir=self.root)
+        self.assertEqual(len(found), 4)
+
     def test_each_rebuild_gets_its_class(self):
         found, _ = rebuilds.collect(None, None, transcripts_dir=self.root)
         self.assertEqual([h["class"] for h in found], ["quick", "compaction", "idle", "other"])

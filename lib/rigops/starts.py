@@ -61,7 +61,7 @@ def read_start(path: str) -> dict | None:
     shape_obj = None
     entrypoint = None
     try:
-        fh = open(path)
+        fh = open(path, encoding="utf-8", errors="replace")
     except OSError:
         return None
     with fh:
@@ -168,7 +168,7 @@ def count_calls(since, until, transcripts_dir=None) -> Counter:
         try:
             if floor is not None and os.stat(path).st_mtime < floor:
                 continue
-            fh = open(path)
+            fh = open(path, encoding="utf-8", errors="replace")
         except OSError:
             continue
         with fh:

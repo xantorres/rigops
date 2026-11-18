@@ -61,7 +61,7 @@ def scan(path: str, since=None, until=None) -> tuple[list, float]:
     between: set = set()
     version = shape = None
     try:
-        fh = open(path)
+        fh = open(path, encoding="utf-8", errors="replace")
     except OSError:
         return found, total
     with fh:
