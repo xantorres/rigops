@@ -305,6 +305,24 @@ class LocationOnlyOutputTests(unittest.TestCase):
         out = run_gate(self.script, "--history", home=self.home)
         self.assert_location_only(out, "notes.txt:2", "(message body)")
 
+    def test_history_removed_line_hit_prints_old_line(self):
+        commit_all(self.repo, self.home)
+        (self.repo / "notes.txt").write_text("first\n", encoding="utf-8")
+        self.git("commit", "-q", "-am", "drop")
+        out = run_gate(self.script, "--history", home=self.home)
+        self.assert_location_only(out, "notes.txt:2 (removed)")
+
+    def test_history_renamed_file_hit_prints_new_path(self):
+        lines = "".join(f"line {n}\n" for n in range(10))
+        (self.repo / "old.txt").write_text(lines, encoding="utf-8")
+        commit_all(self.repo, self.home)
+        self.git("mv", "old.txt", "new.txt")
+        (self.repo / "new.txt").write_text(lines + PLACEHOLDER_HIT + "\n", encoding="utf-8")
+        self.git("commit", "-q", "-am", "move")
+        out = run_gate(self.script, "--history", home=self.home)
+        self.assert_location_only(out, "new.txt:11")
+        self.assertNotIn("old.txt", out.stdout)
+
     def test_history_author_hit_counts_once(self):
         commit_all(self.repo, self.home)
         (self.repo / "other.txt").write_text("plain\n", encoding="utf-8")
@@ -365,6 +383,15 @@ class PrivateLayerTests(unittest.TestCase):
         self.write_layer(self.config / "redaction-patterns.rigops.txt", "# none\n")
         out = self.scan("nothing")
         self.assertEqual(out.returncode, 2, out.stdout + out.stderr)
+
+    def test_b64_layer_replaces_the_file_layers(self):
+        self.write_layer(self.config / "redaction-patterns.txt", "s zz-alpha-[0-9]+\n")
+        env = {"RIGOPS_REDACTION_PATTERNS_B64": base64.b64encode(b"s zz-beta-[0-9]+\n").decode()}
+        out = self.scan("zz-alpha-" + "1", extra_env=env)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        out = self.scan("zz-beta-" + "2", extra_env=env)
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+        self.assertIn("(private rule 1)", out.stdout)
 
     def test_missing_listed_layer_fails(self):
         first = self.write_layer(self.tmp / "first.txt", "s zz-alpha-[0-9]+\n")

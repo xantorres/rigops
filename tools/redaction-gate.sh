@@ -201,24 +201,26 @@ locate_diff_hits() {
       loc = ""
       lead = substr($0, 1, 1)
       if ($0 ~ /^commit [0-9a-f]+/) {
-        sha = substr($2, 1, 12); path = ""; hunk = 0; state = "commit"
+        sha = substr($2, 1, 12); old_path = ""; new_path = ""; hunk = 0; state = "commit"
       } else if ($0 ~ /^diff --git /) {
-        path = substr($0, 12)
-        i = index(path, " b/")
-        if (substr(path, 1, 2) == "a/" && i > 0) path = substr(path, 3, i - 3)
+        old_path = substr($0, 12); new_path = old_path
+        i = index(old_path, " b/")
+        if (substr(old_path, 1, 2) == "a/" && i > 0) {
+          new_path = substr(old_path, i + 3); old_path = substr(old_path, 3, i - 3)
+        }
         hunk = 0; state = "file"
       } else if (state == "file" && $0 ~ /^@@ /) {
         old = $0; sub(/^@@ -/, "", old); old = old + 0
         cur = $0; sub(/^@@ -[0-9,]+ \+/, "", cur); cur = cur + 0
-        hunk = 1; loc = path ":" cur
+        hunk = 1; loc = new_path ":" cur
       } else if (hunk && lead == "+") {
-        loc = path ":" cur; cur++
+        loc = new_path ":" cur; cur++
       } else if (hunk && lead == "-") {
-        loc = path ":" old " (removed)"; old++
+        loc = old_path ":" old " (removed)"; old++
       } else if (hunk && lead == " ") {
-        loc = path ":" cur; cur++; old++
+        loc = new_path ":" cur; cur++; old++
       } else if (hunk && lead == "\\") {
-        loc = path
+        loc = new_path
       } else {
         hunk = 0
       }
