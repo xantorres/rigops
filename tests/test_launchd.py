@@ -63,17 +63,18 @@ class TerminateProcessGroupTests(unittest.TestCase):
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
             start_new_session=True,
         )
-        member = int(leader.stdout.readline())
         try:
+            member = int(leader.stdout.readline())
             self.assertTrue(launchd.terminate_process_group(leader.pid, GRACE_S))
             deadline = time.time() + 5
             while launchd._process_alive(member) and time.time() < deadline:
                 time.sleep(0.05)
             self.assertFalse(launchd._process_alive(member))
         finally:
+            # The unreaped leader pins its pid, so this group id cannot be anyone else's.
             try:
-                os.kill(member, 9)
-            except ProcessLookupError:
+                os.killpg(leader.pid, 9)
+            except (ProcessLookupError, PermissionError):
                 pass
             leader.stdout.close()
             leader.wait(timeout=5)

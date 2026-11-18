@@ -137,7 +137,7 @@ def terminate_process_group(pid: int, grace_s: float) -> bool:
         except ProcessLookupError:
             return False
         except PermissionError:
-            pass  # members exist, just not signalable by us
+            pass  # members we may not signal, or on Darwin only zombies, remain
         return True
 
     try:
