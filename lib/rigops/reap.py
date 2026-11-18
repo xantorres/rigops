@@ -665,12 +665,16 @@ def stale_worktree_dirs(repo: Path, registered_paths: set[str],
     base = repo / ".claude" / "worktrees"
     if not base.is_dir():
         return []
+    repo_real = os.path.realpath(repo)
     stale: list[str] = []
     for entry in sorted(base.iterdir()):
         # git never creates a worktree as a symlink; following one makes its target a kill zone.
         if entry.is_symlink() or not entry.is_dir():
             continue
         real = os.path.realpath(entry)
+        # A symlinked .claude or worktrees dir lands elsewhere, maybe on another repo's trees.
+        if not real.startswith(repo_real + os.sep):
+            continue
         if real in registered_paths:
             continue
         if any(path_claims(str(cwd), real) for cwd in live):

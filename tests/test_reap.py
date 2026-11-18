@@ -320,6 +320,23 @@ class StaleWorktreeDirsTests(EnvIsolatedTestCase):
 
         self.assertEqual(stale, [os.path.realpath(leftover)])
 
+    def test_symlinked_base_never_yields_a_dir_outside_the_repo(self):
+        cases = {
+            "worktrees": lambda repo, shared: (
+                (repo / ".claude").mkdir(),
+                os.symlink(shared, repo / ".claude" / "worktrees")),
+            "claude": lambda repo, shared: os.symlink(shared.parent, repo / ".claude"),
+        }
+        for name, link in cases.items():
+            with self.subTest(name):
+                repo = self.tmp / name / "repo"
+                repo.mkdir(parents=True)
+                shared = self.tmp / name / "shared" / "worktrees"
+                (shared / "another-repos-tree").mkdir(parents=True)
+                link(repo, shared)
+
+                self.assertEqual(reap.stale_worktree_dirs(repo, set(), []), [])
+
 
 # --- section 2: kill machinery, synthetic snapshots, no real signals --------
 
