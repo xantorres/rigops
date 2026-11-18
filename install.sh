@@ -931,7 +931,9 @@ PYEOF
 step_manifest() {
     step_log "write manifest -> $PREFIX/install.manifest.json"
     if [ "$APPLY" -eq 1 ]; then
-        write_manifest 1
+        # A run that skipped step_jobs left any earlier jobs loaded, so
+        # their records carry forward.
+        write_manifest "$JOBS_ENABLED"
     else
         printf '     would write %s\n' "$PREFIX/install.manifest.json"
     fi

@@ -616,6 +616,19 @@ jobs_install --apply --jobs doctor --yes
 jobs_install --uninstall --apply --yes
 [ "$RC" -eq 0 ] || fail "uninstall after drop exit $RC: $OUT"
 
+echo "smoke: runs that skip jobs keep the loaded jobs in the manifest"
+jobs_install --apply --jobs doctor --yes
+[ "$RC" -eq 0 ] || fail "doctor install exit $RC: $OUT"
+for skip_flag in --no-jobs --plugin-only; do
+    jobs_install --apply "$skip_flag" --yes
+    [ "$RC" -eq 0 ] || fail "$skip_flag re-install exit $RC: $OUT"
+    [ "$(manifest_labels "$JOBS_MANIFEST")" = "$JOB_PREFIX.doctor" ] \
+        || fail "$skip_flag run dropped the loaded doctor job from the manifest"
+done
+jobs_install --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "uninstall after skipped-jobs runs exit $RC: $OUT"
+[ -z "$(ls "$FAKE_LAUNCHD/loaded")" ] || fail "doctor still loaded after uninstall"
+
 rm -rf "$JOBS_HOME"
 JOBS_HOME=""
 
