@@ -23,12 +23,6 @@ from rigops.render import frontmatter as _frontmatter
 
 HOME = Path(os.path.expanduser("~"))
 CLAUDE_DIR = HOME / ".claude"
-DOCS_DIR = HOME / "docs"
-
-VALID_AREAS = (
-    "brain", "launchd", "hooks", "skills", "memory",
-    "permissions", "metrics", "repos", "docs", "rigops", "plans",
-)
 
 
 def expand(value) -> Path:
