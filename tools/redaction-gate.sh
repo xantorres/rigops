@@ -8,7 +8,7 @@ usage() {
 Usage: redaction-gate.sh [--history] [--message <file>] [--help]
 
   (no args)         Scan tracked working-tree files for redaction hits.
-  --history         Scan full git history (diffs, authors, subjects, bodies).
+  --history         Scan full git history (diffs, authors, committers, subjects, bodies).
   --message <file>  Scan a single file (e.g. a commit message) for hits.
   --help            Show this help and exit.
 
@@ -241,7 +241,7 @@ locate_meta_hits() {
     substr($0, 1, 1) == "\037" { sha = substr($0, 2, 12); first = 1; next }
     {
       if (NR in want) {
-        print "commit " sha (first ? " (author, email or subject)" : " (message body)")
+        print "commit " sha (first ? " (author, committer or subject)" : " (message body)")
       }
       first = 0
     }
@@ -329,7 +329,7 @@ run_history() {
     echo "redaction gate: git log failed reading history diff" >&2
     exit 2
   fi
-  if ! git log --all --no-color --format='%x1f%H%n%an %ae %s%n%b' >"$meta_log"; then
+  if ! git log --all --no-color --format='%x1f%H%n%an %ae %cn %ce %s%n%b' >"$meta_log"; then
     echo "redaction gate: git log failed reading commit metadata" >&2
     exit 2
   fi

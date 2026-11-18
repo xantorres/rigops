@@ -284,13 +284,15 @@ class LocationOnlyOutputTests(unittest.TestCase):
         out = run_gate(self.script, home=self.home)
         self.assert_location_only(out, "notes.txt:2")
 
-    def git(self, *args, email="sample@example.com"):
+    def git(self, *args, email="sample@example.com", committer_email=None):
         env = {
             **os.environ,
             "HOME": str(self.home),
             "GIT_CONFIG_GLOBAL": "/dev/null",
             "GIT_CONFIG_NOSYSTEM": "1",
         }
+        if committer_email:
+            env["GIT_COMMITTER_EMAIL"] = committer_email
         subprocess.run(
             ["git", "-c", "core.hooksPath=/dev/null", "-c", "user.name=Sample",
              "-c", f"user.email={email}", "-C", str(self.repo), *args],
@@ -309,8 +311,15 @@ class LocationOnlyOutputTests(unittest.TestCase):
         self.git("add", "other.txt")
         self.git("commit", "-q", "-m", "note", email=PLACEHOLDER_HIT + "@example.com")
         out = run_gate(self.script, "--history", home=self.home)
-        self.assert_location_only(out, "(author, email or subject)", "redaction gate: 2 hit(s)")
+        self.assert_location_only(out, "(author, committer or subject)", "redaction gate: 2 hit(s)")
         self.assertNotIn("(message)", out.stdout)
+
+    def test_history_committer_hit_is_reported(self):
+        commit_all(self.repo, self.home)
+        self.git("commit", "-q", "--allow-empty", "-m", "note",
+                 committer_email=PLACEHOLDER_HIT + "@example.com")
+        out = run_gate(self.script, "--history", home=self.home)
+        self.assert_location_only(out, "(author, committer or subject)", "redaction gate: 2 hit(s)")
 
 
 class PrivateLayerTests(unittest.TestCase):

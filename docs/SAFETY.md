@@ -53,7 +53,7 @@ total deleted: 0 (files, directory contents included)
 
 ## Redaction gate
 
-`make check` runs `tools/redaction-gate.sh` over the working tree, and - via `make gate-history` - the full git history: commit diffs, authors, subjects, bodies, against public and private pattern layers. Every example output block in this repository's docs, README, or tests is generated on a throwaway sandbox `$HOME` from seeded demo data, or hand-authored from scratch - never captured from a real rig; see `CONTRIBUTING.md` for the process contributors follow.
+`make check` runs `tools/redaction-gate.sh` over the working tree, and - via `make gate-history` - the full git history: commit diffs, authors, committers, subjects, bodies, against public and private pattern layers. Every example output block in this repository's docs, README, or tests is generated on a throwaway sandbox `$HOME` from seeded demo data, or hand-authored from scratch - never captured from a real rig; see `CONTRIBUTING.md` for the process contributors follow.
 
 ## Scope of these guarantees
 
