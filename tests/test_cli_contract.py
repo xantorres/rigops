@@ -147,6 +147,18 @@ class CliContractTests(unittest.TestCase):
             proc.stderr,
         )
 
+    def test_every_command_answers_help_with_exit_0_under_an_empty_home(self):
+        commands = sorted(p.name.removeprefix("rigops-") for p in LIBEXEC.glob("rigops-*"))
+
+        self.assertIn("render", commands)
+        self.assertIn("retrieval", commands)
+        for cmd in commands:
+            with self.subTest(cmd=cmd):
+                proc = self.run_cmd(cmd, "--help")
+
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertTrue(proc.stdout.strip(), "empty --help output")
+
 
 if __name__ == "__main__":
     unittest.main()
