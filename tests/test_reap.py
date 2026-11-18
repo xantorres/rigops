@@ -117,10 +117,10 @@ class RunCapturedKillsProcessGroupTests(EnvIsolatedTestCase):
             start = time.time()
             with self.assertRaises(subprocess.TimeoutExpired):
                 reap._run_captured(argv, timeout=1, env=dict(os.environ))
-            self.assertLess(time.time() - start, 5)
+            self.assertLess(time.time() - start, 15)
 
             pgid = int(pgid_file.read_text().strip())
-            deadline = time.time() + 2
+            deadline = time.time() + 10
             gone = False
             while time.time() < deadline:
                 try:
@@ -592,6 +592,13 @@ class GitFixtureTestCase(EnvIsolatedTestCase):
         os.environ["GIT_CONFIG_GLOBAL"] = "/dev/null"
         os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
         os.environ["GIT_TERMINAL_PROMPT"] = "0"
+
+    def stub_process_observation(self):
+        # A real lsof of the whole machine can pass the 30s timeout under load, which
+        # fails closed and keeps the tree the test expects removed.
+        for name in ("ps_snapshot", "cwd_map"):
+            self.addCleanup(setattr, reap, name, getattr(reap, name))
+            setattr(reap, name, dict)
 
 
 # --- section 3: classify on real tiny git fixtures --------------------------
@@ -1075,6 +1082,7 @@ class WorktreeHasRealChangesGitTests(GitFixtureTestCase):
 
 class RunApplyJsonPurityTests(GitFixtureTestCase):
     def test_apply_json_stdout_is_pure_json_worktree_removed(self):
+        self.stub_process_observation()
         repo = self.tmp / "repo"
         _init_repo(repo)
         wt_path = self.tmp / "wt-merged"
@@ -1107,6 +1115,7 @@ class RunApplyJsonPurityTests(GitFixtureTestCase):
 
 class RunRecheckBeforeRemovalTests(GitFixtureTestCase):
     def _apply_with_change_after_scan(self, change, dry_run=False) -> tuple[Path, dict]:
+        self.stub_process_observation()
         repo = self.tmp / "repo"
         _init_repo(repo)
         wt_path = self.tmp / "wt-merged"

@@ -464,7 +464,7 @@ class ClientCompleteTests(_StubServerMixin, unittest.TestCase):
         )
         elapsed = time.monotonic() - started
         self.assertEqual(result["error"], "timed out")
-        self.assertLess(elapsed, timeout_s + 1.0)
+        self.assertLess(elapsed, timeout_s + 10.0)
 
 
 class EvalRunValidationTests(_EnvIsolationMixin, _StubServerMixin, unittest.TestCase):

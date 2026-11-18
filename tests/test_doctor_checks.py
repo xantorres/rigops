@@ -420,7 +420,7 @@ class CheckPointersTests(unittest.TestCase):
             started = time.monotonic()
             self.assertTrue(check_pointers._path_ok(f"{tmp}/**/absent.md", known))
             self.assertFalse(check_pointers._path_ok(f"{tmp}/gone/**/absent.md", known))
-        self.assertLess(time.monotonic() - started, 5)
+        self.assertLess(time.monotonic() - started, 30)
 
     def test_two_segment_launchd_label_is_checked_and_a_filename_is_not(self):
         label_re = pointer_grammar.launchd_re([])

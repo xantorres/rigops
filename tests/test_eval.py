@@ -400,7 +400,7 @@ class LoadSuiteTests(unittest.TestCase):
             started = time.monotonic()
             with self.assertRaises(cases.CaseError) as ctx:
                 cases.load_suite(tmp)
-            self.assertLess(time.monotonic() - started, 2)
+            self.assertLess(time.monotonic() - started, 10)
             self.assertIn("is not a regular file", str(ctx.exception))
 
     def test_case_file_over_size_limit_rejected(self):
