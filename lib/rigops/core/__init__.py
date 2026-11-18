@@ -12,7 +12,7 @@ import hashlib
 import os
 import subprocess
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from rigops import config as _config
@@ -23,6 +23,10 @@ from rigops import transcripts as _transcripts
 
 HOME = Path(os.path.expanduser("~"))
 CLAUDE_DIR = HOME / ".claude"
+
+# The doctor writes this record and stamp; the card reads both.
+GATES_STATE_NAME = "doctor/gates.json"
+UTC_STAMP = "%Y-%m-%dT%H:%M:%SZ"
 
 
 def expand(value) -> Path:
@@ -35,6 +39,14 @@ def short(path) -> str:
     home = str(HOME)
     text = str(path)
     return "~" + text[len(home):] if text.startswith(home) else text
+
+
+def parse_utc_stamp(ts):
+    """A ``UTC_STAMP`` string as an aware datetime, or None for anything else."""
+    try:
+        return datetime.strptime(ts, UTC_STAMP).replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
 
 
 def load_config() -> dict:

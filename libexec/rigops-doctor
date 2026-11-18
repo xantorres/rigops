@@ -534,12 +534,10 @@ def _with_since(gates: list, previous, ts: str) -> list:
 
 
 def _red_for(since: str, ts: str) -> str:
-    fmt_ts = "%Y-%m-%dT%H:%M:%SZ"
-    try:
-        hours = (datetime.strptime(ts, fmt_ts) - datetime.strptime(since, fmt_ts)).total_seconds()
-    except ValueError:
+    start, end = rigops_core.parse_utc_stamp(since), rigops_core.parse_utc_stamp(ts)
+    if start is None or end is None:
         return "?"
-    hours = max(0.0, hours / 3600)
+    hours = max(0.0, (end - start).total_seconds() / 3600)
     return f"{int(hours // 24)}d" if hours >= 24 else f"{int(hours)}h"
 
 
@@ -731,8 +729,8 @@ def main(argv=None) -> int:
     # Reported, never paged: a stale row is a trend to read in the events log,
     # not a nightly interruption, so it stays out of the notify predicate.
     stale_count = sum(1 for j in jobs if j["status"] == "stale")
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    gates_path = rigops_core.local_state_path("doctor/gates.json")
+    ts = datetime.now(timezone.utc).strftime(rigops_core.UTC_STAMP)
+    gates_path = rigops_core.local_state_path(rigops_core.GATES_STATE_NAME)
     gates = _with_since(
         _job_gate_entries(jobs) + _check_gate_entries(checks) + _config_gate_entries(findings),
         _load_json(gates_path, None), ts,

@@ -24,7 +24,6 @@ from . import util
 
 DEFAULT_MAX_TOKENS = 250
 DEFAULT_DOCTOR_MAX_AGE_H = 2
-GATES_STATE_NAME = "doctor/gates.json"
 SEARCH_LINE = ('search: rigops retrieval search "<q>" '
                '(this realm + mixed; --scope all only on an explicit ask)')
 MAX_NEED_LINES = 15
@@ -178,7 +177,7 @@ def _budget_line(components: list, budget_tokens) -> str:
 def _read_gates() -> dict:
     """None for anything but the doctor's own shape -- missing file included,
     since `read_text` raises OSError on that same as any other unreadable path."""
-    path = core.local_state_path(GATES_STATE_NAME)
+    path = core.local_state_path(core.GATES_STATE_NAME)
     try:
         record = json.loads(core.read_text(path))
     except (OSError, ValueError):
@@ -196,11 +195,8 @@ def _visible_gates(record, cwd_realm) -> list:
 
 
 def _age_hours(ts):
-    if not ts:
-        return None
-    try:
-        stamp = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-    except (ValueError, TypeError):
+    stamp = core.parse_utc_stamp(ts)
+    if stamp is None:
         return None
     return (datetime.now(timezone.utc) - stamp).total_seconds() / 3600
 
