@@ -401,8 +401,9 @@ import sys
 
 manifest, prefix = sys.argv[1:3]
 data = json.load(open(manifest, encoding="utf-8"))
-for rel in ("lib/rigops/retired.py", "lib/rigops/retired_edited.py", "../outside.txt"):
-    with open(prefix + "/" + rel, "rb") as fh:
+for rel, src in (("lib/rigops/retired.py", None), ("lib/rigops/retired_edited.py", None),
+                 ("../outside.txt", None), ("lib/rigops/Config.py", "lib/rigops/config.py")):
+    with open(prefix + "/" + (src or rel), "rb") as fh:
         data["files"].append({"path": rel, "sha256": hashlib.sha256(fh.read()).hexdigest()})
 with open(manifest, "w", encoding="utf-8") as fh:
     json.dump(data, fh)
@@ -431,6 +432,7 @@ esac
 [ -f "$PRUNE_PREFIX/lib/rigops/retired_edited.py" ] || fail "prune apply removed an edited file"
 [ -f "$PRUNE_PREFIX/lib/rigops/hand_copied.py" ] || fail "prune apply removed a file in neither manifest"
 [ -f "$SMOKE_HOME/.local/share/outside.txt" ] || fail "prune apply removed a file outside the prefix"
+[ -f "$PRUNE_PREFIX/lib/rigops/config.py" ] || fail "prune apply removed a shipped file through a case-only rename"
 if grep -q 'retired' "$MANIFEST"; then fail "manifest still lists a pruned file"; fi
 rm -f "$PRUNE_PREFIX/lib/rigops/retired_edited.py" "$PRUNE_PREFIX/lib/rigops/hand_copied.py" \
     "$SMOKE_HOME/.local/share/outside.txt"

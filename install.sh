@@ -504,7 +504,8 @@ step_prune() {
             templates/* | plugin/statusline/*) [ "$PLUGIN_ONLY" -eq 0 ] || continue ;;
             *) continue ;;
         esac
-        grep -Fxq -- "$rel" "$SHIPPED_TXT" && continue
+        # A case-only rename is the same file on a default macOS volume.
+        grep -Fxiq -- "$rel" "$SHIPPED_TXT" && continue
         printf '%s\t%s\n' "$rel" "$sha" >>"$stale"
     done <"$OLD_DATA_TSV"
     [ -s "$stale" ] || return 0
