@@ -687,7 +687,15 @@ def reap(repo: Path, wt: dict, dry_run: bool) -> tuple[bool, str]:
     return True, f"removed{branch_note}"
 
 
-def render(results: list[dict], apply_mode: bool) -> str:
+def worktrees_left(res: dict) -> int:
+    """Linked worktrees still registered once this run's removals and prunes land."""
+    return sum(
+        1 for w in res["worktrees"]
+        if w["verdict"] != PRUNE and not (w.get("applied") or {}).get("removed")
+    )
+
+
+def render(results: list[dict], apply_mode: bool, cap: int = 0) -> str:
     lines: list[str] = []
     counts: dict[str, int] = {}
     reclaim = 0
@@ -703,6 +711,8 @@ def render(results: list[dict], apply_mode: bool) -> str:
         lines.append(header)
         if res["note"]:
             lines.append(f"  ! {res['note']}")
+        if res.get("over_cap"):
+            lines.append(f"  ! {res['worktrees_left']} linked worktrees, over the cap of {cap}")
         for wt in interesting:
             counts[wt["verdict"]] = counts.get(wt["verdict"], 0) + 1
             if wt["verdict"] == REAP:
@@ -915,6 +925,10 @@ def run(opts: Any) -> int:
         for pid in sorted(orphans) if pid in snap
     ]
 
+    cap = getattr(opts, "max_worktrees", 0)
+    for res in results:
+        res["worktrees_left"] = worktrees_left(res)
+        res["over_cap"] = cap > 0 and res["worktrees_left"] > cap
     all_worktrees = [w for res in results for w in res["worktrees"]]
     eligible = sum(1 for w in all_worktrees if w["verdict"] == REAP)
     kept_dirty = sum(1 for w in all_worktrees if w["verdict"] == "skip: dirty")
@@ -923,9 +937,11 @@ def run(opts: Any) -> int:
     timeouts = sum(1 for res in results if res.get("timed_out"))
     deadline_skipped = sum(1 for w in all_worktrees if w["verdict"] == DEADLINE_SKIP)
     listing_skipped = sum(1 for res in results if res.get("listing_skipped"))
+    over_cap = sum(1 for res in results if res["over_cap"])
     log(f"reaper: eligible={eligible} removed={removed} kept_dirty={kept_dirty} "
         f"kept_unpushed={kept_unpushed} kept_locked={kept_locked} timeouts={timeouts} "
         f"deadline_skipped={deadline_skipped} listing_skipped={listing_skipped} "
+        f"over_cap={over_cap} "
         f"killed={killed_total} kill_failed={kill_failed_total} "
         f"elapsed={int(time.time() - run_start)}s deadline_hit={int(deadline_hit)}")
 
@@ -935,6 +951,6 @@ def run(opts: Any) -> int:
                           "orphan_daemons": orphan_json,
                           "process_observation_ok": observed}, indent=2))
     else:
-        print(render(results, apply_mode=opts.apply and not opts.dry_run))
+        print(render(results, apply_mode=opts.apply and not opts.dry_run, cap=cap))
 
     return 0

@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   corrections from `rigops mine`, backlog lines added since the baseline row,
   and the newest report matching the new `ledger.week_reports` key. Nothing
   is applied without a yes, and each applied change gets a ledger note.
+- reap: a repository left with more linked worktrees than the new
+  `reaper.max_worktrees` (default 5, `0` for off) is flagged in the report,
+  the JSON and the log line. It is a report only; nothing extra is removed.
 
 ### Fixed
 

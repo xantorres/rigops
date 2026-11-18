@@ -1442,5 +1442,52 @@ class LogIsolationTests(EnvIsolatedTestCase):
         self.assertIn("marker", log_file.read_text())
 
 
+class OverCapTests(GitFixtureTestCase):
+    def _run(self, cap, as_json=True):
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        for n in range(3):
+            _run_git(["worktree", "add", "-b", f"wt-{n}", str(self.tmp / f"wt-{n}")], repo)
+        shutil.rmtree(self.tmp / "wt-2")
+        sessions_dir = self.tmp / "sessions"
+        sessions_dir.mkdir()
+        opts = types.SimpleNamespace(
+            selftest=False, apply=False, dry_run=False, json=as_json,
+            repo=[repo], roots=[], no_fetch=True, grace_days=14,
+            sessions_dir=sessions_dir, deadline_s=60,
+            max_kills_per_tree=20, orphan_min_age_s=172800, kill_grace_s=5,
+            ignored_untracked_dirs=set(), ignored_untracked_prefixes=(),
+            max_worktrees=cap,
+        )
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(reap.run(opts), 0)
+        return buf.getvalue()
+
+    def _summary(self):
+        log_lines = (Path(os.environ["RIGOPS_STATE_DIR"]) / "reap.log").read_text().splitlines()
+        return [line for line in log_lines if "reaper:" in line][-1]
+
+    def test_a_repo_over_the_cap_is_flagged_without_counting_pruned_entries(self):
+        repo = json.loads(self._run(1))["repos"][0]
+
+        self.assertEqual((repo["worktrees_left"], repo["over_cap"]), (2, True))
+        self.assertIn("over_cap=1", self._summary())
+
+    def test_a_repo_at_the_cap_is_not_flagged(self):
+        repo = json.loads(self._run(2))["repos"][0]
+
+        self.assertEqual((repo["worktrees_left"], repo["over_cap"]), (2, False))
+        self.assertIn("over_cap=0", self._summary())
+
+    def test_a_zero_cap_turns_the_check_off(self):
+        repo = json.loads(self._run(0))["repos"][0]
+
+        self.assertFalse(repo["over_cap"])
+
+    def test_the_text_report_names_the_count_and_the_cap(self):
+        self.assertIn("  ! 2 linked worktrees, over the cap of 1", self._run(1, as_json=False))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -64,6 +64,7 @@ def main() -> int:
     args.max_kills_per_tree = rigops_config.get(cfg, "reaper.max_kills_per_tree", 20)
     args.orphan_min_age_s = rigops_config.get(cfg, "reaper.orphan_min_age_s", 172800)
     args.kill_grace_s = rigops_config.get(cfg, "reaper.kill_grace_s", 5)
+    args.max_worktrees = rigops_config.get(cfg, "reaper.max_worktrees", 5)
     args.ignored_untracked_dirs = set(rigops_config.get(cfg, "reaper.ignored_untracked_dirs", []))
     args.ignored_untracked_prefixes = tuple(
         rigops_config.get(cfg, "reaper.ignored_untracked_prefixes", [])
