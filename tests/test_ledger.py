@@ -150,6 +150,34 @@ def _load_ledger_module():
 ledger_cli = _load_ledger_module()
 
 
+def _second_writer_lands_mid_write(first, second):
+    """Run `first`, letting `second` write the same file between first's
+    temp write and its swap into place, as a second concurrent run would."""
+    real_replace = os.replace
+    landed = []
+
+    def replace(src, dst):
+        if not landed:
+            landed.append(True)
+            second()
+        return real_replace(src, dst)
+
+    with mock.patch("os.replace", side_effect=replace):
+        first()
+
+
+class RewriteConcurrencyTests(unittest.TestCase):
+    def test_two_runs_rewriting_one_ledger_both_finish(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ledger.jsonl"
+            _second_writer_lands_mid_write(
+                lambda: ledger_cli._rewrite_jsonl(path, [{"run": "first"}]),
+                lambda: ledger_cli._rewrite_jsonl(path, [{"run": "second"}]),
+            )
+            self.assertEqual(state.read_jsonl(path), [{"run": "first"}])
+            self.assertEqual([p.name for p in Path(tmp).iterdir()], ["ledger.jsonl"])
+
+
 class LedgerWriteRaceTests(EnvIsolatedTestCase):
     """Two schedulers scanning the same week: the other one appends mid-scan."""
 

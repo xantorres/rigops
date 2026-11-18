@@ -20,16 +20,9 @@ from rigops import state  # noqa: E402
 from rigops.doctor import check_levers  # noqa: E402
 
 
-def _atomic_write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
-
-
 def _rewrite_jsonl(path: Path, rows: list) -> None:
     text = "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in rows)
-    _atomic_write(path, text)
+    state.atomic_write(path, text)
 
 
 def _load_ledger_rows(path: Path) -> list:
@@ -99,7 +92,7 @@ def cmd_write(args) -> int:
                 state.append_jsonl(jsonl_path, row)
             # ledger.md is fully regenerated from ledger.jsonl so column additions never
             # desync the table header from appended rows; jsonl stays the source of truth.
-            _atomic_write(md_path, levers.render_markdown(rows, watch_projects))
+            state.atomic_write(md_path, levers.render_markdown(rows, watch_projects))
 
     if args.json:
         print(json.dumps(row, indent=2, default=str))

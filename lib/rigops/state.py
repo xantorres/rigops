@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import tempfile
 from pathlib import Path
 
 from rigops.config import expand
@@ -20,6 +22,31 @@ def state_dir() -> Path:
         path = expand(Path(xdg) / "rigops")
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def atomic_write(path, content: str) -> None:
+    """Replace `path` with `content` through a temp file of its own, so two
+    writers of the same path never share a temp name."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # mkstemp makes 0600: keep an existing file's mode, else the one open() would give.
+    mode = path.stat().st_mode if path.exists() else 0o666 & ~_umask()
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        os.chmod(tmp_path, mode)
+        os.replace(tmp_path, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise
+
+
+def _umask() -> int:
+    current = os.umask(0)
+    os.umask(current)
+    return current
 
 
 def append_jsonl(path, obj) -> None:

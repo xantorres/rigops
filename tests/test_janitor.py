@@ -872,16 +872,8 @@ class WatermarkAppendOSErrorTests(unittest.TestCase):
             wm = {"name": "auto-memory", "path": str(d), "max_files": 2, "area": "memory"}
             backlog_path = Path(tmp) / "backlog.md"
 
-            orig_chmod = os.chmod
-
-            def raising_chmod(*args, **kwargs):
-                raise OSError("no chmod for you")
-
-            backlog.os.chmod = raising_chmod
-            try:
+            with mock.patch("os.chmod", side_effect=OSError("no chmod for you")):
                 results = janitor.check_watermarks([wm], backlog_path, ["memory"], apply=True)
-            finally:
-                backlog.os.chmod = orig_chmod
             self.assertTrue(results[0]["status"].startswith("error:"))
 
 

@@ -123,6 +123,34 @@ def _run_doctor(args: list) -> tuple:
     return code, buf.getvalue()
 
 
+def _second_writer_lands_mid_write(first, second):
+    """Run `first`, letting `second` write the same file between first's
+    temp write and its swap into place, as a second concurrent run would."""
+    real_replace = os.replace
+    landed = []
+
+    def replace(src, dst):
+        if not landed:
+            landed.append(True)
+            second()
+        return real_replace(src, dst)
+
+    with mock.patch("os.replace", side_effect=replace):
+        first()
+
+
+class SaveJsonConcurrencyTests(unittest.TestCase):
+    def test_two_runs_saving_one_state_file_both_finish(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "doctor" / "kicked.json"
+            _second_writer_lands_mid_write(
+                lambda: doctor._save_json(path, {"run": "first"}),
+                lambda: doctor._save_json(path, {"run": "second"}),
+            )
+            self.assertEqual(json.loads(path.read_text()), {"run": "first"})
+            self.assertEqual([p.name for p in path.parent.iterdir()], ["kicked.json"])
+
+
 class CheckSelectionTests(unittest.TestCase):
     def test_unknown_check_name_is_rejected_rather_than_selecting_nothing(self):
         """A typo must not filter every check out and then report a clean rig."""
