@@ -559,6 +559,19 @@ data = json.load(open(sys.argv[1], encoding="utf-8"))
 sys.exit(0 if data == {"theme": "dark"} else 1)
 PYEOF
 
+echo "smoke: uninstall keeps a statusLine the user changed"
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
+[ "$RC" -eq 0 ] || fail "statusline wire before the user change exit $RC: $OUT"
+printf '{"statusLine": {"type": "command", "command": "/usr/bin/true"}}' >"$SETTINGS"
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "uninstall over a user statusLine exit $RC: $OUT"
+case "$OUT" in
+    *"kept     statusLine (no longer runs"*) : ;;
+    *) fail "uninstall over a user statusLine did not say it kept it: $OUT" ;;
+esac
+[ "$(cat "$SETTINGS")" = '{"statusLine": {"type": "command", "command": "/usr/bin/true"}}' ] \
+    || fail "uninstall changed a statusLine the user set: $(cat "$SETTINGS")"
+
 echo "smoke: statusline error path (checkout without the script)"
 SRC_COPY="$(mktemp -d)"
 cp -R "$REPO_ROOT/." "$SRC_COPY/"
@@ -763,6 +776,19 @@ jobs_install --apply --yes
     || fail "install after declined purge job set: $(manifest_labels "$JOBS_MANIFEST")"
 jobs_install --uninstall --apply --purge --yes
 [ "$RC" -eq 0 ] || fail "purge after declined purge exit $RC: $OUT"
+
+echo "smoke: --jobs disables a dropped plist the user edited"
+jobs_install --apply --jobs doctor,ledger --yes
+[ "$RC" -eq 0 ] || fail "two-job install before the edit exit $RC: $OUT"
+printf '<!-- local edit -->\n' >>"$JOBS_AGENTS/$JOB_PREFIX.ledger.plist"
+jobs_install --apply --jobs doctor --yes
+[ "$RC" -eq 0 ] || fail "drop of an edited plist exit $RC: $OUT"
+[ -f "$FAKE_LAUNCHD/loaded/$JOB_PREFIX.ledger" ] && fail "dropped edited ledger job still loaded"
+[ -f "$JOBS_AGENTS/$JOB_PREFIX.ledger.plist" ] && fail "dropped edited ledger plist left where launchd loads it"
+[ -f "$JOBS_AGENTS/$JOB_PREFIX.ledger.plist.rigops-disabled" ] || fail "dropped edited ledger plist was not kept as .rigops-disabled"
+rm -f "$JOBS_AGENTS/$JOB_PREFIX.ledger.plist.rigops-disabled"
+jobs_install --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "uninstall after the edited drop exit $RC: $OUT"
 
 echo "smoke: rendered job plists parse as well-formed plists"
 ALL_JOBS="doctor ledger janitor reap"
