@@ -14,9 +14,10 @@ Usage: redaction-gate.sh [--history] [--message <file>] [--help]
 
 Private pattern layers, on top of tools/redaction-patterns.public.txt:
   RIGOPS_REDACTION_PATTERNS_B64  base64 rule file, the only private layer when set (CI).
-  RIGOPS_REDACTION_PATTERNS      colon-separated rule files; defaults to
-                                 ~/.config/rigops/redaction-patterns.txt and
-                                 ~/.config/rigops/redaction-patterns.rigops.txt.
+  RIGOPS_REDACTION_PATTERNS      colon-separated rule files, each required; defaults
+                                 to ~/.config/rigops/redaction-patterns.txt and
+                                 ~/.config/rigops/redaction-patterns.rigops.txt,
+                                 which may be absent.
 USAGE
 }
 
@@ -51,6 +52,10 @@ else
     if [ -f "$candidate" ]; then
       PRIVATE_FILES+=("$candidate")
       PRIVATE_LABELS+=("$(basename "$candidate")")
+    elif [ -n "${RIGOPS_REDACTION_PATTERNS:-}" ]; then
+      # A layer named on purpose is required; only the defaults are optional.
+      echo "error: private redaction patterns not found: $candidate" >&2
+      exit 2
     else
       echo "warning: private redaction patterns not found: $candidate" >&2
     fi

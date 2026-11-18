@@ -304,6 +304,13 @@ class PrivateLayerTests(unittest.TestCase):
         out = self.scan("nothing")
         self.assertEqual(out.returncode, 2, out.stdout + out.stderr)
 
+    def test_missing_listed_layer_fails(self):
+        first = self.write_layer(self.tmp / "first.txt", "s zz-alpha-[0-9]+\n")
+        env = {"RIGOPS_REDACTION_PATTERNS": f"{first}{os.pathsep}{self.tmp / 'gone.txt'}"}
+        out = self.scan("nothing", extra_env=env)
+        self.assertEqual(out.returncode, 2, out.stdout + out.stderr)
+        self.assertNotIn("clean", out.stdout)
+
     def test_crlf_layer_still_matches(self):
         layer = self.tmp / "crlf.txt"
         layer.write_bytes(b"# comment\r\n\r\ns zz-alpha-[0-9]+\r\n")
