@@ -168,6 +168,16 @@ class ZeroRulesTests(unittest.TestCase):
         out = run_gate(script, "--message", str(self.msg), home=self.home)
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
 
+    def test_empty_b64_secret_runs_the_public_layer_only(self):
+        script = sandbox_gate(self.tmp / "repo")
+        empty = {"RIGOPS_REDACTION_PATTERNS_B64": ""}
+        out = run_gate(script, "--message", str(self.msg), home=self.home, extra_env=empty)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("running public layer only", out.stderr)
+        self.msg.write_text("body zz-sample-" + "1\n", encoding="utf-8")
+        out = run_gate(script, "--message", str(self.msg), home=self.home, extra_env=empty)
+        self.assertEqual(out.returncode, 1, out.stdout + out.stderr)
+
 
 def commit_all(root, home):
     env = {

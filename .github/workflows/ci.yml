@@ -25,7 +25,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: guard secret
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && !github.event.repository.fork
         env:
           RIGOPS_REDACTION_PATTERNS_B64: ${{ secrets.RIGOPS_REDACTION_PATTERNS_B64 }}
         run: |

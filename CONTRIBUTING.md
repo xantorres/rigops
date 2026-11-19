@@ -18,6 +18,8 @@ No tracker-style keys anywhere - code, comments, commit messages, PR text. The r
 
 `make check` must pass: redaction gate (tree + history), shellcheck, ruff, unit tests, hook tests, the install smoke test, manifest validation, plugin validation.
 
+CI on a fork runs the public redaction patterns only; the private layer is required on pushes to the upstream repository.
+
 `make smoke-launchd` stays out of `make check` and has to be run by hand. It loads and unloads real launchd jobs, so it is macOS-only and mutates the machine it runs on; `make smoke` covers the installer end to end without it, on a throwaway `HOME` with `--no-jobs`.
 
 ## Tests
