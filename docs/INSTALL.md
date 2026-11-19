@@ -106,7 +106,7 @@ Re-run with `--apply` to actually do it:
 bash install.sh --apply
 ```
 
-The two installed jobs: `doctor` runs `rigops-doctor --heal` every 30 minutes; `ledger` runs `rigops-ledger write` weekly, Monday 09:05 local time.
+The two installed jobs: `doctor` runs `rigops-doctor` every 30 minutes and only reports, unless you install with `--heal`, which adds `--heal` to the scheduled command so it may kill hung jobs and kickstart stale ones; `ledger` runs `rigops-ledger write` weekly, Monday 09:05 local time.
 
 ### Flags
 
@@ -120,6 +120,7 @@ From `bash install.sh --help`:
 | `--jobs a,b` | Comma-separated job list to install. Available jobs: `doctor` (every 30 minutes), `ledger` (Monday 09:05), `janitor` (Sunday 10:00) and `reap` (daily 08:30). Without `--jobs`, a first install gets `doctor` and `ledger`, and a later run keeps the job set the manifest recorded. `janitor` and `reap` run with `--apply`, so they delete on schedule and only `--jobs` installs them. Naming anything else is a usage error. A job the previous install recorded but the list leaves out is booted out and its plist removed, the same way `--uninstall` does it. install.sh is the one scheduler of these jobs: a job that another LaunchAgent in `~/Library/LaunchAgents` already runs (its `ProgramArguments` run `rigops <job>` or `rigops-<job>`) is skipped, and one this install placed earlier is booted out, so no job runs twice. The output names that plist; remove it and re-run with `--jobs` to schedule the job here. |
 | `--prefix DIR` | Install prefix (default `$HOME/.local/share/rigops`). |
 | `--python PATH` | `python3` interpreter to use (default: first `python3` on PATH). Must be >= 3.9. |
+| `--heal` | Schedule the `doctor` job with `--heal`. Off by default, so the scheduled doctor only reports. Like the other options it applies to this run only: a later `--apply` without `--heal` installs the report-only job again. A usage error when the run does not install `doctor` (`--no-jobs`, `--plugin-only`, a `--jobs` list without `doctor`, `--uninstall`). |
 | `--statusline` | Wire the plugin statusline into `~/.claude/settings.json`. Conflicts with `--plugin-only`. |
 | `--uninstall` | Remove a previous install, driven entirely by its manifest. |
 | `--purge` | With `--uninstall`, also delete the config/state/log directories. Requires `--uninstall`. |

@@ -39,6 +39,8 @@ nothing. Pass --apply to actually install.
                   also available: janitor, reap, which run with --apply)
   --prefix DIR    install prefix (default: $HOME/.local/share/rigops)
   --python PATH   python3 interpreter to use (default: first on PATH)
+  --heal          schedule the doctor job with --heal, so it may kill hung
+                  jobs and kickstart stale ones (default: report-only)
   --statusline    wire the plugin statusline into ~/.claude/settings.json
   --uninstall     remove a previous install, using its manifest
   --purge         with --uninstall, also delete config/state/log dirs
@@ -60,6 +62,7 @@ JOBS_FILTER=""
 PREFIX=""
 PYTHON_BIN=""
 STATUSLINE=0
+HEAL=0
 UNINSTALL=0
 PURGE=0
 YES=0
@@ -110,6 +113,10 @@ while [ "$#" -gt 0 ]; do
             ;;
         --statusline)
             STATUSLINE=1
+            shift
+            ;;
+        --heal)
+            HEAL=1
             shift
             ;;
         --uninstall)
@@ -357,6 +364,17 @@ if [ -z "$JOBS_FILTER" ] && [ -s "$OLD_JOBS_TSV" ]; then
     [ "${#KEPT_JOBS[@]}" -eq 0 ] || SELECTED_JOBS=("${KEPT_JOBS[@]}")
 fi
 
+if [ "$HEAL" -eq 1 ]; then
+    heal_has_doctor=0
+    for name in "${SELECTED_JOBS[@]}"; do
+        [ "$name" = "doctor" ] && heal_has_doctor=1
+    done
+    if [ "$UNINSTALL" -eq 1 ] || [ "$PLUGIN_ONLY" -eq 1 ] || [ "$NO_JOBS" -eq 1 ] || [ "$heal_has_doctor" -eq 0 ]; then
+        echo "error: --heal needs the doctor job to be installed in this run" >&2
+        exit 2
+    fi
+fi
+
 old_hash_for() {
     local rel="$1" tag p h
     while IFS=$'\t' read -r tag p h; do
@@ -472,6 +490,11 @@ step_preflight() {
     printf '     sha256 tool: %s\n' "$SHA_TOOL_NAME"
     if [ "$JOBS_ENABLED" -eq 1 ]; then
         printf '     launchd jobs enabled: %s\n' "${SELECTED_JOBS[*]}"
+        if [ "$HEAL" -eq 1 ]; then
+            printf '     doctor job: self-heal on (installed with --heal)\n'
+        else
+            printf '     doctor job: report-only (pass --heal to turn self-heal on)\n'
+        fi
     else
         printf '     launchd jobs disabled: %s\n' "$JOBS_SKIP_REASON"
     fi
@@ -667,14 +690,16 @@ PYEOF
 render_template() {
     local tmpl="$1" out="$2" label="$3" py="$4" prefix="$5" home="$6" logdir="$7"
     local extra_config="$8" extra_state="$9" extra_xdg_config="${10}" extra_xdg_state="${11}"
+    local heal_arg=""
+    [ "$HEAL" -eq 1 ] && [ "$(basename "$tmpl")" = "doctor.plist.in" ] && heal_arg="--heal"
     "$PY_ABS" - "$tmpl" "$out" "$label" "$py" "$prefix" "$home" "$logdir" \
-        "$extra_config" "$extra_state" "$extra_xdg_config" "$extra_xdg_state" <<'PYEOF'
+        "$extra_config" "$extra_state" "$extra_xdg_config" "$extra_xdg_state" "$heal_arg" <<'PYEOF'
 import os
 import re
 import sys
 
 (tmpl_path, out_path, label, python_bin, prefix, home, log_dir,
- extra_config, extra_state, extra_xdg_config, extra_xdg_state) = sys.argv[1:12]
+ extra_config, extra_state, extra_xdg_config, extra_xdg_state, heal_arg) = sys.argv[1:13]
 
 
 def xml_escape(value):
@@ -702,6 +727,7 @@ replacements = {
     "@HOME@": xml_escape(home),
     "@LOG_DIR@": xml_escape(log_dir),
     "@EXTRA_ENV@": "\n".join(extra_env_lines),
+    "@HEAL_ARG@": "\t\t<string>" + heal_arg + "</string>\n" if heal_arg else "",
 }
 for placeholder, value in replacements.items():
     text = text.replace(placeholder, value)

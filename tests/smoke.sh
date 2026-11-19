@@ -1026,6 +1026,50 @@ with open(sys.argv[1], "rb") as fh:
 sys.exit(0 if args[1] == sys.argv[2] and os.path.isfile(args[1]) else 1)
 PYEOF
 done
+# Prints the doctor plist's ProgramArguments after the interpreter, one per line.
+doctor_args() {
+    python3 - "$JOBS_AGENTS/$JOB_PREFIX.doctor.plist" <<'PYEOF'
+import plistlib
+import sys
+
+with open(sys.argv[1], "rb") as fh:
+    print("\n".join(plistlib.load(fh)["ProgramArguments"][2:]))
+PYEOF
+}
+
+echo "smoke: the doctor job is report-only unless --heal is passed"
+[ -z "$(doctor_args)" ] || fail "default doctor plist carries arguments: $(doctor_args)"
+case "$OUT" in
+    *"doctor job: report-only"*) : ;;
+    *) fail "apply output does not state the doctor mode: $OUT" ;;
+esac
+jobs_install --apply --heal --jobs doctor --yes
+[ "$RC" -eq 0 ] || fail "--heal install exit $RC: $OUT"
+[ "$(doctor_args)" = "--heal" ] || fail "--heal doctor plist arguments: $(doctor_args)"
+case "$OUT" in
+    *"doctor job: self-heal"*) : ;;
+    *) fail "--heal apply output does not state the doctor mode: $OUT" ;;
+esac
+jobs_install --apply --jobs doctor --yes
+[ "$RC" -eq 0 ] || fail "install after --heal exit $RC: $OUT"
+[ -z "$(doctor_args)" ] || fail "--heal was remembered by a later run: $(doctor_args)"
+jobs_install --jobs doctor
+case "$OUT" in
+    *"doctor job: report-only"*"--heal"*) : ;;
+    *) fail "plan output does not state the doctor mode: $OUT" ;;
+esac
+before_heal="$(snapshot_tree "$JOBS_HOME")"
+for conflict in "--no-jobs" "--plugin-only" "--jobs ledger" "--uninstall"; do
+    # shellcheck disable=SC2086
+    jobs_install --apply --heal $conflict --yes
+    [ "$RC" -eq 2 ] || fail "--heal $conflict expected exit 2, got $RC: $OUT"
+    case "$OUT" in
+        *"--heal"*) : ;;
+        *) fail "--heal $conflict missing usage error: $OUT" ;;
+    esac
+done
+[ "$before_heal" = "$(snapshot_tree "$JOBS_HOME")" ] || fail "a rejected --heal run wrote to the home"
+
 jobs_install --uninstall --apply --yes
 [ "$RC" -eq 0 ] || fail "all-jobs uninstall exit $RC: $OUT"
 
