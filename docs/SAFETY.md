@@ -12,6 +12,8 @@ What each rigops command can destroy, what's opt-in, and the caps that bound it.
 | `install.sh` | Plan-only: prints every action, touches nothing. | `--apply` performs the install or uninstall. | Uninstall acts only on what its manifest recorded - it never guesses. `--purge` additionally requires `--uninstall` and passes every deletion target through a `purge_safe` check before any `rm -rf` (see [INSTALL.md](INSTALL.md)). |
 | `rigops authprobe` | Ships disabled (`authprobe.enabled: false`); running it reports "disabled" and does nothing else. | `authprobe.enabled: true` in config, or `--force` on the command line. | Runs under a scrubbed environment (`HOME`/`USER`/`PATH`/`SHELL`/`TERM` only, plus an optional injected token) - never inherits the calling shell's environment. |
 
+`doctor --heal` fails closed on its own state: if `heal-stamps.json` (or `holds.json`, when `cause_policy` reads it) is unreadable, not a JSON object, or holds a non-numeric stamp, the run kickstarts nothing and releases no hold, moves the file aside as `<name>.corrupt-<timestamp>`, and raises a failing finding. A run that cannot heal reports the finding and leaves the file where it is.
+
 ## Kill-path design
 
 Two independent kill paths, same shape, different scope.

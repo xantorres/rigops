@@ -1093,7 +1093,7 @@ class CausePolicyTests(EnvIsolatedTestCase):
         self._run()
         self.assertFalse(marker.exists())
 
-    def test_corrupt_holds_do_not_stop_the_supervisor(self):
+    def test_malformed_hold_entries_do_not_stop_the_supervisor(self):
         self._config("shadow")
         self._log("unknown.txt")
         self.state.mkdir(parents=True, exist_ok=True)
@@ -1103,7 +1103,7 @@ class CausePolicyTests(EnvIsolatedTestCase):
         (self.state / "holds.json").write_bytes(b"\xff\xfe")
         (self.state / "heal-stamps.json").unlink()
         _, m_kick = self._run()
-        m_kick.assert_called_once()
+        m_kick.assert_not_called()
 
     def test_release_tick_inside_quiet_period_does_not_page(self):
         job = {"id": "j", "status": "failing", "cause": "quota", "action": "kickstart"}
@@ -1428,3 +1428,98 @@ class EvidenceGlobTests(EnvIsolatedTestCase):
              "max_runtime_h": 1}, False)
         self.assertEqual(job["status"], "unknown")
         self.assertIsNone(job["evidence_age_h"])
+
+
+class CorruptHealStateTests(EnvIsolatedTestCase):
+    def setUp(self):
+        super().setUp()
+        self.dir = Path(self.tmp) / "state" / "doctor"
+        self.dir.mkdir(parents=True)
+
+    def _config(self, policy):
+        config = {"doctor": {"cause_policy": policy}}
+        Path(os.environ["RIGOPS_CONFIG"]).write_text(json.dumps(config))
+
+    def _asides(self, name):
+        return sorted(p for p in self.dir.glob(name + ".*") if p.suffix != ".tmp")
+
+    def _events(self):
+        return [json.loads(line) for line in (self.dir / "events.jsonl").read_text().splitlines()]
+
+    def _run(self, args, item=FAILING_ITEM, snapshot=(True, None, 1)):
+        registry_path = _write_registry(self.tmp, item)
+        with (
+            mock.patch.object(launchd, "is_loaded", return_value=True),
+            mock.patch.object(launchd, "job_snapshot", return_value=snapshot),
+            mock.patch.object(launchd, "kickstart", return_value=True) as m_kick,
+            mock.patch.object(launchd, "runtime_hours", return_value=2.5),
+            mock.patch.object(launchd, "job_pid", return_value=4242),
+            mock.patch.object(launchd, "terminate_process_group", return_value=True) as m_term,
+        ):
+            code, out = _run_doctor(args + ["--json", "--registry", str(registry_path)])
+        return code, json.loads(out), m_kick, m_term
+
+    def _finding_for(self, payload, name):
+        hits = [f for f in payload["findings"] if name in f["evidence"] or name in f["symptom"]]
+        self.assertEqual(len(hits), 1, payload["findings"])
+        self.assertEqual(hits[0]["severity"], "fail")
+        return hits[0]
+
+    def test_heal_with_corrupt_stamps_kicks_nothing_and_moves_the_file_aside(self):
+        (self.dir / "heal-stamps.json").write_bytes(b"{not json")
+        code, payload, m_kick, _ = self._run(["--heal"])
+        m_kick.assert_not_called()
+        self.assertEqual(code, 0)
+        self.assertFalse((self.dir / "heal-stamps.json").exists())
+        (aside,) = self._asides("heal-stamps.json")
+        self.assertEqual(aside.read_bytes(), b"{not json")
+        self._finding_for(payload, "heal-stamps.json")
+        self.assertTrue(any("heal-stamps.json" in str(e.get("event", "")) for e in self._events()))
+
+    def test_heal_with_valid_stamps_still_kicks(self):
+        (self.dir / "heal-stamps.json").write_text(json.dumps({"other": time.time()}))
+        _, payload, m_kick, _ = self._run(["--heal"])
+        m_kick.assert_called_once_with("local.job-failing")
+        self.assertEqual(payload["findings"], [])
+
+    def test_heal_with_corrupt_holds_kicks_nothing_and_writes_no_fresh_holds(self):
+        self._config("on")
+        (self.dir / "holds.json").write_bytes(b"[]")
+        _, payload, m_kick, _ = self._run(["--heal"])
+        m_kick.assert_not_called()
+        self.assertFalse((self.dir / "holds.json").exists())
+        (aside,) = self._asides("holds.json")
+        self.assertEqual(aside.read_bytes(), b"[]")
+        self._finding_for(payload, "holds.json")
+
+    def test_plain_run_with_corrupt_stamps_reports_and_leaves_the_file(self):
+        (self.dir / "heal-stamps.json").write_bytes(b"\xff\xfe")
+        code, payload, m_kick, _ = self._run([])
+        self.assertEqual(code, 1)
+        m_kick.assert_not_called()
+        self.assertEqual((self.dir / "heal-stamps.json").read_bytes(), b"\xff\xfe")
+        self.assertEqual(self._asides("heal-stamps.json"), [])
+        self._finding_for(payload, "heal-stamps.json")
+
+    def test_heal_still_kills_a_hung_job_with_corrupt_stamps(self):
+        (self.dir / "heal-stamps.json").write_bytes(b"{not json")
+        _, payload, m_kick, m_term = self._run(
+            ["--heal"], item=HUNG_ITEM, snapshot=(True, 4242, None)
+        )
+        m_term.assert_called_once_with(4242, 5)
+        m_kick.assert_not_called()
+        self.assertIn("terminated hung job job-hung", " ".join(payload["healed"]))
+
+    def test_string_stamp_does_not_crash_a_plain_run(self):
+        (self.dir / "heal-stamps.json").write_text(json.dumps({"job-failing": "yesterday"}))
+        code, payload, _, _ = self._run([])
+        self.assertEqual(code, 1)
+        self._finding_for(payload, "heal-stamps.json")
+
+    def test_failed_move_still_kicks_nothing_and_says_the_file_stays(self):
+        (self.dir / "heal-stamps.json").write_bytes(b"{not json")
+        with mock.patch("os.rename", side_effect=OSError("denied")):
+            _, payload, m_kick, _ = self._run(["--heal"])
+        m_kick.assert_not_called()
+        self.assertEqual((self.dir / "heal-stamps.json").read_bytes(), b"{not json")
+        self.assertIn("still in place", self._finding_for(payload, "heal-stamps.json")["fix"])

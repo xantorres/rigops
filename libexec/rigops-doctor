@@ -18,7 +18,7 @@ from rigops import cause as rigops_cause  # noqa: E402
 from rigops import config as rigops_config  # noqa: E402
 from rigops import core as rigops_core  # noqa: E402
 from rigops import doctor as config_checks  # noqa: E402
-from rigops import fmt, launchd, state  # noqa: E402
+from rigops import fmt, guard_state, launchd, state  # noqa: E402
 from rigops import notify as rigops_notify  # noqa: E402
 from rigops import registry as rigops_registry  # noqa: E402
 from rigops.judge import (  # noqa: E402,F401
@@ -52,6 +52,13 @@ def _save_json(path: Path, data) -> None:
 
 
 KILL_PREFIX = "kill:"
+
+
+def _guard_finding(path: Path, reason: str, outcome: str) -> rigops_core.Finding:
+    return rigops_core.Finding(
+        check="heal-state", area="doctor", symptom=f"{path.name} rejected: {reason}",
+        evidence=str(path), fix=outcome, key=path.name,
+    )
 
 
 def _cooldown_active(heal_stamps: dict, job_id: str, cooldown_h: float, now: float) -> bool:
@@ -370,12 +377,14 @@ def main(argv=None) -> int:
     doctor_state_dir = state.state_dir() / "doctor"
     heal_stamps_path = doctor_state_dir / "heal-stamps.json"
     events_path = doctor_state_dir / "events.jsonl"
-    heal_stamps = _load_dict(heal_stamps_path)
+    heal_stamps, stamps_bad = guard_state.load_guard_state(heal_stamps_path, numeric_values=True)
+    guard_problems = [(heal_stamps_path, stamps_bad)] if stamps_bad else []
     cooldown_h = rigops_config.get(cfg, "doctor.heal_cooldown_h", 12)
     kill_grace_s = rigops_config.get(cfg, "doctor.kill_grace_s", 5)
     prefixes = rigops_config.get(cfg, "doctor.label_prefix", ["local."])
 
     now = time.time()
+    ts = datetime.now(timezone.utc).strftime(rigops_core.UTC_STAMP)
     cause_policy = rigops_config.get(cfg, "doctor.cause_policy", "off")
     holds_path = doctor_state_dir / "holds.json"
     cause_ctx = None
@@ -389,9 +398,12 @@ def main(argv=None) -> int:
         probe_command = probe_command.strip() if isinstance(probe_command, str) else ""
         # A run that cannot kick must not spend a hold's retry, and a shadow run must not
         # run the probe: it would be work the unchanged supervisor never did.
+        holds_raw, holds_bad = guard_state.load_guard_state(holds_path)
+        if holds_bad:
+            guard_problems.append((holds_path, holds_bad))
         cause_ctx = {
             "policy": cause_policy, "now": now, "undo": {},
-            "holds": rigops_cause.clean_holds(_load_json(holds_path, {})),
+            "holds": rigops_cause.clean_holds(holds_raw),
             "probe": (
                 _run_probe(probe_command, probe_warnings)
                 if probe_command and cause_policy == "on" and args.heal else None
@@ -424,6 +436,20 @@ def main(argv=None) -> int:
             for j in jobs if "would" in j
         ]
 
+    fail_closed = bool(guard_problems) and args.heal and args.supervisor == "launchd"
+    guard_findings = []
+    stamps_pinned = False
+    for path, reason in guard_problems:
+        moved = guard_state.move_aside(path, ts) if fail_closed else None
+        if not fail_closed:
+            outcome = "file left in place; a --heal run under launchd restarts nothing and moves it aside"
+        elif moved:
+            outcome = f"no job restarted and no hold released this run; moved aside to {moved.name}"
+        else:
+            outcome = "no job restarted and no hold released this run; file still in place"
+        stamps_pinned = stamps_pinned or (path == heal_stamps_path and not moved)
+        guard_findings.append(_guard_finding(path, reason, outcome))
+
     heal_log = []
     kicked_labels = set()
     kicked_ids = set()
@@ -436,8 +462,9 @@ def main(argv=None) -> int:
                 elif launchd.terminate_process_group(job["pid"], kill_grace_s):
                     heal_stamps[job["id"]] = heal_stamps[KILL_PREFIX + job["id"]] = now
                     heal_log.append(f"terminated hung job {job['id']} (pid {job['pid']})")
-                    _save_json(heal_stamps_path, heal_stamps)
-            elif job["action"] == "kickstart" and job["label"]:
+                    if not stamps_pinned:
+                        _save_json(heal_stamps_path, heal_stamps)
+            elif job["action"] == "kickstart" and job["label"] and not fail_closed:
                 if job["label"] in kicked_labels:
                     # One launchd label runs every job sharing it: a second kick is a double run.
                     heal_stamps[job["id"]] = now
@@ -455,7 +482,7 @@ def main(argv=None) -> int:
                     heal_log.append(f"kickstarted {job['id']} ({job['label']})")
                     _save_json(heal_stamps_path, heal_stamps)
 
-    if cause_ctx and args.heal:
+    if cause_ctx and args.heal and not fail_closed:
         for job_id, previous in cause_ctx["undo"].items():
             if job_id not in kicked_ids:
                 if previous is None:
@@ -479,13 +506,12 @@ def main(argv=None) -> int:
     if disk_free_cfg:
         checks.append(run_disk_free_check(disk_free_cfg))
     only = set(args.check or []) or None
-    findings = [] if args.no_config else config_checks.run_checks(cfg, only=only)
+    findings = guard_findings + ([] if args.no_config else config_checks.run_checks(cfg, only=only))
 
     fail_count = sum(1 for j in jobs if j["status"] in ("failing", "hung"))
     # Reported, never paged: a stale row is a trend to read in the events log,
     # not a nightly interruption, so it stays out of the notify predicate.
     stale_count = sum(1 for j in jobs if j["status"] == "stale")
-    ts = datetime.now(timezone.utc).strftime(rigops_core.UTC_STAMP)
     gates_path = rigops_core.local_state_path(rigops_core.GATES_STATE_NAME)
     gates = _with_since(
         _job_gate_entries(jobs) + _check_gate_entries(checks) + _config_gate_entries(findings),
@@ -526,6 +552,8 @@ def main(argv=None) -> int:
     if cause_policy == "shadow":
         event["would"] = would_log
     state.append_jsonl(events_path, event)
+    for finding in guard_findings:
+        state.append_jsonl(events_path, {"ts": ts, "event": f"{finding.symptom}; {finding.fix}"})
     for message in probe_warnings:
         state.append_jsonl(events_path, {"ts": ts, "event": message})
 
