@@ -469,20 +469,20 @@ class PluginTypeFileTests(RenderTestCase):
         return [r for r in render.check(self.rendered) if r["state"] != "skipped"]
 
     def test_types_tree_under_the_plugin_dir_is_not_reported_stale(self):
-        self.write(".claude-plugin/types/.gitignore", "*\n")
-        self.write(".claude-plugin/types/tsconfig.json")
-        self.write(".claude-plugin/types/sdk/index.d.ts")
+        self.write(".claude-plugin/types/.gitignore", MARKER + "\n")
+        self.write(".claude-plugin/types/tsconfig.json", MARKER + "\n")
+        self.write(".claude-plugin/types/sdk/index.d.ts", MARKER + "\n")
         self.assertEqual(self.drift(), [])
 
     def test_tsconfig_beside_the_plugin_dir_is_not_reported_stale(self):
-        self.write("tsconfig.json", '{"extends": "./.claude-plugin/types/tsconfig.json"}\n')
+        self.write("tsconfig.json", MARKER + "\n")
         self.assertEqual(self.drift(), [])
 
     def test_engine_files_survive_a_reapply(self):
         kept = [
-            self.write("tsconfig.json"),
-            self.write(".claude-plugin/types/.gitignore"),
-            self.write(".claude-plugin/types/sdk/index.d.ts"),
+            self.write("tsconfig.json", MARKER + "\n"),
+            self.write(".claude-plugin/types/.gitignore", MARKER + "\n"),
+            self.write(".claude-plugin/types/sdk/index.d.ts", MARKER + "\n"),
         ]
         render.apply(self.rendered, self.home)
         self.assertEqual([p.is_file() for p in kept], [True, True, True])
@@ -618,7 +618,7 @@ class StaleScanIgnoresCaches(unittest.TestCase):
             keep = managed / "one" / "SKILL.md"
             cache = managed / "one" / "__pycache__" / "x.cpython-314.pyc"
             cache.parent.mkdir()
-            cache.write_bytes(b"cache")
+            cache.write_bytes((MARKER + "\n").encode())
             rendered = Rendered(files={keep: b"body"}, managed_dirs=[managed])
             combine.apply(rendered, Path(tmp))
             self.assertTrue(cache.exists())
