@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import config as rigops_config  # noqa: E402
 from rigops import reap  # noqa: E402
+from rigops import reap_guards  # noqa: E402
 from rigops import reap_selftest  # noqa: E402
 
 
@@ -52,6 +53,14 @@ def main() -> int:
 
     if args.selftest:
         return reap_selftest.run_selftest()
+
+    for key, default in (("roots", []), ("ignored_untracked_dirs", []),
+                         ("ignored_untracked_prefixes", [])):
+        problem = reap_guards.list_setting_error(
+            f"reaper.{key}", rigops_config.get(cfg, f"reaper.{key}", default))
+        if problem:
+            print(f"error: {problem}", file=sys.stderr)
+            return 2
 
     if args.root:
         roots = [args.root]

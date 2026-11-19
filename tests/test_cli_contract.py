@@ -66,6 +66,29 @@ class CliContractTests(unittest.TestCase):
 
                 self.assertEqual(proc.returncode, 0, proc.stderr)
 
+    def test_reap_rejects_list_settings_that_are_not_lists_of_non_empty_strings(self):
+        empty = self.home / "tree"
+        empty.mkdir()
+        bad_values = ("~/projects", None, {"a": "b"}, 3, [""], ["  "], [1], [["x"]])
+        for key in ("roots", "ignored_untracked_dirs", "ignored_untracked_prefixes"):
+            for bad in bad_values:
+                with self.subTest(key=key, value=bad):
+                    config = {"reaper": {key: bad}}
+                    proc = self.run_cmd("reap", "--root", str(empty), config=config)
+
+                    self.assertEqual(proc.returncode, 2, proc.stderr)
+                    self.assertIn(f"reaper.{key}", proc.stderr)
+                    self.assertNotIn("Traceback", proc.stderr)
+                    self.assertEqual(proc.stdout, "")
+
+    def test_reap_accepts_empty_list_settings(self):
+        empty = self.home / "tree"
+        empty.mkdir()
+        config = {"reaper": {"ignored_untracked_dirs": [], "ignored_untracked_prefixes": []}}
+        proc = self.run_cmd("reap", "--root", str(empty), config=config)
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
     def json_out(self, proc):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return json.loads(proc.stdout)
