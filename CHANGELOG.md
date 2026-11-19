@@ -29,7 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - doctor: `--exit-zero` makes a run that would exit 1 on a failing finding
   exit 0. Output, findings and heal behaviour do not change.
 - install: `--heal` schedules the doctor job with `--heal`. It applies to
-  that run only, and is a usage error when the run installs no doctor job.
+  that run only, and is a usage error with `--no-jobs`, `--plugin-only`,
+  `--uninstall`, or a `--jobs` list without `doctor`.
 - reap: `reaper.orphan_sweep` (default `false`). Anything but a JSON boolean
   exits 2.
 
