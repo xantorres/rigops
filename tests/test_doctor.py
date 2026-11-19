@@ -1521,6 +1521,15 @@ class CorruptHealStateTests(EnvIsolatedTestCase):
         m_kick.assert_not_called()
         self.assertIn("terminated hung job job-hung", " ".join(payload["healed"]))
 
+    def test_exit_zero_on_a_full_run_returns_zero_and_prints_the_same(self):
+        (self.dir / "heal-stamps.json").write_bytes(b"{not json")
+        plain_code, plain, _, _ = self._run([])
+        code, flagged, _, _ = self._run(["--exit-zero"])
+        self.assertEqual((plain_code, code), (1, 0))
+        for payload in (plain, flagged):
+            payload.pop("ts", None)
+        self.assertEqual(flagged, plain)
+
     def test_string_stamp_does_not_crash_a_plain_run(self):
         (self.dir / "heal-stamps.json").write_text(json.dumps({"job-failing": "yesterday"}))
         code, payload, _, _ = self._run([])
