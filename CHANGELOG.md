@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrading from 0.10.0
+
+- The scheduled doctor job only reports once the installer runs again. To
+  keep self-heal, pass `--heal` on that run and on every later `--apply`.
+- reap no longer signals orphan daemons. Set `reaper.orphan_sweep` to `true`
+  to turn the sweep back on.
+- An install that already holds the example config and the sample registry
+  keeps them, because the installer never overwrites either. Replace them by
+  hand with your own, or with `config/config.scaffold.json` and
+  `config/registry.scaffold.md`.
+- `render` leaves every file without its marker in place, including files
+  rendered before the marker existed and copied skill scripts. Remove the
+  ones you no longer want by hand.
+- reap exits 2 on a config it used to accept: a `reaper.roots`,
+  `reaper.ignored_untracked_dirs` or `reaper.ignored_untracked_prefixes` that
+  is not a list of non-empty strings.
+
+### Added
+
+- install: `--heal` schedules the doctor job with `--heal`. It applies to
+  that run only, and is a usage error when the run installs no doctor job.
+- reap: `reaper.orphan_sweep` (default `false`). Anything but a JSON boolean
+  exits 2.
+
+### Changed
+
+- install: the scheduled doctor job is report-only unless `--heal` is passed,
+  and the installer prints which of the two it installs.
+- install: a first install scaffolds an empty config and an empty registry.
+  The example config and the sample registry stay under `config/` as
+  examples.
+- reap: the orphan-daemon sweep runs only when `reaper.orphan_sweep` is
+  `true`. With the default config reap signals no orphan.
+- reap: a merged worktree that holds a gitignored secret or key file
+  (`.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa`, `id_dsa`,
+  `id_ecdsa`, `id_ed25519`) or an ignored nested git repository is kept with
+  the verdict `skip: precious`, and the log names the file. Paths under
+  `node_modules`, `site-packages` and `reaper.ignored_untracked_dirs` are not
+  checked.
+- ci: the step that requires the private redaction secret is skipped on a
+  fork, where the gate runs the public patterns only.
+
+### Fixed
+
+- render: only files that carry the render marker are deleted, and a missing
+  source directory exits 2 before anything is written. A hand-made skill or
+  agent in a rendered directory used to be pruned as stale.
+- install: `--uninstall` removes the paths its manifest lists, their compiled
+  files and the directories that leaves empty. It used to sweep `__pycache__`
+  and empty directories under the whole prefix, which with `--prefix "$HOME"`
+  meant the home directory.
+- reap: `reaper.roots`, `reaper.ignored_untracked_dirs` and
+  `reaper.ignored_untracked_prefixes` must be lists of non-empty strings, or
+  reap exits 2 before any scan. A string was read character by character, and
+  an empty prefix marked every untracked file as noise, so a tree holding
+  real work could be removed.
+- reap: the tree is judged again after the kill and grace wait, right before
+  removal. A file written during the wait keeps the tree.
+- doctor: `--heal` fails closed on its own state. When `heal-stamps.json` or
+  `holds.json` does not parse, is not an object or holds a non-numeric stamp,
+  the run kickstarts nothing and releases no hold, moves the file aside as
+  `<name>.corrupt-<timestamp>` and raises a failing `heal-state` finding. It
+  used to load as empty, which re-armed every cooldown.
+- tests: the suite sets its own `HOME`, state and config directories, so a
+  run never reads or writes the real ones.
+
 ## [0.10.0] - 2026-11-19
 
 ### Added
