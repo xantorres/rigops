@@ -2,9 +2,38 @@
 
 from __future__ import annotations
 
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 from rigops.reap_procs import orphan_daemons
+
+PRECIOUS_PATTERNS = (".env*", "*.pem", "*.key", "*.p12", "*.pfx",
+                     "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519")
+DEPENDENCY_DIRS = frozenset({"node_modules", "site-packages"})
+
+
+def is_ignored_untracked(path: str, ignored_dirs: set[str],
+                         ignored_prefixes: tuple[str, ...]) -> bool:
+    """True when any path segment is generated noise (build output, type
+    codegen): a file under an ignored directory is noise wherever it sits."""
+    for part in path.split("/"):
+        if part in ignored_dirs or part.startswith(ignored_prefixes):
+            return True
+    return False
+
+
+def precious_path(paths: list[str], ignored_dirs: set[str],
+                  ignored_prefixes: tuple[str, ...]) -> str | None:
+    """First ignored file that looks like a secret or key, outside dependency
+    and generated directories."""
+    for path in paths:
+        if not path or DEPENDENCY_DIRS & set(path.split("/")):
+            continue
+        if is_ignored_untracked(path, ignored_dirs, ignored_prefixes):
+            continue
+        if any(fnmatchcase(path.rsplit("/", 1)[-1], pat) for pat in PRECIOUS_PATTERNS):
+            return path
+    return None
 
 
 def list_setting_error(key: str, value: object) -> str | None:

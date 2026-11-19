@@ -47,7 +47,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from rigops.reap_guards import orphan_sweep
+from rigops.reap_guards import is_ignored_untracked, orphan_sweep, precious_path
 from rigops.reap_procs import (  # noqa: F401
     ETIME_RE,
     _alive_for_blocking,
@@ -376,16 +376,6 @@ def resolve_target(repo: Path, timeout: int = 120,
     return None
 
 
-def is_ignored_untracked(path: str, ignored_dirs: set[str],
-                         ignored_prefixes: tuple[str, ...]) -> bool:
-    """True when any path segment is generated noise (build output, type
-    codegen): a file under an ignored directory is noise wherever it sits."""
-    for part in path.split("/"):
-        if part in ignored_dirs or part.startswith(ignored_prefixes):
-            return True
-    return False
-
-
 def default_branch(repo: Path, timeout: int = 120) -> str:
     """Resolve the parent repo's default branch for the dirty-diff comparison.
 
@@ -537,6 +527,18 @@ def classify(wt: dict, repo: Path, target: str, live: list[Path], self_cwd: Path
         if worktree_has_real_changes(path, status, default_branch_ref,
                                      ignored_dirs, ignored_prefixes, timeout=timeout):
             return "skip: dirty"
+
+    timeout = budget()
+    if timeout is None:
+        return DEADLINE_SKIP
+    # No --directory: a key inside a wholly ignored directory must be listed too.
+    ignored = git_lines(path, "ls-files", "-z", "-oi", "--exclude-standard", timeout=timeout)
+    if ignored is None:
+        return "skip: unreadable"
+    hit = precious_path(ignored.split("\0"), ignored_dirs, ignored_prefixes)
+    if hit:
+        log(f"SKIP-PRECIOUS tree={wt_path_str} file={hit}")
+        return "skip: precious"
 
     return REAP
 

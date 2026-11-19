@@ -650,6 +650,77 @@ class ClassifyTests(GitFixtureTestCase):
         )
         self.assertEqual(verdict, reap.REAP)
 
+    def _merged_tree(self, name="wt-precious", gitignore=None):
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        if gitignore:
+            (repo / ".gitignore").write_text(gitignore)
+            _run_git(["add", ".gitignore"], repo)
+            _run_git(["commit", "-m", "ignore"], repo)
+        wt_path = self.tmp / name
+        _run_git(["worktree", "add", "-b", name, str(wt_path)], repo)
+        wt = {"path": str(wt_path), "branch": name, "head": _rev_parse(repo, name),
+              "bare": False, "detached": False, "locked": False, "prunable": False}
+        return repo, wt_path, wt
+
+    def _classify(self, repo, wt):
+        return reap.classify(
+            wt, repo, "main", [], self.tmp / "outside", "main", 14,
+            ignored_dirs=set(), ignored_prefixes=(),
+        )
+
+    def test_ignored_env_file_is_skip_precious(self):
+        repo, wt_path, wt = self._merged_tree(gitignore=".env\n")
+        (wt_path / ".env").write_text("X=1\n")
+        self.assertEqual(self._classify(repo, wt), "skip: precious")
+
+    def test_same_tree_without_the_ignored_file_is_reap(self):
+        repo, _wt_path, wt = self._merged_tree(gitignore=".env\n")
+        self.assertEqual(self._classify(repo, wt), reap.REAP)
+
+    def test_key_inside_a_wholly_ignored_dir_is_skip_precious(self):
+        repo, wt_path, wt = self._merged_tree(gitignore="secrets/\n")
+        (wt_path / "secrets").mkdir()
+        (wt_path / "secrets" / "api.key").write_text("X=1\n")
+        self.assertEqual(self._classify(repo, wt), "skip: precious")
+
+    def test_tracked_env_example_alone_is_reap(self):
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        (repo / ".env.example").write_text("X=\n")
+        _run_git(["add", ".env.example"], repo)
+        _run_git(["commit", "-m", "example"], repo)
+        wt_path = self.tmp / "wt-example"
+        _run_git(["worktree", "add", "-b", "wt-example", str(wt_path)], repo)
+        wt = {"path": str(wt_path), "branch": "wt-example", "head": _rev_parse(repo, "wt-example"),
+              "bare": False, "detached": False, "locked": False, "prunable": False}
+        self.assertEqual(self._classify(repo, wt), reap.REAP)
+
+    def test_failed_ignored_listing_is_skip_unreadable(self):
+        repo, wt_path, wt = self._merged_tree(gitignore=".env\n")
+        (wt_path / ".env").write_text("X=1\n")
+        real = reap.git_lines
+        self.addCleanup(setattr, reap, "git_lines", real)
+        reap.git_lines = lambda r, *a, **k: None if "ls-files" in a else real(r, *a, **k)
+        self.assertEqual(self._classify(repo, wt), "skip: unreadable")
+
+    def test_spent_deadline_before_the_ignored_listing_is_deadline_skip(self):
+        repo, _wt_path, wt = self._merged_tree()
+        spent = []
+        real_lines, real_left = reap.git_lines, reap.remaining_after
+        self.addCleanup(setattr, reap, "git_lines", real_lines)
+        self.addCleanup(setattr, reap, "remaining_after", real_left)
+
+        def lines(r, *a, **k):
+            out = real_lines(r, *a, **k)
+            if "status" in a:
+                spent.append(1)
+            return out
+
+        reap.git_lines = lines
+        reap.remaining_after = lambda r, s: -1.0 if spent else real_left(r, s)
+        self.assertEqual(self._classify(repo, wt), reap.DEADLINE_SKIP)
+
     def _verdict_after_tracked_edit(self, rel: str) -> str:
         repo = self.tmp / "repo"
         _init_repo(repo)
@@ -1293,6 +1364,36 @@ class RunRecheckBeforeRemovalTests(GitFixtureTestCase):
 
         self.assertTrue(wt_path.exists())
         self.assertEqual(target["verdict"], reap.DEADLINE_SKIP)
+
+
+
+class RunPreciousFileTests(GitFixtureTestCase):
+    def test_apply_keeps_a_tree_holding_an_ignored_env_file(self):
+        self.stub_process_observation()
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        (repo / ".gitignore").write_text(".env\n")
+        _run_git(["add", ".gitignore"], repo)
+        _run_git(["commit", "-m", "ignore"], repo)
+        wt_path = self.tmp / "wt-merged"
+        _run_git(["worktree", "add", "-b", "feature-merged", str(wt_path)], repo)
+        (wt_path / ".env").write_bytes(b"X=1\n")
+        sessions_dir = self.tmp / "sessions"
+        sessions_dir.mkdir()
+        opts = types.SimpleNamespace(
+            selftest=False, apply=True, dry_run=False, json=True,
+            repo=[repo], roots=[], no_fetch=True, grace_days=14,
+            sessions_dir=sessions_dir, deadline_s=60,
+            max_kills_per_tree=20, orphan_min_age_s=172800, kill_grace_s=5,
+            ignored_untracked_dirs=set(), ignored_untracked_prefixes=(),
+        )
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            reap.run(opts)
+        worktrees = json.loads(buf.getvalue())["repos"][0]["worktrees"]
+        target = next(w for w in worktrees if w["path"] == os.path.realpath(wt_path))
+        self.assertEqual(target["verdict"], "skip: precious")
+        self.assertEqual((wt_path / ".env").read_bytes(), b"X=1\n")
 
 
 class RunObservationFailureTests(GitFixtureTestCase):

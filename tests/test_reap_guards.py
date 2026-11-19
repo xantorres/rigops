@@ -105,5 +105,33 @@ class OrphanDaemonsTests(unittest.TestCase):
         self.assertEqual(got, {900001, 900002})
 
 
+PRECIOUS_CASES = [
+    ("env", [".env"], set(), (), ".env"),
+    ("env_local", [".env.local"], set(), (), ".env.local"),
+    ("envrc", [".envrc"], set(), (), ".envrc"),
+    ("nested_env", ["config/.env"], set(), (), "config/.env"),
+    ("pem", ["certs/server.pem"], set(), (), "certs/server.pem"),
+    ("ed25519", ["id_ed25519"], set(), (), "id_ed25519"),
+    ("key", ["a.key"], set(), (), "a.key"),
+    ("node_modules", ["node_modules/pkg/.env"], set(), (), None),
+    ("site_packages", [".venv/lib/python3.11/site-packages/certifi/cacert.pem"], set(), (), None),
+    ("ignored_dir", ["dist/.env"], {"dist"}, (), None),
+    ("ignored_prefix", ["coverage-x/a.key"], set(), ("coverage",), None),
+    ("env_prefix_name", [".environment-notes"], set(), (), ".environment-notes"),
+    ("env_txt", ["env.txt"], set(), (), None),
+    ("readme", ["README.md"], set(), (), None),
+    ("empty", [], set(), (), None),
+    ("first_wins", ["a.txt", "b/.env", "c.key"], set(), (), "b/.env"),
+    ("case_sensitive", [".ENV", "A.KEY"], set(), (), None),
+]
+
+
+class PreciousPathTests(unittest.TestCase):
+    def test_table(self):
+        for name, paths, dirs, prefixes, expected in PRECIOUS_CASES:
+            with self.subTest(name):
+                self.assertEqual(reap_guards.precious_path(paths, dirs, prefixes), expected)
+
+
 if __name__ == "__main__":
     unittest.main()
