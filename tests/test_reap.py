@@ -1366,6 +1366,56 @@ class RunRecheckBeforeRemovalTests(GitFixtureTestCase):
         self.assertEqual(target["verdict"], reap.DEADLINE_SKIP)
 
 
+    def _fake_kill(self, effect=None):
+        def fake_kill(label, pids, snap_, apply, max_kills, grace_s):
+            if effect and label == os.path.realpath(self.tmp / "wt-merged"):
+                effect()
+            return {"killed": 0, "kill_failed": 0, "would": [], "failed_pids": [],
+                    "overflow": False}
+
+        self.addCleanup(setattr, reap, "kill_pids", reap.kill_pids)
+        reap.kill_pids = fake_kill
+
+    def test_untracked_file_written_during_the_kill_wait_blocks_removal(self):
+        self._fake_kill(lambda: (self.tmp / "wt-merged" / "late.txt").write_text("wip\n"))
+        wt_path, target = self._apply_with_change_after_scan(lambda *a: None)
+        self.assertTrue((wt_path / "late.txt").exists())
+        self.assertFalse(target["applied"]["removed"])
+        self.assertEqual(target["applied"]["detail"], "verdict changed: skip: dirty")
+        self.assertEqual(target["verdict"], "skip: dirty")
+
+    def test_ignored_env_written_during_the_kill_wait_blocks_removal(self):
+        def effect():
+            (self.tmp / "repo" / ".git" / "info" / "exclude").write_text(".env\n")
+            (self.tmp / "wt-merged" / ".env").write_text("X=1\n")
+
+        self._fake_kill(effect)
+        wt_path, target = self._apply_with_change_after_scan(lambda *a: None)
+        self.assertEqual((wt_path / ".env").read_text(), "X=1\n")
+        self.assertEqual(target["applied"]["detail"], "verdict changed: skip: precious")
+
+    def test_quiet_kill_wait_still_removes_the_tree(self):
+        self._fake_kill()
+        wt_path, target = self._apply_with_change_after_scan(lambda *a: None)
+        self.assertFalse(wt_path.exists())
+        self.assertTrue(target["applied"]["removed"])
+
+    def test_deadline_spent_during_the_kill_wait_keeps_the_tree(self):
+        self._fake_kill()
+        real = reap.refresh_verdict
+        self.addCleanup(setattr, reap, "refresh_verdict", real)
+        calls = []
+
+        def refresh(*a, **k):
+            calls.append(1)
+            return real(*a, **k) if len(calls) == 1 else reap.DEADLINE_SKIP
+
+        reap.refresh_verdict = refresh
+        wt_path, target = self._apply_with_change_after_scan(lambda *a: None)
+        self.assertTrue(wt_path.exists())
+        self.assertEqual(target["verdict"], reap.DEADLINE_SKIP)
+        self.assertEqual(len(calls), 2)
+
 
 class RunPreciousFileTests(GitFixtureTestCase):
     def test_apply_keeps_a_tree_holding_an_ignored_env_file(self):

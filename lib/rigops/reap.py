@@ -47,7 +47,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from rigops.reap_guards import is_ignored_untracked, orphan_sweep, precious_path
+from rigops.reap_guards import human, is_ignored_untracked, orphan_sweep, precious_path
 from rigops.reap_procs import (  # noqa: F401
     ETIME_RE,
     _alive_for_blocking,
@@ -190,14 +190,6 @@ def git_error(stderr: str) -> str:
         if line.startswith(("fatal:", "error:")):
             return line
     return lines[-1]
-
-
-def human(n: int) -> str:
-    for unit in ("B", "K", "M", "G", "T"):
-        if n < 1024:
-            return f"{n:.0f}{unit}" if unit == "B" else f"{n:.1f}{unit}"
-        n /= 1024
-    return f"{n:.1f}P"
 
 
 def dir_size(path: Path, timeout: int = 120) -> int:
@@ -828,6 +820,18 @@ def run(opts: Any) -> int:
         for w in kill_result["would"]:
             print(f"WOULD-KILL pid={w['pid']} comm={w['comm']} match={w['match']} tree={w['tree']}")
 
+    def verdict_changed(wt: dict, res: dict, tree: str) -> bool:
+        fresh = refresh_verdict(wt, res, opts, self_cwd,
+                                remaining_after(opts.deadline_s, run_start))
+        if fresh == REAP:
+            return False
+        wt["verdict"] = fresh
+        wt["applied"] = {"removed": False, "detail": f"verdict changed: {fresh}"}
+        if not opts.json:
+            print(f"skip: {Path(wt['path']).name} -- verdict changed: {fresh}")
+        log(f"SKIP-CHANGED tree={tree} verdict={fresh}")
+        return True
+
     removed = 0
     for res in results:
         repo = Path(res["repo"])
@@ -842,18 +846,10 @@ def run(opts: Any) -> int:
             if opts.apply and not observed:
                 wt["applied"] = {"removed": False, "detail": "skip: process observation failed"}
                 continue
-            if opts.apply:
-                # The scan verdict can be an hour old; edits, a checkout or a session
-                # since then must win before anything in the tree is signalled.
-                fresh = refresh_verdict(wt, res, opts, self_cwd,
-                                        remaining_after(opts.deadline_s, run_start))
-                if fresh != REAP:
-                    wt["verdict"] = fresh
-                    wt["applied"] = {"removed": False, "detail": f"verdict changed: {fresh}"}
-                    if not opts.json:
-                        print(f"skip: {Path(wt['path']).name} -- verdict changed: {fresh}")
-                    log(f"SKIP-CHANGED tree={tree} verdict={fresh}")
-                    continue
+            # The scan verdict can be an hour old; edits, a checkout or a session
+            # since then must win before anything in the tree is signalled.
+            if opts.apply and verdict_changed(wt, res, tree):
+                continue
             rooted_all = processes_rooted_in(tree, snap, cwds)
             rooted = _filter_killable(rooted_all, snap)
             tags = _match_tags(tree, rooted, snap, cwds)
@@ -874,6 +870,8 @@ def run(opts: Any) -> int:
                               f"{len(blockers)} live process(es) block removal (pids: {pids})")
                     log(f"SKIP-LIVE tree={tree} pids={pids}")
                     continue
+                if not opts.dry_run and verdict_changed(wt, res, tree):
+                    continue  # judged again: the kill wait can leave new work behind
                 ok, detail = reap(repo, wt, opts.dry_run)
                 wt["applied"] = {"removed": ok and not opts.dry_run, "detail": detail}
                 prefix = "would run" if opts.dry_run else ("ok" if ok else "FAILED")

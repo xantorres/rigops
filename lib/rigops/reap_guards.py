@@ -36,6 +36,14 @@ def precious_path(paths: list[str], ignored_dirs: set[str],
     return None
 
 
+def human(n: int) -> str:
+    for unit in ("B", "K", "M", "G", "T"):
+        if n < 1024:
+            return f"{n:.0f}{unit}" if unit == "B" else f"{n:.1f}{unit}"
+        n /= 1024
+    return f"{n:.1f}P"
+
+
 def list_setting_error(key: str, value: object) -> str | None:
     if isinstance(value, list) and all(isinstance(v, str) and v.strip() for v in value):
         return None
