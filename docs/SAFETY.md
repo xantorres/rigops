@@ -29,6 +29,7 @@ Two independent kill paths, same shape, different scope.
 - Only own-uid, terminal-less (no controlling tty) pids are eligible - an interactive shell parked in an old worktree is never a target.
 - A never-signal set (init, the reaper's own pid, and its full ancestor chain) is subtracted first.
 - Every pid is re-verified against its original command-line snapshot immediately before a signal is sent, to dodge PID reuse between snapshot and signal.
+- The orphan-daemon sweep (launchd-reparented `node_modules` daemons rooted under `reaper.roots`) is off unless `reaper.orphan_sweep` is `true`; with the default config reap signals no orphan.
 - A matched-set size over `max_kills_per_tree` skips signalling entirely for that tree - at that size the match itself isn't trusted, it isn't "be more careful."
 - SIGTERM, wait `kill_grace_s`, SIGKILL survivors.
 - The actual `git worktree remove` is gated separately from the kill and fails closed: any pid under that tree still alive, and either policy-excluded from the kill attempt or surviving it, blocks the removal. The liveness check backing this gate treats "can't tell" as "alive."

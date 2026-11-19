@@ -177,6 +177,7 @@ Config for `rigops reap` (see [SAFETY.md](SAFETY.md) for the kill/removal guards
 - `grace_days` (`int`, default `14`) - an unmerged branch with no unpushed commits becomes reap-eligible once its tip commit is older than this.
 - `max_kills_per_tree` (`int`, default `20`) - more matched processes under one worktree than this means the match isn't trusted: no signals sent, no removal attempted, for that tree.
 - `orphan_min_age_s` (`int`, default `172800`, 48h) - minimum runtime before a launchd-reparented, `node_modules`-rooted build daemon counts as orphaned rather than still doing real work.
+- `orphan_sweep` (`bool`, default `false`) - the orphan-daemon sweep (see `orphan_min_age_s`) runs only when this is `true`; otherwise reap never looks for or signals orphans. Anything but a JSON boolean exits 2 with an error naming the key.
 - `kill_grace_s` (`number`, default `5`) - SIGTERM-to-SIGKILL grace when clearing processes out of a reapable worktree.
 - `max_worktrees` (`int`, default `5`) - a repository left with more linked worktrees than this, once the run's removals and prunes land, is flagged: a `!` line in the report, `over_cap` and `worktrees_left` in its `--json` entry, and an `over_cap=` count in the log line. Nothing extra is removed. `0` turns the check off. Anything but a non-negative integer exits 2 with an error naming the key.
 - `ignored_untracked_dirs` (`array<string>`, default `["node_modules", "dist", ".turbo", "@mf-types"]`) / `ignored_untracked_prefixes` (`array<string>`, default `["coverage"]`) - an untracked path is treated as regenerated build output, never work in progress, when **any one** of its path segments is listed in `ignored_untracked_dirs` or starts with a listed prefix (`lib/rigops/reap.py` `is_ignored_untracked`).
@@ -189,6 +190,7 @@ Config for `rigops reap` (see [SAFETY.md](SAFETY.md) for the kill/removal guards
     "grace_days": 14,
     "max_kills_per_tree": 20,
     "orphan_min_age_s": 172800,
+    "orphan_sweep": false,
     "kill_grace_s": 5,
     "max_worktrees": 5,
     "ignored_untracked_dirs": ["node_modules", "dist", ".turbo", "@mf-types"],

@@ -47,6 +47,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from rigops.reap_guards import orphan_sweep
 from rigops.reap_procs import (  # noqa: F401
     ETIME_RE,
     _alive_for_blocking,
@@ -905,12 +906,9 @@ def run(opts: Any) -> int:
             except subprocess.TimeoutExpired:
                 pass
 
-    # Orphan sweep is independent of --repo: it walks every configured root,
-    # not just the repository (if any) selected for the worktree scan above.
-    orphan_raw: set[int] = set()
-    for root in opts.roots:
-        orphan_raw |= orphan_daemons(snap, cwds, str(root.resolve()), opts.orphan_min_age_s)
-    orphans = _filter_killable(orphan_raw, snap)
+    orphans = _filter_killable(
+        orphan_sweep(getattr(opts, "orphan_sweep", False), opts.roots, snap, cwds,
+                     opts.orphan_min_age_s), snap)
     orphan_kr = kill_pids("orphan-daemon", {pid: "daemon" for pid in orphans}, snap, real_apply,
                           opts.max_kills_per_tree, opts.kill_grace_s)
     killed_total += orphan_kr["killed"]

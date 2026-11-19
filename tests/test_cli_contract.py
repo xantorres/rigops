@@ -89,6 +89,18 @@ class CliContractTests(unittest.TestCase):
 
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
+    def test_reap_rejects_a_non_boolean_orphan_sweep(self):
+        empty = self.home / "tree"
+        empty.mkdir()
+        for bad in ("false", "true", 1, None, []):
+            with self.subTest(value=bad):
+                config = {"reaper": {"orphan_sweep": bad}}
+                proc = self.run_cmd("reap", "--root", str(empty), config=config)
+
+                self.assertEqual(proc.returncode, 2, proc.stderr)
+                self.assertIn("reaper.orphan_sweep", proc.stderr)
+                self.assertEqual(proc.stdout, "")
+
     def json_out(self, proc):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return json.loads(proc.stdout)

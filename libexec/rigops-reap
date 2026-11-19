@@ -78,6 +78,11 @@ def main() -> int:
         print("error: reaper.max_worktrees in config must be a non-negative integer",
               file=sys.stderr)
         return 2
+    args.orphan_sweep = rigops_config.get(cfg, "reaper.orphan_sweep", False)
+    problem = reap_guards.bool_setting_error("reaper.orphan_sweep", args.orphan_sweep)
+    if problem:
+        print(f"error: {problem}", file=sys.stderr)
+        return 2
     args.ignored_untracked_dirs = set(rigops_config.get(cfg, "reaper.ignored_untracked_dirs", []))
     args.ignored_untracked_prefixes = tuple(
         rigops_config.get(cfg, "reaper.ignored_untracked_prefixes", [])

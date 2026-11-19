@@ -1113,6 +1113,57 @@ class RunApplyJsonPurityTests(GitFixtureTestCase):
         self.assertFalse(wt_path.exists())
 
 
+class RunOrphanSweepTests(GitFixtureTestCase):
+    def _run(self, **extra):
+        self.stub_process_observation()
+        root = self.tmp / "root"
+        root.mkdir()
+        pid = 900001
+        snap = {pid: {"ppid": 1, "pgid": pid, "uid": os.getuid(), "tty": "??",
+                      "etimes": 999999, "command": f"node {root}/node_modules/.bin/tsserver"}}
+        reap.ps_snapshot = lambda: snap
+        reap.cwd_map = lambda: {pid: str(root)}
+        sessions_dir = self.tmp / "sessions"
+        sessions_dir.mkdir()
+        opts = types.SimpleNamespace(
+            selftest=False, apply=True, dry_run=False, json=True,
+            repo=[], roots=[root], no_fetch=True, grace_days=14,
+            sessions_dir=sessions_dir, deadline_s=60,
+            max_kills_per_tree=20, orphan_min_age_s=172800, kill_grace_s=5,
+            ignored_untracked_dirs=set(), ignored_untracked_prefixes=(), **extra,
+        )
+        calls = []
+
+        def fake_kill(label, pids, snap_, apply, max_kills, grace_s):
+            calls.append((label, dict(pids)))
+            return {"killed": 0, "kill_failed": 0, "would": [], "failed_pids": []}
+
+        orig_kill = reap.kill_pids
+        self.addCleanup(setattr, reap, "kill_pids", orig_kill)
+        reap.kill_pids = fake_kill
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = reap.run(opts)
+        self.assertEqual(rc, 0)
+        orphan_calls = [c for c in calls if c[0] == "orphan-daemon" and c[1]]
+        return orphan_calls, json.loads(buf.getvalue())["orphan_daemons"]
+
+    def test_option_absent_signals_nothing(self):
+        calls, orphan_json = self._run()
+        self.assertEqual(calls, [])
+        self.assertEqual(orphan_json, [])
+
+    def test_option_false_signals_nothing(self):
+        calls, orphan_json = self._run(orphan_sweep=False)
+        self.assertEqual(calls, [])
+        self.assertEqual(orphan_json, [])
+
+    def test_option_true_signals_the_orphan(self):
+        calls, orphan_json = self._run(orphan_sweep=True)
+        self.assertEqual(calls, [("orphan-daemon", {900001: "daemon"})])
+        self.assertEqual([o["pid"] for o in orphan_json], [900001])
+
+
 class RunRecheckBeforeRemovalTests(GitFixtureTestCase):
     def _apply_with_change_after_scan(self, change, dry_run=False) -> tuple[Path, dict]:
         self.stub_process_observation()
