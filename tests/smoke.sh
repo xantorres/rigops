@@ -748,6 +748,51 @@ esac
 rm -rf "$PURGE_SAFE_HOME"
 PURGE_SAFE_HOME=""
 
+echo "smoke: uninstall with the prefix set to the home removes manifest-derived paths only"
+HOMEPFX_HOME="$(mktemp -d)"
+run env HOME="$HOMEPFX_HOME" bash "$INSTALL_SH" --apply --no-jobs --yes --prefix "$HOMEPFX_HOME"
+[ "$RC" -eq 0 ] || fail "home-prefix install exit $RC: $OUT"
+HOMEPFX_MANIFEST="$HOMEPFX_HOME/install.manifest.json"
+[ -f "$HOMEPFX_MANIFEST" ] || fail "home-prefix manifest missing"
+run env -u PYTHONDONTWRITEBYTECODE HOME="$HOMEPFX_HOME" "$HOMEPFX_HOME/bin/rigops" config get doctor.kill_grace_s
+[ "$RC" -eq 0 ] || fail "home-prefix rigops config get exit $RC: $OUT"
+mkdir -p "$HOMEPFX_HOME/projects/app/__pycache__" "$HOMEPFX_HOME/keep-empty"
+: >"$HOMEPFX_HOME/projects/app/__pycache__/mod.cpython-311.pyc"
+HOMEPFX_PYC_DIR="$(python3 - "$HOMEPFX_HOME/lib" <<'PYEOF'
+import os
+import sys
+
+for dirpath, dirnames, _ in os.walk(sys.argv[1]):
+    if "__pycache__" in dirnames:
+        print(os.path.join(dirpath, "__pycache__"))
+        break
+PYEOF
+)"
+[ -n "$HOMEPFX_PYC_DIR" ] || fail "running an installed command left no bytecode"
+: >"$HOMEPFX_PYC_DIR/foreign.txt"
+HOMEPFX_FILES="$(python3 - "$HOMEPFX_MANIFEST" <<'PYEOF'
+import json
+import sys
+
+for entry in json.load(open(sys.argv[1], encoding="utf-8"))["files"]:
+    print(entry["path"])
+PYEOF
+)"
+[ -n "$HOMEPFX_FILES" ] || fail "home-prefix manifest lists no files"
+run env HOME="$HOMEPFX_HOME" bash "$INSTALL_SH" --uninstall --apply --yes --prefix "$HOMEPFX_HOME"
+[ "$RC" -eq 0 ] || fail "home-prefix uninstall exit $RC: $OUT"
+[ -f "$HOMEPFX_HOME/projects/app/__pycache__/mod.cpython-311.pyc" ] || fail "uninstall removed a foreign __pycache__ file"
+[ -d "$HOMEPFX_HOME/keep-empty" ] || fail "uninstall removed an unrelated empty directory"
+[ -f "$HOMEPFX_PYC_DIR/foreign.txt" ] || fail "uninstall removed a foreign file in an installed __pycache__"
+[ -d "$HOMEPFX_HOME" ] || fail "uninstall removed the prefix itself"
+while IFS= read -r rel; do
+    [ ! -e "$HOMEPFX_HOME/$rel" ] || fail "uninstall left manifest file $rel"
+done <<<"$HOMEPFX_FILES"
+leftover_pyc="$(find "$HOMEPFX_HOME/lib" -name '*.pyc' 2>/dev/null || true)"
+[ -z "$leftover_pyc" ] || fail "uninstall left bytecode of manifest modules: $leftover_pyc"
+[ ! -d "$HOMEPFX_HOME/libexec" ] || fail "uninstall left an emptied installed directory"
+rm -rf "$HOMEPFX_HOME"
+
 JOBS_HOME="$(mktemp -d)"
 FAKE_LAUNCHD="$JOBS_HOME/fake-launchd"
 make_fake_launchctl "$FAKE_LAUNCHD"

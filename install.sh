@@ -1291,22 +1291,41 @@ PYEOF
         remove_recorded_file "$m_prefix/$rel" "$sha"
     done <"$dump"
 
-    if [ "$APPLY" -eq 1 ]; then
-        if [ -d "$m_prefix" ]; then
-            # __pycache__ isn't in the manifest (python writes it lazily the
-            # first time an installed script runs) but it's exactly the kind
-            # of build artifact a clean uninstall should still sweep.
-            local pc
-            while IFS= read -r pc; do
-                [ -n "$pc" ] || continue
-                rm -rf "$pc"
-            done < <(find "$m_prefix" -type d -name '__pycache__' 2>/dev/null)
-            local d
-            while IFS= read -r d; do
-                [ -n "$d" ] || continue
-                rmdir "$d" 2>/dev/null || true
-            done < <(find "$m_prefix" -depth -type d 2>/dev/null)
-        fi
+    if [ "$APPLY" -eq 1 ] && [ -d "$m_prefix" ]; then
+        "$PY_ABS" - "$m_prefix" "$dump" <<'PYEOF'
+import glob
+import os
+import sys
+
+prefix = os.path.normpath(sys.argv[1])
+dirs = set()
+with open(sys.argv[2], encoding="utf-8") as fh:
+    for line in fh:
+        parts = line.rstrip("\n").split("\t")
+        if parts[0] != "FILE" or len(parts) < 2:
+            continue
+        path = os.path.normpath(os.path.join(prefix, parts[1]))
+        if not path.startswith(prefix + os.sep):
+            continue
+        folder, name = os.path.split(path)
+        if name.endswith(".py"):
+            cache = os.path.join(folder, "__pycache__")
+            for pyc in glob.glob(os.path.join(glob.escape(cache), glob.escape(name[:-3]) + ".*.pyc")):
+                try:
+                    os.remove(pyc)
+                except OSError:
+                    pass
+            dirs.add(cache)
+        while folder != prefix and folder.startswith(prefix + os.sep):
+            dirs.add(folder)
+            folder = os.path.dirname(folder)
+        dirs.add(prefix)
+for d in sorted(dirs, key=lambda x: x.count(os.sep), reverse=True):
+    try:
+        os.rmdir(d)
+    except OSError:
+        pass
+PYEOF
     fi
 
     step_log "uninstall symlink"
