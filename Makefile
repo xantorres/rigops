@@ -27,7 +27,7 @@ ruff:
 	fi
 
 test:
-	python3 -m unittest discover -s tests
+	python3 -m unittest discover -s tests -t .
 
 test-hooks:
 	bash tests/hooks/run.sh

@@ -22,9 +22,9 @@ No tracker-style keys anywhere - code, comments, commit messages, PR text. The r
 
 ## Tests
 
-`make test` runs the whole suite. A single module runs either way: `python3 -m unittest tests.test_reap` or `python3 -m unittest discover -s tests -p test_reap.py`.
+`make test` runs the whole suite. A single module runs either way: `python3 -m unittest tests.test_reap` or `python3 -m unittest discover -s tests -t . -p test_reap.py`.
 
-Every test that touches rigops state must run with `RIGOPS_STATE_DIR` and `XDG_STATE_HOME` pointed at throwaway directories, so a suite run never writes into the state a real job owns.
+The suite points home, state and config at a throwaway directory itself (`tests/__init__.py`), so a run never writes into the state a real job owns.
 
 Every pure decision function gets a table test (stdlib `unittest`, zero runtime dependencies) (enforced from the first ported module; the suite and `make test` land with it). OS glue - `launchctl`, `ps`, `git` - is smoke-tested only.
 
