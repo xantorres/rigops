@@ -31,6 +31,8 @@ def precious_path(paths: list[str], ignored_dirs: set[str],
             continue
         if is_ignored_untracked(path, ignored_dirs, ignored_prefixes):
             continue
+        if path.endswith("/"):  # nested repository: git lists it without looking inside
+            return path
         if any(fnmatchcase(path.rsplit("/", 1)[-1], pat) for pat in PRECIOUS_PATTERNS):
             return path
     return None

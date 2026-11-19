@@ -123,6 +123,11 @@ PRECIOUS_CASES = [
     ("empty", [], set(), (), None),
     ("first_wins", ["a.txt", "b/.env", "c.key"], set(), (), "b/.env"),
     ("case_sensitive", [".ENV", "A.KEY"], set(), (), None),
+    ("nested_repo", ["vendor/x/"], set(), (), "vendor/x/"),
+    ("nested_repo_node_modules", ["node_modules/pkg/"], set(), (), None),
+    ("nested_repo_site_packages", [".venv/lib/python3.11/site-packages/pkg/"], set(), (), None),
+    ("nested_repo_ignored_dir", ["dist/sub/"], {"dist"}, (), None),
+    ("nested_repo_ignored_prefix", ["coverage-x/sub/"], set(), ("coverage",), None),
 ]
 
 

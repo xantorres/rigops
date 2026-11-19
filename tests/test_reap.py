@@ -684,6 +684,18 @@ class ClassifyTests(GitFixtureTestCase):
         (wt_path / "secrets" / "api.key").write_text("X=1\n")
         self.assertEqual(self._classify(repo, wt), "skip: precious")
 
+    def _nested_repo_tree(self):
+        repo, wt_path, wt = self._merged_tree(gitignore="vendor/\n")
+        nested = wt_path / "vendor" / "x"
+        nested.mkdir(parents=True)
+        _run_git(["-c", "init.defaultBranch=main", "init"], nested)
+        (nested / ".env").write_text("X=1\n")
+        return repo, wt_path, wt
+
+    def test_ignored_nested_repository_is_skip_precious(self):
+        repo, _wt_path, wt = self._nested_repo_tree()
+        self.assertEqual(self._classify(repo, wt), "skip: precious")
+
     def test_tracked_env_example_alone_is_reap(self):
         repo = self.tmp / "repo"
         _init_repo(repo)
@@ -1444,6 +1456,33 @@ class RunPreciousFileTests(GitFixtureTestCase):
         target = next(w for w in worktrees if w["path"] == os.path.realpath(wt_path))
         self.assertEqual(target["verdict"], "skip: precious")
         self.assertEqual((wt_path / ".env").read_bytes(), b"X=1\n")
+
+
+    def test_apply_keeps_a_tree_holding_an_ignored_nested_repository(self):
+        self.stub_process_observation()
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        (repo / ".gitignore").write_text("vendor/\n")
+        _run_git(["add", ".gitignore"], repo)
+        _run_git(["commit", "-m", "ignore"], repo)
+        wt_path = self.tmp / "wt-merged"
+        _run_git(["worktree", "add", "-b", "feature-merged", str(wt_path)], repo)
+        nested = wt_path / "vendor" / "x"
+        nested.mkdir(parents=True)
+        _run_git(["-c", "init.defaultBranch=main", "init"], nested)
+        (nested / ".env").write_bytes(b"X=1\n")
+        sessions_dir = self.tmp / "sessions"
+        sessions_dir.mkdir()
+        opts = types.SimpleNamespace(
+            selftest=False, apply=True, dry_run=False, json=True,
+            repo=[repo], roots=[], no_fetch=True, grace_days=14,
+            sessions_dir=sessions_dir, deadline_s=60,
+            max_kills_per_tree=20, orphan_min_age_s=172800, kill_grace_s=5,
+            ignored_untracked_dirs=set(), ignored_untracked_prefixes=(),
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            reap.run(opts)
+        self.assertEqual((nested / ".env").read_bytes(), b"X=1\n")
 
 
 class RunObservationFailureTests(GitFixtureTestCase):
