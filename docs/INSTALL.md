@@ -137,7 +137,7 @@ A re-run also removes files the previous manifest recorded that this version no 
 
 launchd jobs follow the same idea: if the rendered plist's hash matches what's on disk *and* the job is currently loaded, it's left alone. Otherwise the plist is written and reloaded through `launchctl bootout` then `launchctl bootstrap`, in that order (trying the `gui/<uid>` domain first, falling back to `user/<uid>`) - this covers both a brand-new job and a changed one.
 
-Config and registry are scaffolded from `config/config.example.json` and `config/registry.example.md` **only if the destination doesn't already exist** - `install.sh` never overwrites a config file you've edited.
+Config and registry are scaffolded **only if the destination doesn't already exist** - `install.sh` never overwrites a config file you've edited. The scaffold is minimal: `config.json` is an empty object (every key takes its built-in default) and `registry.md` lists no jobs. `config/config.example.json` and `config/registry.example.md` stay in the checkout as examples and are never copied as live files.
 
 ### Statusline wiring
 

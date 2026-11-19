@@ -569,8 +569,9 @@ do_scaffold() {
 
 step_scaffold() {
     step_log "scaffold config + registry under $CONFIG_DIR"
-    do_scaffold "$ROOT_DIR/config/config.example.json" "$CONFIG_DIR/config.json" "config"
-    do_scaffold "$ROOT_DIR/config/registry.example.md" "$CONFIG_DIR/registry.md" "registry"
+    do_scaffold "$ROOT_DIR/config/config.scaffold.json" "$CONFIG_DIR/config.json" "config"
+    do_scaffold "$ROOT_DIR/config/registry.scaffold.md" "$CONFIG_DIR/registry.md" "registry"
+    printf '     examples: %s/config/config.example.json, %s/config/registry.example.md\n' "$ROOT_DIR" "$ROOT_DIR"
 }
 
 step_statusline() {

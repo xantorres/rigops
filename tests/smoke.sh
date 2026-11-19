@@ -190,6 +190,26 @@ REGISTRY_MD="$SMOKE_HOME/.config/rigops/registry.md"
 [ -f "$CONFIG_JSON" ] || fail "config.json not scaffolded"
 [ -f "$REGISTRY_MD" ] || fail "registry.md not scaffolded"
 
+echo "smoke: a fresh install scaffolds a minimal config and an empty registry"
+python3 - "$CONFIG_JSON" <<'PYEOF' || fail "scaffolded config.json is not an empty object: $(cat "$CONFIG_JSON")"
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    sys.exit(0 if json.load(fh) == {} else 1)
+PYEOF
+run "$RIGOPS_LINK" config check
+[ "$RC" -eq 0 ] || fail "fresh config check exit $RC: $OUT"
+case "$OUT" in
+    *warn*) fail "fresh config check warns: $OUT" ;;
+esac
+run "$RIGOPS_LINK" doctor --report --supervisor=none
+[ "$RC" -eq 0 ] || fail "fresh doctor exit $RC: $OUT"
+case "$OUT" in
+    *"no registry items"*) : ;;
+    *) fail "fresh doctor does not report an empty registry: $OUT" ;;
+esac
+
 echo "smoke: exercise CLIs against repo fixtures"
 # Overwrites the scaffolded config.json -- fine, it's this run's own HOME,
 # and install.sh never touches a config.json that already exists.

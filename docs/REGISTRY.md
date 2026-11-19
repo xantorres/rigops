@@ -6,7 +6,7 @@ The plain-text list of automation jobs `rigops doctor` watches.
 
 - A human-owned markdown file with YAML-shaped frontmatter, schema `rigops.v1`.
 - Default path: the `doctor.registry` config key, default `~/.config/rigops/registry.md` (see [CONFIG.md](CONFIG.md#doctor)).
-- `config/registry.example.md` ships as a scaffold; `install.sh` copies it to that default path if nothing is already there (see [INSTALL.md](INSTALL.md)).
+- `install.sh` scaffolds an empty registry at that default path if nothing is already there (see [INSTALL.md](INSTALL.md)). `config/registry.example.md` shows the entry format and is not copied.
 - The parser is hand-rolled (`lib/rigops/registry.py`), not a YAML library: flat `key: value` pairs inside each `- id: ...` item, plus one optional `notes: |` literal block. No nesting, no anchors, no multi-document support - the format never needs them.
 
 ## Field reference
