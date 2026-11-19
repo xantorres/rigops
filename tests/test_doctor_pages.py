@@ -264,7 +264,10 @@ class CorruptStateFileTests(PagingBase):
         for name in ("notified.json", "kicked.json", "holds.json", "heal-stamps.json"):
             (self.state / name).write_text(big)
         self.run_doctor(_write_registry(self.tmp, FAILING_ITEM))
-        self.assertEqual(len([e for e in self.events() if "jobs_checked" in e]), 1)
+        events = self.events()
+        self.assertEqual(len(events), 2)
+        self.assertIn("jobs_checked", events[0])
+        self.assertEqual(events[1]["event"].split(" rejected:")[0], "heal-stamps.json")
 
     def test_a_state_file_holding_the_wrong_json_shape_falls_back_to_the_default(self):
         self.state.mkdir(parents=True, exist_ok=True)

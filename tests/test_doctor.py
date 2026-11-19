@@ -1516,6 +1516,14 @@ class CorruptHealStateTests(EnvIsolatedTestCase):
         self.assertEqual(code, 1)
         self._finding_for(payload, "heal-stamps.json")
 
+    def test_out_of_range_stamp_is_corrupt_state_not_a_crash(self):
+        (self.dir / "heal-stamps.json").write_bytes(b'{"job-failing": 1' + b"0" * 400 + b"}")
+        code, payload, m_kick, _ = self._run(["--heal"])
+        m_kick.assert_not_called()
+        self.assertEqual(code, 0)
+        self.assertFalse((self.dir / "heal-stamps.json").exists())
+        self._finding_for(payload, "heal-stamps.json")
+
     def test_failed_move_still_kicks_nothing_and_says_the_file_stays(self):
         (self.dir / "heal-stamps.json").write_bytes(b"{not json")
         with mock.patch("os.rename", side_effect=OSError("denied")):

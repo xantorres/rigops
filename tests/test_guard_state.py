@@ -23,6 +23,7 @@ class LoadGuardStateTests(unittest.TestCase):
             ("NaN stamp", b'{"a": NaN}', True, {}, True),
             ("Infinity stamp", b'{"a": Infinity}', True, {}, True),
             ("nested stamp", b'{"a": {"b": 1}}', True, {}, True),
+            ("integer too big for a float", b'{"a": 1' + b"0" * 400 + b"}", True, {}, True),
             ("nested value allowed when not numeric", b'{"a": {"b": 1}}', False,
              {"a": {"b": 1}}, False),
         ]
