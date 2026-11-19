@@ -32,11 +32,17 @@ has any, otherwise on line 1. TOML agent files get the same warning as a `#`
 comment on line 1. Skill files other than `SKILL.md` are copied verbatim, mode
 bit included, with no marker.
 
+Pruning follows the marker: render removes a file from a managed directory only
+when it carries the marker, so hand-made files survive, and copied skill files
+(no marker) are never pruned. A managed directory is pruned only when its source
+subdirectory exists, and render exits `2` without touching anything when the
+source directory itself is missing.
+
 ## Check semantics
 
 `--check` never writes. Each rendered path is `missing`, `differs` from what's
 on disk, or `stale` (an extra file inside a managed directory that render
-didn't produce). A pointer repo whose directory doesn't exist yet is reported
+didn't produce and that carries the render marker). A pointer repo whose directory doesn't exist yet is reported
 `skipped`, not a drift. Exit `1` iff any path is missing, differs, or stale.
 
 Type files the function-hook engine writes into a rendered plugin on load are

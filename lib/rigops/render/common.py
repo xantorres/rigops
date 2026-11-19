@@ -10,6 +10,25 @@ from pathlib import Path
 
 FRONTMATTER_BLOCK_RE = re.compile(r"\A---\r?\n.*?\r?\n---\r?\n?", re.DOTALL)
 
+_MARKER_TAIL = "rendered by rigops render from .*; edit the source, not this file"
+MARKER_LINE_RE = re.compile(rf"(?:<!-- {_MARKER_TAIL} -->|# {_MARKER_TAIL})")
+
+
+def carries_marker(path: Path) -> bool:
+    try:
+        text = path.read_bytes().decode()
+    except (OSError, UnicodeDecodeError):
+        return False
+    candidates = [text]
+    match = FRONTMATTER_BLOCK_RE.match(text)
+    if match:
+        candidates.append(text[match.end():])
+    for chunk in candidates:
+        lines = chunk.splitlines()
+        if lines and MARKER_LINE_RE.fullmatch(lines[0]):
+            return True
+    return False
+
 
 @dataclass
 class Rendered:

@@ -30,6 +30,14 @@ def main(argv=None) -> int:
     source = core.expand(args.source) if args.source else core.expand(default_source)
     home = core.expand(args.home) if args.home else core.HOME
 
+    if not source.is_dir():
+        print(
+            f"rigops-render: source {source} is not a directory; "
+            "pass --source or set config render.source",
+            file=sys.stderr,
+        )
+        return 2
+
     rendered = render.render_selected(args.targets, source, home)
 
     if args.check:

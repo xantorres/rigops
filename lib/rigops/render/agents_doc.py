@@ -41,18 +41,19 @@ def _row(name: str, tier: str, effort: str, memory: str, voice: str, purpose: st
 
 def render_agents(source: Path, home: Path) -> Rendered:
     agents_src = source / "agents"
+    if not agents_src.is_dir():
+        return Rendered()
     entries = []
-    if agents_src.is_dir():
-        for agent_file in sorted(agents_src.glob("*.md")):
-            fields, _ = core.parse_frontmatter(agent_file.read_text())
-            entries.append((
-                fields.get("name", agent_file.stem),
-                fields.get("tier", "inherit"),
-                fields.get("effort", "inherit"),
-                fields.get("memory", "none"),
-                fields.get("voice", ""),
-                fields.get("purpose", ""),
-            ))
+    for agent_file in sorted(agents_src.glob("*.md")):
+        fields, _ = core.parse_frontmatter(agent_file.read_text())
+        entries.append((
+            fields.get("name", agent_file.stem),
+            fields.get("tier", "inherit"),
+            fields.get("effort", "inherit"),
+            fields.get("memory", "none"),
+            fields.get("voice", ""),
+            fields.get("purpose", ""),
+        ))
     entries.sort(key=lambda e: e[0])
 
     lines = list(HEADER)

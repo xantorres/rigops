@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -11,6 +13,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import render  # noqa: E402
+from rigops.render.common import carries_marker  # noqa: E402
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+RENDER_SCRIPT = REPO_ROOT / "libexec" / "rigops-render"
+MARKER = "<!-- rendered by rigops render from ~/rig/x.md; edit the source, not this file -->"
+TOML_MARKER = "# rendered by rigops render from ~/rig/agents/x.md; edit the source, not this file"
 
 LAW_MD = """# Law
 
@@ -310,16 +318,86 @@ class ApplyAndCheckTests(RenderTestCase):
         results = render.check(rendered)
         self.assertIn({"path": str(target), "state": "differs"}, results)
 
-    def test_stale_file_in_managed_dir_is_reported_then_removed_on_reapply(self):
+    def test_unmarked_file_in_managed_dir_survives_and_is_not_reported(self):
         rendered = render.render_all(self.source, self.home)
         render.apply(rendered, self.home)
         stray = self.home / ".claude" / "rules" / "stray.md"
         stray.write_text("junk\n")
         results = render.check(rendered)
+        self.assertNotIn(str(stray), [r["path"] for r in results])
+
+        render.apply(rendered, self.home)
+        self.assertEqual(stray.read_text(), "junk\n")
+
+    def test_marked_file_without_a_source_is_reported_then_removed_on_reapply(self):
+        rendered = render.render_all(self.source, self.home)
+        render.apply(rendered, self.home)
+        stray = self.home / ".claude" / "rules" / "stray.md"
+        stray.write_text(MARKER + "\njunk\n")
+        results = render.check(rendered)
         self.assertIn({"path": str(stray), "state": "stale"}, results)
 
         render.apply(rendered, self.home)
         self.assertFalse(stray.exists())
+
+    def test_rendered_file_whose_source_was_deleted_is_reported_then_removed(self):
+        render.apply(render.render_all(self.source, self.home), self.home)
+        (self.source / "agents" / "plain.md").unlink()
+        rendered = render.render_all(self.source, self.home)
+        gone = self.home / ".claude" / "agents" / "plain.md"
+        self.assertIn({"path": str(gone), "state": "stale"}, render.check(rendered))
+
+        render.apply(rendered, self.home)
+        self.assertFalse(gone.exists())
+
+    def test_hand_made_skill_rule_and_agent_survive_apply_and_check(self):
+        claude = self.home / ".claude"
+        mine = claude / "skills" / "mine"
+        mine.mkdir(parents=True)
+        (mine / "SKILL.md").write_text("---\nname: mine\n---\nmine\n")
+        (mine / "run.sh").write_text("#!/bin/sh\n")
+        (claude / "rules").mkdir()
+        (claude / "rules" / "mine.md").write_text("my rule\n")
+        (claude / "agents").mkdir()
+        (claude / "agents" / "mine.md").write_text("---\nname: mine\n---\nmy agent\n")
+        rendered = render.render_all(self.source, self.home)
+        render.apply(rendered, self.home)
+        mine_files = [mine / "SKILL.md", mine / "run.sh", claude / "rules" / "mine.md",
+                      claude / "agents" / "mine.md"]
+        self.assertEqual([p.is_file() for p in mine_files], [True] * 4)
+        reported = {r["path"] for r in render.check(rendered)}
+        self.assertEqual(reported & {str(p) for p in mine_files}, set())
+
+    def test_source_without_a_skills_dir_leaves_rendered_skills_alone(self):
+        render.apply(render.render_all(self.source, self.home), self.home)
+        skill = self.home / ".claude" / "skills" / "myskill" / "SKILL.md"
+        self.assertTrue(skill.is_file())
+        shutil.rmtree(self.source / "skills")
+        rendered = render.render_all(self.source, self.home)
+        render.apply(rendered, self.home)
+        self.assertTrue(skill.is_file())
+        self.assertNotIn(str(skill), [r["path"] for r in render.check(rendered)])
+
+    def test_source_without_agents_dir_writes_no_agents_doc_and_keeps_the_old_one(self):
+        shutil.rmtree(self.source / "agents")
+        doc = self.home / ".claude" / "references" / "agents.md"
+        rendered = render.render_all(self.source, self.home)
+        self.assertNotIn(doc, rendered.files)
+        render.apply(rendered, self.home)
+        self.assertFalse(doc.exists())
+
+        doc.parent.mkdir(parents=True)
+        doc.write_text("existing\n")
+        render.apply(render.render_all(self.source, self.home), self.home)
+        self.assertEqual(doc.read_text(), "existing\n")
+        self.assertEqual(render.render_agents(self.source, self.home).files, {})
+
+    def test_managed_dirs_list_only_dirs_the_source_has(self):
+        shutil.rmtree(self.source / "skills")
+        shutil.rmtree(self.source / "agents")
+        claude = render.render_claude(self.source, self.home)
+        self.assertEqual(claude.managed_dirs, [self.home / ".claude" / "rules"])
+        self.assertEqual(render.render_codex(self.source, self.home).managed_dirs, [])
 
     def test_file_outside_managed_dirs_is_never_deleted(self):
         rendered = render.render_all(self.source, self.home)
@@ -409,20 +487,38 @@ class PluginTypeFileTests(RenderTestCase):
         render.apply(self.rendered, self.home)
         self.assertEqual([p.is_file() for p in kept], [True, True, True])
 
-    def test_tsconfig_with_no_plugin_dir_beside_it_is_stale_and_removed(self):
+    def test_unmarked_tsconfig_with_no_plugin_dir_beside_it_survives(self):
         stray = self.write("hooks/tsconfig.json")
+        self.assertEqual(self.drift(), [])
+        render.apply(self.rendered, self.home)
+        self.assertTrue(stray.exists())
+
+    def test_marked_tsconfig_with_no_plugin_dir_beside_it_is_stale_and_removed(self):
+        stray = self.write("hooks/tsconfig.json", MARKER + "\n")
         self.assertEqual(self.drift(), [{"path": str(stray), "state": "stale"}])
         render.apply(self.rendered, self.home)
         self.assertFalse(stray.exists())
 
-    def test_types_dir_outside_the_plugin_dir_is_stale_and_removed(self):
+    def test_unmarked_types_dir_outside_the_plugin_dir_survives(self):
         stray = self.write("types/index.d.ts")
+        self.assertEqual(self.drift(), [])
+        render.apply(self.rendered, self.home)
+        self.assertTrue(stray.exists())
+
+    def test_marked_types_dir_outside_the_plugin_dir_is_stale_and_removed(self):
+        stray = self.write("types/index.md", MARKER + "\n")
         self.assertEqual(self.drift(), [{"path": str(stray), "state": "stale"}])
         render.apply(self.rendered, self.home)
         self.assertFalse(stray.exists())
 
-    def test_other_stray_file_in_the_plugin_dir_is_stale_and_removed(self):
+    def test_unmarked_stray_file_in_the_plugin_dir_survives(self):
         stray = self.write(".claude-plugin/stray.json")
+        self.assertEqual(self.drift(), [])
+        render.apply(self.rendered, self.home)
+        self.assertTrue(stray.exists())
+
+    def test_marked_stray_file_in_the_plugin_dir_is_stale_and_removed(self):
+        stray = self.write(".claude-plugin/stray.md", MARKER + "\n")
         self.assertEqual(self.drift(), [{"path": str(stray), "state": "stale"}])
         render.apply(self.rendered, self.home)
         self.assertFalse(stray.exists())
@@ -441,6 +537,67 @@ class PluginTypeFileTests(RenderTestCase):
         self.assertEqual(types.read_text(), "export {};\n")
         tsconfig.write_text("tampered\n")
         self.assertIn({"path": str(tsconfig), "state": "differs"}, render.check(rendered))
+
+
+class CarriesMarkerTests(unittest.TestCase):
+    CASES = [
+        ("md marker on line 1", (MARKER + "\nbody\n").encode(), True),
+        ("marker after frontmatter", f"---\nname: x\n---\n{MARKER}\nbody\n".encode(), True),
+        ("toml marker on line 1", (TOML_MARKER + "\nname = 'x'\n").encode(), True),
+        ("phrase in body only", f"# title\n\nbody\n{MARKER}\n".encode(), False),
+        ("phrase on line 2 without frontmatter", f"intro\n{MARKER}\n".encode(), False),
+        ("empty file", b"", False),
+        ("binary file", b"\xff\xfe\x00\x80" + MARKER.encode(), False),
+        ("frontmatter with no marker", b"---\nname: x\n---\nbody\n", False),
+        ("marker with trailing text", (MARKER + " extra\n").encode(), False),
+        ("marker not at line start", (" " + MARKER + "\n").encode(), False),
+    ]
+
+    def test_predicate_table(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for label, data, expected in self.CASES:
+                with self.subTest(label):
+                    path = Path(tmp) / "f"
+                    path.write_bytes(data)
+                    self.assertEqual(carries_marker(path), expected)
+
+    def test_unreadable_path_carries_no_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertFalse(carries_marker(Path(tmp) / "missing"))
+            self.assertFalse(carries_marker(Path(tmp)))
+
+
+class RenderCliMissingSourceTests(RenderTestCase):
+    def snapshot(self):
+        return {
+            str(p.relative_to(self.home)): None if p.is_dir() else p.read_bytes()
+            for p in sorted(self.home.rglob("*"))
+        }
+
+    def run_cli(self, *extra):
+        missing = self.tmp / "no-such-source"
+        proc = subprocess.run(
+            [sys.executable, str(RENDER_SCRIPT), "all", "--home", str(self.home),
+             "--source", str(missing), *extra],
+            capture_output=True, text=True,
+        )
+        return proc, missing
+
+    def test_missing_source_exits_2_and_leaves_the_home_untouched(self):
+        render.apply(render.render_all(self.source, self.home), self.home)
+        hand_made = self.home / ".claude" / "skills" / "mine" / "SKILL.md"
+        hand_made.parent.mkdir(parents=True)
+        hand_made.write_text("mine\n")
+        before = self.snapshot()
+        for extra in ((), ("--check",), ("--check", "--json")):
+            with self.subTest(extra=extra):
+                proc, missing = self.run_cli(*extra)
+                self.assertEqual(proc.returncode, 2)
+                self.assertEqual(proc.stdout, "")
+                self.assertIn(str(missing), proc.stderr)
+                self.assertIn("--source", proc.stderr)
+                self.assertIn("render.source", proc.stderr)
+                self.assertEqual(self.snapshot(), before)
 
 
 if __name__ == "__main__":

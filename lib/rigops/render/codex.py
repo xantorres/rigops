@@ -78,4 +78,5 @@ def render_codex(source: Path, home: Path) -> Rendered:
             target = codex_dir / "agents" / f"{agent_file.stem}.toml"
             files[target] = _render_agent_toml(agent_file)
 
-    return Rendered(files=files, managed_dirs=[codex_dir / "agents"])
+    managed_dirs = [codex_dir / "agents"] if agents_src.is_dir() else []
+    return Rendered(files=files, managed_dirs=managed_dirs)

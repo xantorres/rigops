@@ -8,7 +8,7 @@ from pathlib import Path
 from .agents_doc import render_agents
 from .claude import is_engine_generated, is_ignored, render_claude
 from .codex import render_codex
-from .common import Rendered, merge
+from .common import Rendered, carries_marker, merge
 from .local import render_local
 from .repos import render_repos
 
@@ -41,6 +41,7 @@ def _not_stale(path: Path, claimed: set) -> bool:
         or path.resolve() in claimed
         or is_ignored(path)
         or is_engine_generated(path)
+        or not carries_marker(path)
     )
 
 

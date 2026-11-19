@@ -129,5 +129,7 @@ def render_claude(source: Path, home: Path) -> Rendered:
                 continue
             files[claude_dir / "workflows" / workflow.name] = workflow.read_bytes()
 
-    managed_dirs =[claude_dir / "rules", claude_dir / "agents", claude_dir / "skills"]
+    managed_dirs = [
+        claude_dir / name for name in ("rules", "agents", "skills") if (source / name).is_dir()
+    ]
     return Rendered(files=files, managed_dirs=managed_dirs, modes=modes)
