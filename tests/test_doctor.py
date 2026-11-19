@@ -1312,6 +1312,17 @@ class WarningSeverityTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("config checks: 1 findings", out)
 
+    def test_exit_zero_keeps_the_output_and_returns_zero_on_a_failing_finding(self):
+        findings = [self._finding("fail")]
+        plain_code, plain_out = self._run(findings, ["--config-only"])
+        code, out = self._run(findings, ["--config-only", "--exit-zero"])
+        self.assertEqual((plain_code, code), (1, 0))
+        self.assertEqual(out, plain_out)
+
+    def test_exit_zero_with_no_failing_finding_returns_zero(self):
+        code, _ = self._run([self._finding("warn")], ["--config-only", "--exit-zero"])
+        self.assertEqual(code, 0)
+
     def test_json_carries_the_severity(self):
         code, out = self._run([self._finding("warn")], ["--config-only", "--json"])
         self.assertEqual(code, 0)

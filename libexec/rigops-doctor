@@ -256,7 +256,7 @@ def report_config_checks(cfg: dict, args) -> int:
         ))
     else:
         print(render_findings(findings), end="")
-    return 1 if _failing(findings) else 0
+    return 1 if _failing(findings) and not args.exit_zero else 0
 
 
 def _job_gate_entries(jobs: list) -> list:
@@ -316,6 +316,10 @@ def main(argv=None) -> int:
             "kill/kickstart (custom checks and notify still execute their "
             "configured commands)"
         ),
+    )
+    ap.add_argument(
+        "--exit-zero", action="store_true",
+        help="exit 0 even when a finding fails; output and findings are unchanged",
     )
     ap.add_argument(
         "--supervisor", choices=["launchd", "none"], default="launchd",
@@ -598,11 +602,9 @@ def main(argv=None) -> int:
         print(render_summary(jobs, checks, findings, gates, ts), end="")
         print(render_findings(findings), end="")
 
-    # --heal is the unattended supervisor path, and its own registry row judges it
-    # by this exit code: a config finding there would make the watchdog report
-    # itself as failing. Everywhere else a failing finding is a build failure;
-    # a warning is reported and never is.
-    return 1 if _failing(findings) and not args.heal else 0
+    # The scheduled job passes --exit-zero because its own registry row judges it
+    # by this exit code. Elsewhere a failing finding exits 1; a warning never does.
+    return 1 if _failing(findings) and not args.heal and not args.exit_zero else 0
 
 
 if __name__ == "__main__":

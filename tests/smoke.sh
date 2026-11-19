@@ -1038,21 +1038,25 @@ PYEOF
 }
 
 echo "smoke: the doctor job is report-only unless --heal is passed"
-[ -z "$(doctor_args)" ] || fail "default doctor plist carries arguments: $(doctor_args)"
+[ "$(doctor_args)" = "--exit-zero" ] || fail "default doctor plist arguments: $(doctor_args)"
+jobs_install --apply --jobs doctor,ledger --yes
+[ "$RC" -eq 0 ] || fail "doctor,ledger install exit $RC: $OUT"
+grep -q -e "--exit-zero" "$JOBS_AGENTS/$JOB_PREFIX.ledger.plist" && fail "ledger plist carries --exit-zero"
 case "$OUT" in
     *"doctor job: report-only"*) : ;;
     *) fail "apply output does not state the doctor mode: $OUT" ;;
 esac
 jobs_install --apply --heal --jobs doctor --yes
 [ "$RC" -eq 0 ] || fail "--heal install exit $RC: $OUT"
-[ "$(doctor_args)" = "--heal" ] || fail "--heal doctor plist arguments: $(doctor_args)"
+[ "$(doctor_args)" = "--exit-zero
+--heal" ] || fail "--heal doctor plist arguments: $(doctor_args)"
 case "$OUT" in
     *"doctor job: self-heal"*) : ;;
     *) fail "--heal apply output does not state the doctor mode: $OUT" ;;
 esac
 jobs_install --apply --jobs doctor --yes
 [ "$RC" -eq 0 ] || fail "install after --heal exit $RC: $OUT"
-[ -z "$(doctor_args)" ] || fail "--heal was remembered by a later run: $(doctor_args)"
+[ "$(doctor_args)" = "--exit-zero" ] || fail "--heal was remembered by a later run: $(doctor_args)"
 jobs_install --jobs doctor
 case "$OUT" in
     *"doctor job: report-only"*"--heal"*) : ;;

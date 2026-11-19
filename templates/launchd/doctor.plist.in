@@ -16,6 +16,7 @@
 	<array>
 		<string>@PYTHON@</string>
 		<string>@PREFIX@/libexec/rigops-doctor</string>
+		<string>--exit-zero</string>
 @HEAL_ARG@	</array>
 	<key>StartInterval</key>
 	<integer>1800</integer>

@@ -106,7 +106,7 @@ Re-run with `--apply` to actually do it:
 bash install.sh --apply
 ```
 
-The two installed jobs: `doctor` runs `rigops-doctor` every 30 minutes and only reports, unless you install with `--heal`, which adds `--heal` to the scheduled command so it may kill hung jobs and kickstart stale ones; `ledger` runs `rigops-ledger write` weekly, Monday 09:05 local time.
+The two installed jobs: `doctor` runs `rigops-doctor --exit-zero` every 30 minutes, so a failing finding never makes the job itself exit 1, and only reports, unless you install with `--heal`, which adds `--heal` to the scheduled command so it may kill hung jobs and kickstart stale ones; `ledger` runs `rigops-ledger write` weekly, Monday 09:05 local time.
 
 ### Flags
 
