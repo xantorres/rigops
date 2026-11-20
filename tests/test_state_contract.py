@@ -132,6 +132,24 @@ class ConcurrentWriteTests(Sandbox):
         self.assertEqual(sorted(r["date"] for r in rows), sorted({*dates, "2026-01-18"}))
         self.assertIn("2026-02-15", (self.state / "ledger.md").read_text())
 
+    def test_a_forced_ledger_write_racing_notes_loses_nothing(self):
+        self.seed()
+        (self.home / ".claude" / "projects").mkdir(parents=True)
+        notes_before = len(state.read_jsonl(self.state / "interventions.jsonl"))
+        dates = ["2026-01-04", "2026-01-11", "2026-02-01"]
+        writers = [self.spawn(["ledger", "write", "--at", d, "--force", "--json"]) for d in dates]
+        for i in range(20):
+            proc = self.run_cmd(["ledger", "note", f"raced-{i}"])
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+        for proc in writers:
+            _, err = proc.communicate(timeout=90)
+            self.assertEqual(proc.returncode, 0, err)
+        ledger = state.read_jsonl(self.state / "ledger.jsonl")
+        self.assertEqual(sorted(r["date"] for r in ledger), sorted({*dates, "2026-01-18"}))
+        notes = state.read_jsonl(self.state / "interventions.jsonl")
+        self.assertEqual(len(notes), notes_before + 20)
+        self.assertEqual(len({r["text"] for r in notes if r["text"].startswith("raced-")}), 20)
+
     def test_many_processes_appending_to_one_file_leave_every_row_whole(self):
         path = self.state / "rows.jsonl"
         code = (
@@ -212,6 +230,17 @@ class ReportVersusGateTests(Sandbox):
         self.seeded_with(TORN)
         self.assertEqual(self.run_cmd(["ledger", "write", "--dry-run"]).returncode, 2)
 
+    def test_a_row_that_is_not_an_object_is_malformed_for_a_strict_reader(self):
+        for bad in ("5\n", "[1]\n", '"text"\n'):
+            with self.subTest(bad):
+                shutil.rmtree(self.state, ignore_errors=True)
+                self.seeded_with(bad)
+                with self.assertRaises(state.MalformedJsonl):
+                    state.read_jsonl(self.state / "ledger.jsonl")
+                proc = self.run_cmd(["ledger", "write", "--dry-run"])
+                self.assertEqual(proc.returncode, 2, proc.stderr)
+                self.assertNotIn("Traceback", proc.stderr)
+
     def test_an_unreadable_state_file_exits_2_for_reports_and_gates(self):
         self.seed()
         for name in ("ledger.jsonl", "eval.jsonl"):
@@ -230,17 +259,6 @@ class LockedRunTests(Sandbox):
         with state.locked(lock_target):
             proc = self.spawn(args)
             time.sleep(1.5)
-    def test_a_row_that_is_not_an_object_is_malformed_for_a_strict_reader(self):
-        for bad in ("5\n", "[1]\n", '"text"\n'):
-            with self.subTest(bad):
-                shutil.rmtree(self.state, ignore_errors=True)
-                self.seeded_with(bad)
-                with self.assertRaises(state.MalformedJsonl):
-                    state.read_jsonl(self.state / "ledger.jsonl")
-                proc = self.run_cmd(["ledger", "write", "--dry-run"])
-                self.assertEqual(proc.returncode, 2, proc.stderr)
-                self.assertNotIn("Traceback", proc.stderr)
-
             self.assertIsNone(proc.poll(), "ran while the lock was held")
         out, err = proc.communicate(timeout=60)
         self.assertEqual(proc.returncode, 0, err)
