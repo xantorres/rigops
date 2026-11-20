@@ -60,7 +60,7 @@ flag means filesystem mode, not file mtime, and still exits 0 while printing
 and guards the result with a numeric check so a failed call becomes a safe `0`
 rather than a non-numeric string leaking into arithmetic later.
 
-[../plugin/hooks/ctx-nudge.sh](../plugin/hooks/ctx-nudge.sh) applies the same
+[../lib/rigops/hook.py](../lib/rigops/hook.py) applies the same
 tiering philosophy to a different surface: instead of cache-vs-live data, it's
 tiers of severity for a nudge. Three ascending context-token thresholds
 (`context.nudge_tiers`, default `[250000, 350000, 500000]`) each produce a

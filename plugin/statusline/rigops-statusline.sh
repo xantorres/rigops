@@ -23,7 +23,7 @@ if [ "$HAVE_JQ" -eq 1 ]; then
   TP=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null || true)
 fi
 
-# Context-size thresholds: same knob ctx-nudge.sh uses, so the color and the
+# Context-size thresholds: same knob `rigops hook` uses, so the color and the
 # nudge fire at the same points. Cheap enough to call every render; no cache.
 TIER1=250000
 TIER2=350000

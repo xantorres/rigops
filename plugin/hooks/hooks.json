@@ -1,10 +1,10 @@
 {
   "hooks": {
     "SessionStart": [
-      {"matcher": "startup|resume|compact", "hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/card.sh\"", "timeout": 10}]}
+      {"matcher": "startup|resume|compact", "hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/rigops-hook.sh\" session-start", "timeout": 10}]}
     ],
     "UserPromptSubmit": [
-      {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ctx-nudge.sh\"", "timeout": 10}]}
+      {"hooks": [{"type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/rigops-hook.sh\" user-prompt-submit", "timeout": 10}]}
     ]
   }
 }

@@ -21,7 +21,7 @@ list_commands() {
     for f in "$LIBEXEC"/rigops-*; do
         [ -e "$f" ] || continue
         basename "$f" | sed 's/^rigops-//'
-    done
+    done | grep -vx hook
 }
 
 usage() {

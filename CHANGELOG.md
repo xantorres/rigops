@@ -9,11 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `rigops hook <event>` (`session-start`, `user-prompt-submit`) replaces the plugin's card and nudge scripts. It always exits 0, prints at most 1000 bytes and is held to a one-second budget in CI. It is hidden from `rigops help`.
+- The session-start hook prints one line of stale gates, or one line saying the doctor gate record is missing or unreadable.
 - `ledger.extra_correction_patterns`, `ledger.correction_exclude_patterns` and `ledger.extra_denial_patterns` extend the correction and denial detector shared by the ledger and `rigops mine`. The Spanish rules are no longer built in; `tests/fixtures/corrections/es.json` holds them as a config overlay.
 - Ledger rows carry `version`, `fixed_tax_sha` and `config_sha`. `ledger diff` marks a delta `not comparable` when the metric was redefined between the two rows' versions, and reports whether the always-loaded files and the measurement config changed.
 
 ### Changed
 
+- The prompt-scoped nudge left the plugin hook and `context.prompt_nudge` is ignored; only the context-size nudge remains.
+- The plugin hooks no longer need `jq`.
 - The always-on budget no longer counts a registered repo's instruction file.
 - `check_agents` reads the installed agents dir and the `description` field, not the render source and `purpose`.
 - The built-in correction rule no longer has Spanish handling, and the denial set drops `checkout behind origin` and `stale backend checkout`. Add them back with `ledger.extra_correction_patterns`, `ledger.correction_exclude_patterns` and `ledger.extra_denial_patterns`.

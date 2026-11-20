@@ -27,10 +27,10 @@ What lands:
 
 - **5 commands** - `/rigops:backlog`, `/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:week`.
 - **2 skills** - `ops-loop` (the measure/intervene/note/diff weekly loop, see [LEDGER.md](LEDGER.md)) and `fleet-triage` (reading a `doctor` report, see [REGISTRY.md](REGISTRY.md)).
-- **2 hook entries**, from `plugin/hooks/hooks.json`: one `SessionStart` hook (`card.sh`, on startup, resume and compact) and one `UserPromptSubmit` hook (`ctx-nudge.sh`). Two hooks left the plugin for the user's own dispatcher: the `rg -r`/`-rn`/`-rl` guard (`-r` means `--replace` in ripgrep, not recursive, and the mistake fails silently) and the skill-forcing gate.
+- **2 hook entries**, from `plugin/hooks/hooks.json`: one `SessionStart` hook (on startup, resume and compact) and one `UserPromptSubmit` hook, both running `rigops hook <event>` through `rigops-hook.sh`. Two hooks left the plugin for the user's own dispatcher: the `rg -r`/`-rn`/`-rl` guard (`-r` means `--replace` in ripgrep, not recursive, and the mistake fails silently) and the skill-forcing gate.
 - The statusline script (`plugin/statusline/rigops-statusline.sh`) - shipped but not wired into `~/.claude/settings.json` automatically; see `--statusline` below.
 
-The plugin works standalone. `ctx-nudge.sh` needs `jq` - without it the hook exits immediately, a no-op. `card.sh`, `ctx-nudge.sh` and the statusline script look for a `rigops` binary on PATH or at `~/.local/bin/rigops`. Without the binary, `card.sh` prints nothing, and if `jq` is present `ctx-nudge.sh` falls back to hardcoded context tiers (250000 / 350000 / 500000, rearm 50000 - the same numbers as `context.nudge_tiers`/`rearm_tokens` in [CONFIG.md](CONFIG.md)) instead of reading config. The statusline hardcodes only the first two thresholds (250000 / 350000) for coloring, has no re-arm, and only reads config at all when `jq` is present. Without `jq`, the statusline's context and EIT segments both go blank, but it still prints and exits cleanly.
+The plugin works standalone. Hooks need no `jq`. `rigops-hook.sh` and the statusline script look for a `rigops` binary on PATH or at `~/.local/bin/rigops`; without it, or with a CLI too old to know `rigops hook`, the hooks print nothing. The statusline hardcodes only the first two thresholds (250000 / 350000) for coloring, has no re-arm, and only reads config at all when `jq` is present. Without `jq`, the statusline's context and EIT segments both go blank, but it still prints and exits cleanly.
 
 ## Script install
 
