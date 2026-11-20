@@ -141,7 +141,7 @@ def turns_in_file(path, root, since, until, lines, counts=None) -> list[dict]:
     usage and timestamp are taken from the last line seen per message.id.
     Lines with no message.id are each treated as their own turn.
     ``counts`` (a dict with ``seen`` and ``parsed``) accumulates how many non-blank
-    lines there were and how many were valid JSON.
+    lines there were and how many were JSON objects.
     """
     turns = []
     proj = project_label(path, root)
@@ -157,6 +157,8 @@ def turns_in_file(path, root, since, until, lines, counts=None) -> list[dict]:
         try:
             obj = json.loads(line)
         except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict):
             continue
         if counts is not None:
             counts["parsed"] += 1

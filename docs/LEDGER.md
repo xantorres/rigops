@@ -70,7 +70,7 @@ Appends today's row (or `--at`'s date). Flags:
 
 A write reads each transcript once. It exits `2` with one `error:` line, and writes no row and no `ledger.md`, when `transcripts_dir` does not exist. Two things are written but flagged on stderr: more than 1% of transcript lines that did not parse (`warning: N of M transcript lines (P%) did not parse; this row may undercount`), and a week with no turns (`warning: no transcript turns in the 7 days before DATE; row written, marked empty`). Both exit `0`.
 
-Each row records `lines_seen` and `lines_parsed` (non-blank transcript lines in the whole corpus, and how many were valid JSON) and `window_empty` (`true` when the window holds no turns). Rows written before these fields have none of them, and a missing count means unknown, not zero. The row `version` is unchanged. `rigops doctor` warns (`parse`, `no-turns`) about the newest row when it crossed either line; it stays silent for a row without the fields.
+Each row records `lines_seen` and `lines_parsed` (non-blank transcript lines in the whole corpus, and how many were JSON objects) and `window_empty` (`true` when the window holds no turns). Rows written before these fields have none of them, and a missing count means unknown, not zero. The row `version` is unchanged. `rigops doctor` warns (`parse`, `no-turns`) about the newest row when it crossed either line; it stays silent for a row without the fields.
 
 A row already existing for that date is a no-op ("row exists, nothing appended") unless `--force`.
 

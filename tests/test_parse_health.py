@@ -54,6 +54,15 @@ class RowCountsTests(unittest.TestCase):
         self.assertEqual(row["version"], ledger_row.ROW_VERSION)
         self.assertEqual(ledger_row.ROW_VERSION, 1)
 
+    def test_a_line_that_is_json_but_not_an_object_counts_as_unparsed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            main, _ = make_corpus(Path(tmp), good=30)
+            with main.open("a") as fh:
+                fh.write('[1, 2]\n"text"\n3\nnull\n')
+            row = levers.build_row(AT, "", cfg=CFG, transcripts_dir=Path(tmp))
+        self.assertEqual((row["lines_seen"], row["lines_parsed"]), (35, 31))
+        self.assertEqual(row["turns"], 31)
+
     def test_each_transcript_file_is_opened_once_per_row(self):
         opened: Counter = Counter()
         real_open = builtins.open

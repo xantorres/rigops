@@ -40,7 +40,7 @@ class GoldenRowTests(EnvIsolatedTestCase):
         time.tzset()
 
     def test_full_row_matches_golden_file(self):
-        # Changing the expected row for a released version means bumping ROW_VERSION.
+        # Changing a released column's value means bumping ROW_VERSION; a new column does not.
         home = Path.home()
         shutil.copytree(FIXTURE_TRANSCRIPTS, home / "transcripts", dirs_exist_ok=True)
         shutil.copytree(FIXTURE_FIXED_TAX, home / "fixed_tax", dirs_exist_ok=True)
