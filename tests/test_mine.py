@@ -244,7 +244,6 @@ class CliTests(unittest.TestCase):
                 row["timestamp"] = today
                 _write(tr / "-proj" / f"{sid}.jsonl", row)
             env = dict(os.environ, HOME=str(tmp / "home"), RIGOPS_CONFIG=str(tmp / "c.json"))
-            env.pop("RIGOPS_ROOTS", None)
             proc = self._run("--dry-run", "--since", "90d", "--transcripts-dir", str(tr),
                              env=env)
         self.assertEqual(proc.returncode, 0, proc.stderr)
