@@ -51,7 +51,7 @@ The default prints the current per-file breakdown sorted by size with a total
 (`cmd_current`). `--history` prints a sparkline plus first/last/delta across
 every ledger row that recorded `fixed_tax_b` (`cmd_history`, backed by
 `fmt.sparkline`). `fixed_tax_b` is itself one column on every ledger row
-(`levers.build_row` calls `fixed_tax_bytes`), so the tax rides along with
+(`levers.build_row` sums `fixed_tax_entries`), so the tax rides along with
 every other lever rigops tracks and shows up in `rigops ledger diff` deltas
 for free, with no separate tracking mechanism.
 

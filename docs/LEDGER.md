@@ -25,6 +25,9 @@ EIT = input + 1.25 * cache_creation + 0.1 * cache_read
 |---|---|
 | `date` | Row's date (`YYYY-MM-DD`). |
 | `label` | Optional free-text tag (`--label`). |
+| `version` | Row shape and metric-definition version (currently `1`). A row without it reads as `0`, the 0.10 shape. |
+| `fixed_tax_sha` | First 16 hex characters of a sha256 over the always-loaded files (home-relative path plus content hash, sorted). Hash only; no path or content is stored. `null` when no file is counted. |
+| `config_sha` | Same form over the config sections the ledger reads: `ledger`, `fixed_tax`, `sources`, `transcripts_dir`. |
 | `turns` | Assistant turns in the 7-day window. |
 | `sessions` | Sessions whose *first* turn fell in the window. |
 | `EIT/turn 7d` | Total window EIT divided by window turns. |
@@ -77,7 +80,7 @@ Appends `{ts, date, text}` to `interventions.jsonl` (`ts` is a UTC, second-preci
 - `--since YYYY-MM-DD` - pick an explicit baseline.
 - `--json`.
 
-Needs at least 2 ledger rows total; with fewer it prints "not enough ledger rows to diff yet (need at least 2)" and exits `0`. Baseline selection: without `--since`, the baseline is the second-to-last row (the previous run). With `--since`, the baseline is the latest row on or before that date - an error if no row qualifies, and an error if the selected baseline turns out to be the same row as the latest one (a baseline can't be its own comparison point). The diff prints every numeric column's old/new/delta/percent, plus every intervention noted strictly after the baseline date and on or before the latest date. Commits in the repos listed under `ledger.derive_interventions` ([CONFIG.md](CONFIG.md)) that touch always-loaded config in the same window print in date order among the notes, tagged `[derived <repo>@<sha>]`; `--json` returns them under `derived`, with the files each commit touched.
+Needs at least 2 ledger rows total; with fewer it prints "not enough ledger rows to diff yet (need at least 2)" and exits `0`. Baseline selection: without `--since`, the baseline is the second-to-last row (the previous run). With `--since`, the baseline is the latest row on or before that date - an error if no row qualifies, and an error if the selected baseline turns out to be the same row as the latest one (a baseline can't be its own comparison point). When a metric's definition changed between the two rows' versions (`corrections` and `denials` from version 1), its delta prints `not comparable` and `--json` sets `comparable` to `false` with `delta` and `pct` null. After the table it prints `always-loaded files:` and `measurement config:`, each `changed`, `unchanged` or `unknown` (a row lacks the hash); `--json` returns them under `fingerprints`. The diff prints every numeric column's old/new/delta/percent, plus every intervention noted strictly after the baseline date and on or before the latest date. Commits in the repos listed under `ledger.derive_interventions` ([CONFIG.md](CONFIG.md)) that touch always-loaded config in the same window print in date order among the notes, tagged `[derived <repo>@<sha>]`; `--json` returns them under `derived`, with the files each commit touched.
 
 ### `rigops eit`
 

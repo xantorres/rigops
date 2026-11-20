@@ -10,7 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from rigops import config as rigops_config
-from rigops import core, cost, fmt, modelmix, rebuilds, starts, transcripts
+from rigops import core, cost, fmt, ledger_row, modelmix, rebuilds, starts, transcripts
 from rigops.sources import caveman, ccusage, command, rtk
 
 WINDOW_DAYS = 7
@@ -109,11 +109,6 @@ def fixed_tax_entries(cfg=None) -> list[tuple[Path, int]]:
     return entries
 
 
-def fixed_tax_bytes(cfg=None) -> int | None:
-    entries = fixed_tax_entries(cfg)
-    return sum(size for _, size in entries) if entries else None
-
-
 BUILTIN_SOURCES = {"rtk": (rtk, 20), "ccusage": (ccusage, 60), "caveman": (caveman, 20)}
 
 
@@ -205,6 +200,7 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
     eit30 = sum(transcripts.eit(t) for t in win30)
 
     row = {
+        "version": ledger_row.ROW_VERSION,
         "date": at.isoformat(),
         "label": label,
         "window": {"since": since.isoformat(), "until": until.isoformat(), "days": WINDOW_DAYS},
@@ -244,7 +240,10 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
         round(fr["tool_errors"] / len(win_main) * 100, 1) if win_main else None
     )
     row["cost_by_surface"] = cost.by_surface(win)
-    row["fixed_tax_b"] = fixed_tax_bytes(cfg)
+    tax_entries = fixed_tax_entries(cfg)
+    row["fixed_tax_b"] = sum(size for _, size in tax_entries) if tax_entries else None
+    row["fixed_tax_sha"] = ledger_row.fixed_tax_sha(tax_entries)
+    row["config_sha"] = ledger_row.config_sha(cfg)
     row.update(starts.ledger_fields(starts.collect_starts(since, until, transcripts_dir)))
     row.update(rebuilds.ledger_fields(*rebuilds.collect(since, until, transcripts_dir)))
     row.update(modelmix.ledger_fields(win_main, Path(transcripts_dir).parent / "settings.json"))
@@ -272,7 +271,7 @@ def pct_delta(new, old) -> str:
 
 
 DIFF_SKIP_COLUMNS = {
-    "date", "label", "notes",
+    "date", "label", "notes", "version",
     "rtk_commands", "rtk_saved_pct", "rtk_saved_tokens",
 }
 
@@ -306,6 +305,7 @@ def diff_columns(old: dict, new: dict) -> list[str]:
 
 
 def compute_deltas(old: dict, new: dict) -> dict:
+    old_row, new_row = old, new
     old, new = flatten_for_diff(old), flatten_for_diff(new)
     deltas = {}
     for key in diff_columns(old, new):
@@ -317,7 +317,9 @@ def compute_deltas(old: dict, new: dict) -> dict:
         else:
             delta = None
         pct = round((nv - ov) / ov * 100, 1) if nv is not None and ov not in (None, 0) else None
-        deltas[key] = {"old": ov, "new": nv, "delta": delta, "pct": pct}
+        same = ledger_row.comparable(key, old_row, new_row)
+        deltas[key] = {"old": ov, "new": nv, "delta": delta if same else None,
+                       "pct": pct if same else None, "comparable": same}
     return deltas
 
 

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Ledger rows carry `version`, `fixed_tax_sha` and `config_sha`. `ledger diff` marks a delta `not comparable` when the metric was redefined between the two rows' versions, and reports whether the always-loaded files and the measurement config changed.
+
 ## [0.10.1] - 2026-11-20
 
 ### Upgrading from 0.10.0

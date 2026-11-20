@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "date": "2026-08-15",
+  "label": "golden",
+  "window": {
+    "since": "2026-08-08T00:00:00+00:00",
+    "until": "2026-08-15T00:00:00+00:00",
+    "days": 7
+  },
+  "turns": 5,
+  "sessions": 2,
+  "eit_total": 314225,
+  "eit_per_turn": 62845,
+  "eit_per_turn_30d": 52438,
+  "out_per_turn": 84,
+  "text_per_prompt": 20,
+  "ctx_p50": 1700,
+  "ctx_mean": 62920,
+  "over300k_pct": 98.7,
+  "cache_hit_pct": 0.2,
+  "turn1_p10": 710,
+  "turn1_p50": 1150,
+  "agent_per_100": 33.33,
+  "cheap_model_eit_pct": 0.7,
+  "subagent_cheap_eit_pct": 0.1,
+  "eit_pct_by_model": {
+    "haiku": 0.2,
+    "opus": 99.3,
+    "sonnet": 0.5
+  },
+  "turn1_beta": 600,
+  "turn1_beta_p50": 600,
+  "sessions_beta": 1,
+  "denials": 2,
+  "denials_headless": 0,
+  "corrections": 2,
+  "tier3_breaches": 0,
+  "tool_err_per_100": 100.0,
+  "cost_by_surface": {
+    "unknown": {
+      "pct": 100.0,
+      "input_pct": 99.2,
+      "cache_write_pct": 0.1,
+      "cache_read_pct": 0.0,
+      "output_pct": 0.7
+    }
+  },
+  "fixed_tax_b": 189,
+  "fixed_tax_sha": "8d8192e3c29a7e40",
+  "config_sha": "9f810ada69f8ae01",
+  "start_tools": null,
+  "start_tool_chars": null,
+  "rebuild_eit_pct": 0.0,
+  "rebuild_compaction_eit_pct": 0.0,
+  "rebuild_quick_eit_pct": 0.0,
+  "rebuild_idle_eit_pct": 0.0,
+  "rebuild_other_eit_pct": 0.0,
+  "default_model": null,
+  "main_default_model_pct": null,
+  "sources": {
+    "rtk": null,
+    "ccusage": null,
+    "caveman": null
+  }
+}

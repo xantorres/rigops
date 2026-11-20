@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import config as rigops_config  # noqa: E402
 from rigops import fmt  # noqa: E402
+from rigops import ledger_row  # noqa: E402
 from rigops import levers  # noqa: E402
 from rigops import state  # noqa: E402
 from rigops.doctor import check_levers  # noqa: E402
@@ -191,7 +192,9 @@ def cmd_diff(args) -> int:
     if len(rows) < 2:
         if args.json:
             print(json.dumps({"baseline": None, "latest": None, "deltas": {},
-                              "interventions": [], "derived": []}, indent=2))
+                              "interventions": [], "derived": [],
+                              "fingerprints": {"always_loaded_files": "unknown",
+                                               "measurement_config": "unknown"}}, indent=2))
         else:
             print("not enough ledger rows to diff yet (need at least 2)")
         return 0
@@ -218,6 +221,7 @@ def cmd_diff(args) -> int:
         baseline = rows[-2]
 
     deltas = levers.compute_deltas(baseline, latest)
+    fingerprints = ledger_row.fingerprints(baseline, latest)
     interventions = _interventions_between(baseline.get("date", ""), latest.get("date", ""))
     derived = _derived_between(rigops_config.load(), baseline.get("date", ""),
                                latest.get("date", ""))
@@ -229,6 +233,7 @@ def cmd_diff(args) -> int:
             "deltas": deltas,
             "interventions": interventions,
             "derived": derived,
+            "fingerprints": fingerprints,
         }
         print(json.dumps(payload, indent=2, default=str))
         return 0
@@ -239,12 +244,15 @@ def cmd_diff(args) -> int:
             col,
             levers.format_cell(col, d["old"]),
             levers.format_cell(col, d["new"]),
-            levers.format_delta(col, d["delta"]),
+            levers.format_delta(col, d["delta"]) if d["comparable"] else "not comparable",
             levers.format_pct(d["pct"]),
         ]
         for col, d in deltas.items()
     ]
     print(fmt.table(table_rows, ["column", "old", "new", "delta", "pct"]))
+    print()
+    print(f"always-loaded files: {fingerprints['always_loaded_files']}")
+    print(f"measurement config: {fingerprints['measurement_config']}")
     print()
     print("Interventions in this window:")
     entries = sorted([*interventions, *derived], key=lambda e: (e.get("date", ""), "derived" in e))

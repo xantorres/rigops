@@ -319,21 +319,25 @@ class ComputeDeltasTests(unittest.TestCase):
         self.assertNotIn("label", deltas)
         self.assertNotIn("window", deltas)
         self.assertEqual(
-            deltas["eit_per_turn"], {"old": 1000, "new": 1250, "delta": 250, "pct": 25.0}
+            deltas["eit_per_turn"],
+                {"old": 1000, "new": 1250, "delta": 250, "pct": 25.0, "comparable": True}
         )
-        self.assertEqual(deltas["turns"], {"old": 50, "new": 40, "delta": -10, "pct": -20.0})
+        self.assertEqual(deltas["turns"],
+            {"old": 50, "new": 40, "delta": -10, "pct": -20.0, "comparable": True})
 
     def test_none_on_one_side_renders_null_delta_and_pct(self):
         old = {"date": "2026-08-01", "ctx_p50": None}
         new = {"date": "2026-08-08", "ctx_p50": 1500}
         deltas = levers.compute_deltas(old, new)
-        self.assertEqual(deltas["ctx_p50"], {"old": None, "new": 1500, "delta": None, "pct": None})
+        self.assertEqual(deltas["ctx_p50"],
+            {"old": None, "new": 1500, "delta": None, "pct": None, "comparable": True})
 
     def test_zero_baseline_skips_pct_but_keeps_delta(self):
         old = {"date": "2026-08-01", "over300k_pct": 0}
         new = {"date": "2026-08-08", "over300k_pct": 5}
         deltas = levers.compute_deltas(old, new)
-        self.assertEqual(deltas["over300k_pct"], {"old": 0, "new": 5, "delta": 5, "pct": None})
+        self.assertEqual(deltas["over300k_pct"],
+            {"old": 0, "new": 5, "delta": 5, "pct": None, "comparable": True})
 
     def test_float_delta_rounds_to_one_decimal(self):
         old = {"date": "2026-08-01", "cache_hit_pct": 0.2}
@@ -347,7 +351,8 @@ class ComputeDeltasTests(unittest.TestCase):
         new = {"date": "2026-08-08", "eit_per_turn": 1250, "fixed_tax_b": 2048}
         deltas = levers.compute_deltas(old, new)
         self.assertEqual(
-            deltas["fixed_tax_b"], {"old": None, "new": 2048, "delta": None, "pct": None}
+            deltas["fixed_tax_b"],
+                {"old": None, "new": 2048, "delta": None, "pct": None, "comparable": True}
         )
 
     def test_nested_model_shares_become_per_model_columns(self):
@@ -355,10 +360,12 @@ class ComputeDeltasTests(unittest.TestCase):
         new = {"date": "2026-08-31", "eit_pct_by_model": {"opus": 71.0, "sonnet": 17.3}}
         deltas = levers.compute_deltas(old, new)
         self.assertEqual(
-            deltas["opus_pct"], {"old": 61.0, "new": 71.0, "delta": 10.0, "pct": 16.4}
+            deltas["opus_pct"],
+                {"old": 61.0, "new": 71.0, "delta": 10.0, "pct": 16.4, "comparable": True}
         )
         self.assertEqual(
-            deltas["sonnet_pct"], {"old": 22.3, "new": 17.3, "delta": -5.0, "pct": -22.4}
+            deltas["sonnet_pct"],
+                {"old": 22.3, "new": 17.3, "delta": -5.0, "pct": -22.4, "comparable": True}
         )
         self.assertNotIn("eit_pct_by_model", deltas)
 
@@ -381,14 +388,16 @@ class ComputeDeltasTests(unittest.TestCase):
         old = {"date": "2026-08-24", "cave_score": 74}
         new = {"date": "2026-08-31", "sources": {"cave": {"cave_score": 80, "report_date": "x"}}}
         deltas = levers.compute_deltas(old, new)
-        self.assertEqual(deltas["cave_score"], {"old": 74, "new": 80, "delta": 6, "pct": 8.1})
+        self.assertEqual(deltas["cave_score"],
+            {"old": 74, "new": 80, "delta": 6, "pct": 8.1, "comparable": True})
 
     def test_empty_cave_source_leaves_cave_score_missing_instead_of_raising(self):
         old = {"date": "2026-08-24", "cave_score": 74}
         new = {"date": "2026-08-31", "sources": {"rtk": {"commands": 27173}, "cave": {}}}
         deltas = levers.compute_deltas(old, new)
         self.assertEqual(
-            deltas["cave_score"], {"old": 74, "new": None, "delta": None, "pct": None}
+            deltas["cave_score"],
+                {"old": 74, "new": None, "delta": None, "pct": None, "comparable": True}
         )
 
     def test_snapshot_counters_stay_out_of_the_diff(self):
@@ -623,11 +632,11 @@ class LedgerDiffTests(EnvIsolatedTestCase):
             self.assertEqual(payload["latest"], "2026-08-15")
             self.assertEqual(
                 payload["deltas"]["eit_per_turn"],
-                {"old": 1200, "new": 900, "delta": -300, "pct": -25.0},
+                {"old": 1200, "new": 900, "delta": -300, "pct": -25.0, "comparable": True},
             )
             self.assertEqual(
                 payload["deltas"]["ctx_p50"],
-                {"old": 1600, "new": 1400, "delta": -200, "pct": -12.5},
+                {"old": 1600, "new": 1400, "delta": -200, "pct": -12.5, "comparable": True},
             )
             texts = [e["text"] for e in payload["interventions"]]
             self.assertEqual(texts, ["mid-window-note", "latest-day-note"])
@@ -681,7 +690,7 @@ class LedgerDiffTests(EnvIsolatedTestCase):
             payload = json.loads(result.stdout)
             self.assertEqual(
                 payload["deltas"]["fixed_tax_b"],
-                {"old": None, "new": 2048, "delta": None, "pct": None},
+                {"old": None, "new": 2048, "delta": None, "pct": None, "comparable": True},
             )
 
             text_result = _run_ledger(["diff"], env)
@@ -750,10 +759,11 @@ class LedgerDiffTests(EnvIsolatedTestCase):
             result = _run_ledger(["diff", "--json"], env)
             payload = json.loads(result.stdout)
             self.assertEqual(
-                set(payload), {"baseline", "latest", "deltas", "interventions", "derived"}
+                set(payload),
+                {"baseline", "latest", "deltas", "interventions", "derived", "fingerprints"},
             )
             for delta in payload["deltas"].values():
-                self.assertEqual(set(delta), {"old", "new", "delta", "pct"})
+                self.assertEqual(set(delta), {"old", "new", "delta", "pct", "comparable"})
 
 
 def _git(repo: Path, *argv: str, env: dict | None = None) -> None:

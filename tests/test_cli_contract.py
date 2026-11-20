@@ -124,6 +124,7 @@ class CliContractTests(unittest.TestCase):
 
         self.assertEqual(payload, {
             "baseline": None, "latest": None, "deltas": {}, "interventions": [], "derived": [],
+            "fingerprints": {"always_loaded_files": "unknown", "measurement_config": "unknown"},
         })
 
     def test_backlog_lint_json_is_valid_without_a_backlog_file(self):
