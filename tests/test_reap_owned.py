@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from rigops import reap, reap_procs  # noqa: E402
+from rigops import reap, reap_owned, reap_procs  # noqa: E402
 
 from tests.test_reap import GitFixtureTestCase, _init_repo, _run_git  # noqa: E402
 
@@ -27,28 +27,28 @@ OUTSIDE = 4242
 class OwnedPidsTests(unittest.TestCase):
     def test_root_reparented_to_init_and_its_child_are_attributable(self):
         snap = {900001: proc(1), 900002: proc(900001)}
-        self.assertEqual(reap_procs.owned_pids({900001, 900002}, snap), set())
+        self.assertEqual(reap_owned.owned_pids({900001, 900002}, snap), set())
         self.assertEqual(reap_procs._filter_killable({900001, 900002}, snap), {900001, 900002})
 
     def test_root_with_a_live_parent_outside_is_owned_with_its_children(self):
         snap = {OUTSIDE: proc(1), 900001: proc(OUTSIDE), 900002: proc(900001),
                 900003: proc(900002)}
-        self.assertEqual(reap_procs.owned_pids({900001, 900002, 900003}, snap),
+        self.assertEqual(reap_owned.owned_pids({900001, 900002, 900003}, snap),
                          {900001, 900002, 900003})
 
     def test_mixed_tree_splits_by_top_most_rooted_ancestor(self):
         snap = {OUTSIDE: proc(1), 900001: proc(1), 900002: proc(900001),
                 900003: proc(OUTSIDE), 900004: proc(900003)}
         rooted = {900001, 900002, 900003, 900004}
-        self.assertEqual(reap_procs.owned_pids(rooted, snap), {900003, 900004})
+        self.assertEqual(reap_owned.owned_pids(rooted, snap), {900003, 900004})
 
     def test_walk_stops_at_the_first_parent_outside_the_rooted_set(self):
         snap = {900001: proc(900002), 900002: proc(1)}
-        self.assertEqual(reap_procs.owned_pids({900001}, snap), {900001})
+        self.assertEqual(reap_owned.owned_pids({900001}, snap), {900001})
 
     def test_ppid_cycle_does_not_loop(self):
         snap = {900001: proc(900002), 900002: proc(900001)}
-        self.assertEqual(reap_procs.owned_pids({900001, 900002}, snap), {900001, 900002})
+        self.assertEqual(reap_owned.owned_pids({900001, 900002}, snap), {900001, 900002})
 
 
 class OwnedRunTests(GitFixtureTestCase):
