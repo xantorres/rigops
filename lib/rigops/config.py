@@ -7,7 +7,13 @@ from pathlib import Path
 
 DEFAULTS = {
     "transcripts_dir": "~/.claude/projects",
-    "ledger": {"watch_projects": {}, "derive_interventions": []},
+    "ledger": {
+        "watch_projects": {},
+        "derive_interventions": [],
+        "extra_correction_patterns": [],
+        "correction_exclude_patterns": [],
+        "extra_denial_patterns": [],
+    },
     "fixed_tax": {"paths": [], "globs": []},
     "friction": {"headless_projects": []},
     "context": {"nudge_tiers": [250000, 350000, 500000], "rearm_tokens": 50000},

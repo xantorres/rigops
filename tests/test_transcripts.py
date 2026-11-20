@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -11,6 +12,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import transcripts  # noqa: E402
+from rigops.detector import BUILTIN, Detector  # noqa: E402
+
+from tests.support import es_detector  # noqa: E402
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "transcripts"
 
@@ -147,9 +151,9 @@ DENIAL_CASES = [
         True,
     ),
     (
-        "stale_backend_checkout",
+        "author_pattern_not_builtin",
         "STALE BACKEND CHECKOUT: acme-web 7 commits behind origin/main",
-        True,
+        False,
     ),
     ("operation_blocked_by_hook", "operation blocked by hook", True),
     (
@@ -166,7 +170,7 @@ class ClassifyDenialTests(unittest.TestCase):
     def test_table(self):
         for name, text, expected in DENIAL_CASES:
             with self.subTest(name):
-                self.assertEqual(transcripts.classify_denial(text), expected)
+                self.assertEqual(BUILTIN.is_denial(text), expected)
 
 
 CORRECTION_CASES = [
@@ -186,7 +190,7 @@ class IsCorrectionTests(unittest.TestCase):
     def test_table(self):
         for name, text, expected in CORRECTION_CASES:
             with self.subTest(name):
-                self.assertEqual(transcripts.is_correction(text), expected)
+                self.assertEqual(BUILTIN.is_correction(text), expected)
 
 
 class CollectFrictionWindowTests(unittest.TestCase):
@@ -242,9 +246,34 @@ class SpanishFrictionTests(unittest.TestCase):
                 transcripts.parse_ts("2026-11-03T00:00:00Z"),
                 transcripts.parse_ts("2026-11-04T00:00:00Z"),
                 transcripts_dir=tmp,
+                detector=es_detector(),
             )
         self.assertEqual(fr["prompts"], 4)
         self.assertEqual(fr["corrections"], 2)
+
+
+class ExtraDenialFrictionTests(unittest.TestCase):
+    def test_extra_denial_pattern_counts_an_error_result(self):
+        row = {
+            "type": "user",
+            "timestamp": "2026-11-03T12:00:00Z",
+            "sessionId": "s1",
+            "message": {"role": "user", "content": [{
+                "type": "tool_result", "is_error": True,
+                "content": "STALE BACKEND CHECKOUT: acme-web 7 commits behind origin/main",
+            }]},
+        }
+        window = (transcripts.parse_ts("2026-11-03T00:00:00Z"),
+                  transcripts.parse_ts("2026-11-04T00:00:00Z"))
+        with tempfile.TemporaryDirectory() as tmp:
+            _write_line(Path(tmp) / "-work-alpha" / "s1.jsonl", row)
+            plain = transcripts.collect_friction(*window, transcripts_dir=tmp)
+            extra = transcripts.collect_friction(
+                *window, transcripts_dir=tmp,
+                detector=Detector(extra_denial=(re.compile("stale backend checkout", re.I),)),
+            )
+        self.assertEqual((plain["denials"], plain["tool_errors"]), (0, 1))
+        self.assertEqual(extra["denials"], 1)
 
 
 class UndecodableFrictionTests(unittest.TestCase):

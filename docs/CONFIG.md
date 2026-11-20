@@ -64,6 +64,24 @@ A commit counts when it is not a merge, touches at least one of those paths and 
 {"ledger": {"derive_interventions": ["~/dotfiles", {"repo": "~/rig", "paths": ["rules/**", "law/**"]}]}}
 ```
 
+## `ledger` correction and denial patterns
+
+Three keys tune what the `corrections` and `denials` metrics and `rigops mine` count. Each is an array of regular expressions (Python `re`), default `[]`. Every entry is compiled with `IGNORECASE`; a non-array, a non-string entry or an entry that does not compile stops the command with `error: ledger.<key>[<index>]: <reason>`.
+
+- `extra_correction_patterns` - a human prompt counts as a correction when its *first non-blank line* is matched (`search`, anywhere in the line) by one of these, in addition to the built-in English rule (which anchors at the start of the line).
+- `correction_exclude_patterns` - a line matched (`search`) by one of these never counts, whether the built-in rule or an extra pattern found it. Use it for lines the built-in leading-`no` rule misreads, such as Romance-language statements.
+- `extra_denial_patterns` - an `is_error` tool result counts as a denial when its flattened text is matched (`search`) by one of these, in addition to the built-in set.
+
+Changing any of them changes `config_sha`, so `rigops ledger diff` shows `measurement config: changed`. `tests/fixtures/corrections/es.json` is a worked example for a Spanish-speaking rig.
+
+```json
+{"ledger": {
+  "extra_correction_patterns": ["^\\s*eso\\s+no\\b"],
+  "correction_exclude_patterns": ["^\\s*no\\s+se\\b"],
+  "extra_denial_patterns": ["checkout behind origin"]
+}}
+```
+
 ## `ledger.week_reports`
 
 A glob of weekly reports written by tools other than rigops. Type: string, default unset. No rigops command reads it. The `/rigops:week` ritual reads the matching file with the newest modification time and lists what it proposes beside its own findings. `rigops config get ledger.week_reports` exits `3` while the key is unset, and the ritual skips the read.

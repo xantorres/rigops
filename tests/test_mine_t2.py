@@ -8,10 +8,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from rigops import mine, mine_redact, transcripts  # noqa: E402
+from rigops import mine, mine_redact  # noqa: E402
+from rigops.detector import BUILTIN  # noqa: E402
 from rigops.retrieval import index, roots  # noqa: E402
 
-from tests.test_mine import NOW, _registry, _user, _write  # noqa: E402
+from tests.support import es_detector  # noqa: E402
+from tests.test_mine import NOW, _excluded, _registry, _user, _write  # noqa: E402
+
+_ES = es_detector()
 
 
 def _c(session: str, text: str, project: str = "-work-alpha") -> mine.Correction:
@@ -63,20 +67,20 @@ class SpanishStatementTests(unittest.TestCase):
                      "no lo toques", "no lo hagas asi", "no se toca el core",
                      "no hay que tocar el config"):
             with self.subTest(text=text):
-                self.assertFalse(mine.spanish_false_positive(text))
+                self.assertFalse(_excluded(text))
 
     def test_pushback_shapes_are_not_dropped(self):
         for text in ("no voy a leer nada de eso", "no lo puedes hacer tu o que",
                      "no seria mejor usar la cola", "no iré a leer todo eso"):
             with self.subTest(text=text):
-                self.assertFalse(mine.spanish_false_positive(text))
+                self.assertFalse(_excluded(text))
 
     def test_statements_still_dropped(self):
         for text in ("no se como hacerlo", "no hay nada de eso", "no tengo tiempo",
                      "no puedo abrirlo", "no hace nada", "no lo se", "no lo puedes bajar tu",
                      "no seria mejor cerrar ese pr?"):
             with self.subTest(text=text):
-                self.assertTrue(mine.spanish_false_positive(text))
+                self.assertTrue(_excluded(text))
 
 
 class SpanishDetectorTests(unittest.TestCase):
@@ -88,19 +92,18 @@ class SpanishDetectorTests(unittest.TestCase):
                      "ojo, eso rompe el build", "sigue roto, no has arreglado nada",
                      "oye porque no has puesto el nombre del modulo en la tabla"):
             with self.subTest(text=text):
-                self.assertTrue(mine.spanish_correction(text))
-                self.assertFalse(transcripts.is_correction(text))
+                self.assertEqual(_ES.classify(text), "extra")
 
     def test_bare_demonstrative_no_is_a_correction(self):
         for text in ("eso no", "Así no.", "esto no", "asi no!", "esto no...", "eso no\ncontinua",
                      "eso no, usa la otra rama", "esto no, hazlo con la cola"):
             with self.subTest(text=text):
-                self.assertTrue(mine.spanish_correction(text))
+                self.assertTrue(_ES.is_correction(text))
 
     def test_demonstrative_no_inside_a_question_is_not(self):
         for text in ("esto no me obliga a nada no?", "eso no?", "esto no lo hace el servidor no"):
             with self.subTest(text=text):
-                self.assertFalse(mine.spanish_correction(text))
+                self.assertFalse(_ES.is_correction(text))
 
     def test_ordinary_prompts_are_not_corrections(self):
         for text in ("eso es todo por hoy", "mal tiempo hoy en Madrid, revisa la reserva",
@@ -110,11 +113,11 @@ class SpanishDetectorTests(unittest.TestCase):
                      "si no has terminado, sigue con el parche",
                      "avisame hasta que no has visto el registro"):
             with self.subTest(text=text):
-                self.assertFalse(mine.spanish_correction(text))
+                self.assertFalse(_ES.is_correction(text))
 
     def test_shared_pattern_is_unchanged(self):
-        self.assertTrue(transcripts.is_correction("no, otra cosa"))
-        self.assertFalse(transcripts.is_correction("eso no"))
+        self.assertTrue(BUILTIN.is_correction("no, otra cosa"))
+        self.assertFalse(BUILTIN.is_correction("eso no"))
 
     def test_collect_adds_spanish_only_corrections_and_counts_them(self):
         tmp = tempfile.TemporaryDirectory()
@@ -122,8 +125,8 @@ class SpanishDetectorTests(unittest.TestCase):
         root = Path(tmp.name)
         _write(root / "-p" / "a.jsonl", _user("s1", "así no, quiero el diff completo"),
                _user("s1", "no, rename the column"), _user("s1", "hazme un resumen"))
-        harvest = mine.collect(None, root)
-        self.assertEqual(harvest.spanish_added, 1)
+        harvest = mine.collect(None, root, detector=_ES)
+        self.assertEqual(harvest.extra_added, 1)
         self.assertEqual(len(harvest.kept), 2)
         self.assertEqual(harvest.detected, 2)
 
@@ -162,8 +165,8 @@ class RedactionRuleTests(unittest.TestCase):
 
     def test_render_reports_the_count(self):
         registry = _registry(Path(tempfile.mkdtemp()), {"roots": []})
-        stats = {k: 0 for k in ("files", "prompts", "detected", "spanish_added",
-                                "spanish_filtered", "remaining", "groups", "deduped",
+        stats = {k: 0 for k in ("files", "prompts", "detected", "extra_added",
+                                "excluded", "remaining", "groups", "deduped",
                                 "dedupe_skipped")}
         out = mine.render(mine.Report(stats, [], [], broken_rules=3), registry, "90d")
         self.assertIn("redaction rules skipped as broken or unreadable: 3", out)
@@ -375,7 +378,7 @@ class PrefetchGateTests(unittest.TestCase):
 
     def test_the_dropped_section_says_only_groups_are_dropped(self):
         out = mine.render(mine.Report({k: 0 for k in (
-            "files", "prompts", "detected", "spanish_added", "spanish_filtered", "remaining",
+            "files", "prompts", "detected", "extra_added", "excluded", "remaining",
             "groups", "deduped", "dedupe_skipped")}, [], []), self.registry, "90d")
         self.assertIn("groups only", out)
 

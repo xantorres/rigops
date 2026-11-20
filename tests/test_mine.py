@@ -14,6 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from rigops import mine  # noqa: E402
 from rigops.retrieval import index, roots  # noqa: E402
 
+from tests.support import es_detector  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MINE = REPO_ROOT / "bin" / "rigops"
 NOW = dt.datetime(2026, 11, 3, 12, 0, tzinfo=dt.timezone.utc)
@@ -46,21 +48,28 @@ def _registry(tmp: Path, raw: dict) -> roots.Registry:
     return roots.load(path)
 
 
-class SpanishFilterTests(unittest.TestCase):
+_ES = es_detector()
+
+
+def _excluded(text):
+    return _ES.classify(text) == "excluded"
+
+
+class ExcludePatternTests(unittest.TestCase):
     def test_statements_are_not_corrections(self):
         for text in ("no se como hacerlo", "No hay nada de eso", "no tengo tiempo",
                      "no puedo abrirlo"):
             with self.subTest(text=text):
-                self.assertTrue(mine.spanish_false_positive(text))
+                self.assertTrue(_excluded(text))
 
     def test_real_corrections_survive(self):
         for text in ("no, es otra cosa", "no pero usa la otra", "no digas eso", "nope, wrong file",
                      "no mucho mas breve", "no es lo que pedi, vale"):
             with self.subTest(text=text):
-                self.assertFalse(mine.spanish_false_positive(text))
+                self.assertFalse(_excluded(text))
 
     def test_only_first_nonblank_line_counts(self):
-        self.assertTrue(mine.spanish_false_positive("\n\nno se que hacer\nno, otra cosa"))
+        self.assertTrue(_excluded("\n\nno se que hacer\nno, otra cosa"))
 
 
 class CollectTests(unittest.TestCase):
@@ -85,7 +94,7 @@ class CollectTests(unittest.TestCase):
         )
         _write(self.root / "-work-alpha" / "s1" / "subagents" / "a.jsonl",
                _user("s1", "no, subagent noise"))
-        harvest = mine.collect(NOW - dt.timedelta(days=90), self.root)
+        harvest = mine.collect(NOW - dt.timedelta(days=90), self.root, detector=_ES)
 
         self.assertEqual(harvest.files, 1)
         self.assertEqual(harvest.prompts, 4)
@@ -275,7 +284,7 @@ class HardeningTests(DedupeTests):
         grp = mine.Group(members=[], representative=mine.Correction("s", "p", NOW, "no, x"),
                          sessions=2)
         out = mine.render(mine.Report({k: 0 for k in (
-            "files", "prompts", "detected", "spanish_added", "spanish_filtered", "remaining",
+            "files", "prompts", "detected", "extra_added", "excluded", "remaining",
             "groups", "deduped",
             "dedupe_skipped")}, [mine.Entry(grp, hit)], []), registry, "90d")
         for leaked in ("jane", "Globex", "example"):

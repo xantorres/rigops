@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from rigops import transcripts
+from rigops.detector import BUILTIN, first_nonblank_line
 
 # "no se", "no hay" and friends read as a leading "no" but are statements or questions, except
 # the rule-shaped forms listed in the lookaheads.
@@ -57,12 +57,12 @@ QUESTION_END_RE = re.compile(r"(?:\?|\bno)\W*$", re.IGNORECASE)
 
 
 def statement(text: str) -> bool:
-    return bool(ES_STATEMENT_RE.match(transcripts._first_nonblank_line(text)))
+    return bool(ES_STATEMENT_RE.match(first_nonblank_line(text)))
 
 
 def correction(text: str) -> bool:
     """A Spanish correction the shared pattern does not accept; it never overrides that one."""
-    line = transcripts._first_nonblank_line(text)
+    line = first_nonblank_line(text)
     if BARE_NO_RE.match(line):
         return True
     if QUESTION_END_RE.search(line):
@@ -72,6 +72,6 @@ def correction(text: str) -> bool:
 
 def counted(text: str) -> bool:
     """The miner's kept rule: shared pattern minus Spanish statements, plus Spanish rebukes."""
-    if transcripts.is_correction(text):
+    if BUILTIN.is_correction(text):
         return not statement(text)
     return correction(text)

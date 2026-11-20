@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 
 from rigops import config as rigops_config
+from rigops.detector import BUILTIN, first_nonblank_line
 
 CTX_BUCKETS = [
     ("<50k", 0, 50_000),
@@ -18,48 +19,6 @@ CTX_BUCKETS = [
     ("300-500k", 300_000, 500_000),
     (">500k", 500_000, float("inf")),
 ]
-
-# Hardcoded, not config: these patterns define the friction measurement itself,
-# so moving them to config would break week-over-week comparability.
-_DENIAL_ALTERNATIVES = (
-    r"permission (for this action was )?deni",
-    r"denied by the .* classifier",
-    r"user (has )?denied",
-    r"blocked by .*hook",
-    r"requires approval",
-    r"operation blocked",
-    r"PreToolUse:.*(deny|blocked)",
-    r"permission to use .{0,160}denied",
-    r"has been denied",
-    r"user doesn'?t want to proceed",
-    r"tool use was rejected",
-    r"hook.{0,40}(denied|blocked)",
-    r"(denied|blocked).{0,40}hook",
-    r"checkout behind origin",
-    r"stale backend checkout",
-)
-DENIAL_PATTERNS = re.compile("|".join(_DENIAL_ALTERNATIVES), re.IGNORECASE)
-CORRECTION_RE = re.compile(
-    r"^\s*(?:no(?![\w-])|nope\b|wrong\b|not what\b|undo\b|revert\b|"
-    r"stop(?=\s*(?:[-,.!:;]|$))|wait(?=\s*(?:[-,.!:;]|$)))",
-    re.IGNORECASE,
-)
-
-
-def classify_denial(text: str) -> bool:
-    return bool(DENIAL_PATTERNS.search(text))
-
-
-def _first_nonblank_line(text: str) -> str:
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped:
-            return stripped
-    return ""
-
-
-def is_correction(text: str) -> bool:
-    return bool(CORRECTION_RE.match(_first_nonblank_line(text)))
 
 
 def default_transcripts_dir() -> Path:
@@ -284,15 +243,13 @@ def _flatten_tool_result_text(content) -> str:
 SKIP_PREFIXES = ("<system-reminder", "<command-", "Caveat:", "[Request interrupted")
 
 
-def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -> dict:
+def collect_friction(since, until, transcripts_dir=None, headless_projects=(),
+                     detector=BUILTIN) -> dict:
     """Count permission denials, self-corrections, tool errors, and human prompts from user-role
     transcript rows. Mirrors collect_turns' file walk, rel-path derivation, and
     window filter but keeps "user" rows; subagent transcripts are excluded since
     subagent tool errors are not user friction.
     """
-    # Lazy: mine_es imports this module.
-    from rigops import mine_es
-
     root = _resolve_dir(transcripts_dir)
     headless = tuple(headless_projects)
     denials = 0
@@ -351,7 +308,7 @@ def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -
                             continue
                         tool_errors += 1
                         text = _flatten_tool_result_text(item.get("content"))
-                        if classify_denial(text):
+                        if detector.is_denial(text):
                             denials += 1
                             if is_headless:
                                 denials_headless += 1
@@ -359,12 +316,12 @@ def collect_friction(since, until, transcripts_dir=None, headless_projects=()) -
                         text = item.get("text")
                         if not isinstance(text, str):
                             continue
-                        if _first_nonblank_line(text).startswith(SKIP_PREFIXES):
+                        if first_nonblank_line(text).startswith(SKIP_PREFIXES):
                             continue
                         if not prompted:
                             prompts += 1
                             prompted = True
-                        if mine_es.counted(text):
+                        if detector.is_correction(text):
                             corrections += 1
                             break
     return {

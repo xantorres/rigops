@@ -1,0 +1,12 @@
+{
+  "ledger": {
+    "extra_correction_patterns": [
+      "^\\s*(?:(?:eso|esto|as[ií])\\s+no|(?:ya\\s+)?te\\s+(?:dije|he\\s+dicho)\\s+que\\s+no|para(?:\\s+ya)?)\\s*[.!]*\\s*$",
+      "^(?!.*(?:\\?|\\bno)\\W*$)\\s*(?:(?P<demo>(?:(?:eso|esto)\\s+no(?=\\s*[,.!:;]|\\s*$)|(?:eso|esto)\\s+no\\s+(?:(?:es|era)\\s+(?:lo\\s+que|eso|esto|as[ií]|correcto|lo\\s+mismo)|funciona|sirve|vale|compila|quiero|(?:lo\\s+)?(?:hagas|uses|toques|borres|cambies|muevas|pongas|digas|inventes|escribas))|as[ií]\\s+no)\\b)|(?P<mal>mal(?=\\s*[,.!:;]|\\s*$))|(?P<esta_mal>(?:(?:eso|esto)\\s+)?est[aá]\\s+(?:mal|incorrecto)\\b|(?:incorrecto|falso)(?=\\s*[,.!:;]|\\s*$))|(?P<otra_vez>otra\\s+vez\\s+(?:lo\\s+mismo|igual|mal)\\b)|(?P<te_dije>(?:ya\\s+)?te\\s+(?:dije|he\\s+dicho)\\s+que\\s+(?:no|nunca|jam[aá]s|sin|ni)\\b)|(?P<deja_de>deja\\s+de\\s+(?:resumir|repetir|explicar|preguntar|hacer|inventar|a[nñ]adir|agregar|borrar|tocar|usar|cambiar|escribir|poner|mover|comentar|decir|narrar|listar|pedir|confirmar|formatear|romper|ignorar|asumir|suponer|simplificar|reescribir|editar|crear|generar)\\b)|(?P<nunca_mas>(?:nunca|jam[aá]s)\\s+m[aá]s\\s+(?:me\\s+|lo\\s+|la\\s+)?\\w{3,}(?:es|as)\\b)|(?P<ojo>(?:ojo|cuidado)\\s*[,.!:;]\\s*(?:que\\s+)?(?:eso|esto|as[ií]|rompe|otra\\s+vez|no\\s+(?:me|lo|la|te)\\b|no\\s+(?:hagas|uses|toques|borres|cambies|muevas|pongas|digas|inventes|escribas)|te\\s+(?:has|olvid)|(?:lo\\s+)?has\\b)))",
+      "^(?!.*(?:\\?|\\bno)\\W*$).*?(?:^|[,;:.!?]\\s*|\\b(?:pero|y|porque|oye|vale|mira)\\s+|\\bpor\\s*qu[eé]\\s+)no\\s+(?:has|hiciste|pusiste|arreglaste|entendiste)\\s+(?!(?:\\w+\\s+)?nada\\s+(?:mal|raro|malo)\\b)\\w+"
+    ],
+    "correction_exclude_patterns": [
+      "^\\s*no\\s+(?:se\\b(?!\\s+(?:toca|tocan|debe|deben|puede|pueden|hace\\s+falta)\\b)|sé\\b|tengo\\b|puedo\\b|(?:seria|sería)\\b(?=[^?]*\\?\\s*$)|es\\b(?!\\s+(?:eso|esto|ese|esa|lo\\s+que|asi|así|lo\\s+mismo|correcto|ahi|ahí)\\b)|hay\\b(?!\\s+que\\b)|hace\\b(?!\\s+falta\\b)|(?:hiciste|has\\s+hecho)\\s+nada\\s+(?:mal|raro|malo)\\b|lo\\s+puedes\\b(?!.*\\bo\\s+qu[eé]\\W*$)|lo\\s+(?:se|sé|tengo|puedo|sabes|encuentro|veo|entiendo|consigo|recuerdo)\\b)"
+    ]
+  }
+}

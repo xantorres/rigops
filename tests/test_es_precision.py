@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from rigops import mine_es, transcripts  # noqa: E402
+from tests.support import es_detector  # noqa: E402
 
 ORDINARY = (
     "no hiciste nada mal", "no has hecho nada mal, sigue asi", "no hiciste nada raro con el commit",
@@ -40,9 +40,11 @@ REBUKES = (
 )
 
 
+DETECTOR = es_detector()
+
+
 def _kept(text):
-    shared = transcripts.is_correction(text)
-    return (shared and not mine_es.statement(text)) or mine_es.correction(text)
+    return DETECTOR.is_correction(text)
 
 
 class SpanishPrecisionTests(unittest.TestCase):
@@ -68,9 +70,9 @@ class SpanishPrecisionTests(unittest.TestCase):
                 self.assertFalse(_kept(text))
 
     def test_reproach_needs_a_clause_start(self):
-        self.assertTrue(mine_es.correction("vale, no has puesto el test"))
-        self.assertFalse(mine_es.correction("creo que sin duda no has terminado de leerlo"))
-        self.assertFalse(mine_es.correction("si no has terminado, sigue con el parche"))
+        self.assertTrue(_kept("vale, no has puesto el test"))
+        self.assertFalse(_kept("creo que sin duda no has terminado de leerlo"))
+        self.assertFalse(_kept("si no has terminado, sigue con el parche"))
 
 
 if __name__ == "__main__":

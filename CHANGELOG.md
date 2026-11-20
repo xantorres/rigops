@@ -9,7 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ledger.extra_correction_patterns`, `ledger.correction_exclude_patterns` and `ledger.extra_denial_patterns` extend the correction and denial detector shared by the ledger and `rigops mine`. The Spanish rules are no longer built in; `tests/fixtures/corrections/es.json` holds them as a config overlay.
 - Ledger rows carry `version`, `fixed_tax_sha` and `config_sha`. `ledger diff` marks a delta `not comparable` when the metric was redefined between the two rows' versions, and reports whether the always-loaded files and the measurement config changed.
+
+### Changed
+
+- The built-in correction rule no longer has Spanish handling, and the denial set drops `checkout behind origin` and `stale backend checkout`. Add them back with `ledger.extra_correction_patterns`, `ledger.correction_exclude_patterns` and `ledger.extra_denial_patterns`.
+- `rigops mine` reports "extra correction patterns" and "correction exclude patterns" counts instead of the Spanish ones.
 
 ## [0.10.1] - 2026-11-20
 

@@ -10,6 +10,8 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
+from rigops import config as rigops_config  # noqa: E402
+from rigops.detector import Detector  # noqa: E402
 from rigops.sources import caveman, ccusage, rtk  # noqa: E402
 
 _ADAPTERS = (rtk, ccusage, caveman)
@@ -35,3 +37,10 @@ def path_with_failing_sources(path: str) -> str:
             stub.write_text("#!/bin/sh\nexit 1\n")
             stub.chmod(0o755)
     return f"{_stub_dir}{os.pathsep}{path}"
+
+
+ES_OVERLAY = Path(__file__).resolve().parent / "fixtures" / "corrections" / "es.json"
+
+
+def es_detector() -> Detector:
+    return Detector.from_config(rigops_config.load(ES_OVERLAY))

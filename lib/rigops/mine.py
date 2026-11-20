@@ -12,7 +12,9 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from rigops import mine_es, transcripts
+from rigops import config as rigops_config
+from rigops import transcripts
+from rigops.detector import BUILTIN, Detector, first_nonblank_line
 from rigops.mine_dedupe import (  # noqa: F401
     DEDUPE_MAX_RANK,
     check,
@@ -44,7 +46,7 @@ class Harvest:
     detected: int = 0
     kept: list = field(default_factory=list)
     filtered: list = field(default_factory=list)
-    spanish_added: int = 0
+    extra_added: int = 0
 
 
 @dataclass
@@ -72,17 +74,13 @@ def parse_since(value: str, now: dt.datetime) -> dt.datetime:
         raise ValueError(f"--since {value!r} is out of range") from None
 
 
-spanish_false_positive = mine_es.statement
-spanish_correction = mine_es.correction
-
-
 def _text_items(content):
     if isinstance(content, str):
         return [{"type": "text", "text": content}]
     return content if isinstance(content, list) else []
 
 
-def collect(since, transcripts_dir=None, until=None) -> Harvest:
+def collect(since, transcripts_dir=None, until=None, detector=BUILTIN) -> Harvest:
     """Corrections from human prompts, walking transcripts the way collect_friction does."""
     root = transcripts._resolve_dir(transcripts_dir)
     harvest = Harvest()
@@ -127,24 +125,23 @@ def collect(since, transcripts_dir=None, until=None) -> Harvest:
                     text = item.get("text")
                     if not isinstance(text, str):
                         continue
-                    first = transcripts._first_nonblank_line(text)
+                    first = first_nonblank_line(text)
                     if first.startswith(transcripts.SKIP_PREFIXES):
                         continue
                     if not prompted:
                         harvest.prompts += 1
                         prompted = True
-                    shared = transcripts.is_correction(text)
-                    if not shared and not mine_es.correction(text):
+                    found_by = detector.classify(text)
+                    if found_by == "none":
                         continue
                     harvest.detected += 1
-                    harvest.spanish_added += not shared
+                    harvest.extra_added += found_by == "extra"
                     sid = obj.get("sessionId")
                     found = Correction(
                         session=sid if isinstance(sid, str) and sid else Path(path).stem,
                         project=project, ts=ts, text=first[:KEEP_TEXT],
                     )
-                    dropped = shared and mine_es.statement(text)
-                    bucket = harvest.filtered if dropped else harvest.kept
+                    bucket = harvest.filtered if found_by == "excluded" else harvest.kept
                     bucket.append(found)
                     break
     return harvest
@@ -159,10 +156,11 @@ def _label_realms(registry, g: Group) -> None:
         g.realm += "+unmapped"
 
 
-def run(since, transcripts_dir, registry, max_rank=None, min_sessions=MIN_SESSIONS) -> Report:
+def run(since, transcripts_dir, registry, max_rank=None, min_sessions=MIN_SESSIONS,
+        detector=BUILTIN) -> Report:
     max_rank = dedupe_gate(registry) if max_rank is None else max_rank
     index_ready = Path(registry.db_path).exists()
-    harvest = collect(since, transcripts_dir)
+    harvest = collect(since, transcripts_dir, detector=detector)
     groups = group(harvest.kept, min_sessions=min_sessions)
     kept, discarded, skipped = [], [], 0
     for g in groups:
@@ -180,8 +178,8 @@ def run(since, transcripts_dir, registry, max_rank=None, min_sessions=MIN_SESSIO
         "files": harvest.files,
         "prompts": harvest.prompts,
         "detected": harvest.detected,
-        "spanish_added": harvest.spanish_added,
-        "spanish_filtered": len(harvest.filtered),
+        "extra_added": harvest.extra_added,
+        "excluded": len(harvest.filtered),
         "remaining": len(harvest.kept),
         "groups": len(groups),
         "deduped": len(discarded),
@@ -211,8 +209,8 @@ def render(report: Report, registry, since_label: str) -> str:
         f"- transcripts walked: {s['files']}",
         f"- human prompts: {s['prompts']}",
         f"- corrections detected: {s['detected']}",
-        f"- of those, found by the Spanish detector: {s['spanish_added']}",
-        f"- filtered by the Spanish filter: {s['spanish_filtered']}",
+        f"- of those, found only by extra correction patterns: {s['extra_added']}",
+        f"- dropped by correction exclude patterns: {s['excluded']}",
         f"- corrections after the filter: {s['remaining']}",
         f"- groups: {s['groups']}",
         f"- groups dropped by memory dedupe: {s['deduped']}",
@@ -250,6 +248,7 @@ def main(argv=None) -> int:
         print("rigops mine: only --dry-run is supported; the miner never writes memory",
               file=sys.stderr)
         return 2
+    detector = Detector.from_config(rigops_config.load())
     try:
         since = parse_since(args.since, dt.datetime.now(dt.timezone.utc))
     except ValueError as exc:
@@ -263,7 +262,8 @@ def main(argv=None) -> int:
     if not registry.path.is_file():
         print(f"rigops mine: registry not found: {registry.path}", file=sys.stderr)
         return 2
-    report = run(since, args.transcripts_dir, registry, min_sessions=args.min_sessions)
+    report = run(since, args.transcripts_dir, registry, min_sessions=args.min_sessions,
+                 detector=detector)
     sys.stdout.reconfigure(errors="replace")
     print(render(report, registry, args.since))
     return 0

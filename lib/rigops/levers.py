@@ -11,6 +11,7 @@ from pathlib import Path
 
 from rigops import config as rigops_config
 from rigops import core, cost, fmt, ledger_row, modelmix, rebuilds, starts, transcripts
+from rigops.detector import Detector
 from rigops.sources import caveman, ccusage, command, rtk
 
 WINDOW_DAYS = 7
@@ -176,7 +177,8 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
     tier3 = nudge_tiers[2] if isinstance(nudge_tiers, list) and len(nudge_tiers) >= 3 else None
     headless = tuple(rigops_config.get(cfg, "friction.headless_projects", []) or [])
     fr = transcripts.collect_friction(
-        since, until, transcripts_dir=transcripts_dir, headless_projects=headless
+        since, until, transcripts_dir=transcripts_dir, headless_projects=headless,
+        detector=Detector.from_config(cfg),
     )
     win30 = [t for t in turns if since_30 <= t["ts"] < until]
     n = len(win)
