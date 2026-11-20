@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-20
+
 ### Upgrading from 0.10.x
 
 - `reaper.roots` now defaults to `[]`; it was the home projects directory. Set `reaper.roots` to the directories to scan to keep the old behaviour. Until then `rigops reap` prints one line to stderr and exits 0, so a scheduled run no longer scans anything; `--root` and `--repo` still do.
