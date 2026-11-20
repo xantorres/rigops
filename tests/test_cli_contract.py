@@ -253,7 +253,7 @@ class CliContractTests(unittest.TestCase):
         config_only = self.run_cmd("doctor", "--config-only")
 
         self.assertEqual(proc.returncode, config_only.returncode, proc.stderr)
-        note = "note: no job registry at ~/.config/rigops/registry.md; job checks skipped"
+        note = "note: no job registry at ~/xdg-config/rigops/registry.md; job checks skipped"
         self.assertEqual(proc.stderr.strip().splitlines(), [note])
         self.assertTrue((self.home / "xdg-state" / "rigops" / "doctor" / "gates.json").exists())
 
