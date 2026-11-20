@@ -131,6 +131,8 @@ def read_jsonl(path) -> list:
             row = json.loads(chunk.decode("utf-8"))
         except ValueError as exc:
             raise MalformedJsonl(f"malformed JSON line in {path}:{lineno}: {exc}") from exc
+        if not isinstance(row, dict):
+            raise MalformedJsonl(f"row in {path}:{lineno} is not a JSON object")
         if row_version(row) > VERSION:
             raise MalformedJsonl(
                 f"row in {path}:{lineno} has version {row['version']}, newer than this "

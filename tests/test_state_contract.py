@@ -230,6 +230,17 @@ class LockedRunTests(Sandbox):
         with state.locked(lock_target):
             proc = self.spawn(args)
             time.sleep(1.5)
+    def test_a_row_that_is_not_an_object_is_malformed_for_a_strict_reader(self):
+        for bad in ("5\n", "[1]\n", '"text"\n'):
+            with self.subTest(bad):
+                shutil.rmtree(self.state, ignore_errors=True)
+                self.seeded_with(bad)
+                with self.assertRaises(state.MalformedJsonl):
+                    state.read_jsonl(self.state / "ledger.jsonl")
+                proc = self.run_cmd(["ledger", "write", "--dry-run"])
+                self.assertEqual(proc.returncode, 2, proc.stderr)
+                self.assertNotIn("Traceback", proc.stderr)
+
             self.assertIsNone(proc.poll(), "ran while the lock was held")
         out, err = proc.communicate(timeout=60)
         self.assertEqual(proc.returncode, 0, err)

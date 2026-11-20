@@ -158,6 +158,9 @@ class SubprocessExitCodes(unittest.TestCase):
             ("reap --apply refuses a writable config", ["reap", "--apply", *root], {}, 2, 0o664),
             ("reap --apply runs with a 0644 config", ["reap", "--apply", *root], {}, 0, 0o644),
             ("reap preview ignores a writable config", ["reap", *root], {}, 0, 0o664),
+            ("tax --starts unreadable --since", ["tax", "--starts", "--since", "garbage"], {}, 2),
+            ("tax --dead unreadable --until", ["tax", "--dead", "--until", "garbage"], {}, 2),
+            ("eit unreadable --since", ["eit", "--since", "garbage"], {}, 2),
         ]
         if os.geteuid() != 0:
             self._unreadable_rule()

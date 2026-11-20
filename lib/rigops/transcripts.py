@@ -10,6 +10,7 @@ from pathlib import Path
 
 from rigops import config as rigops_config
 from rigops.detector import BUILTIN, first_nonblank_line
+from rigops.errors import RigopsError
 
 CTX_BUCKETS = [
     ("<50k", 0, 50_000),
@@ -74,7 +75,11 @@ def parse_bound(value, now):
     if m:
         return now - dt.timedelta(days=int(m.group(1)))
     s = value.replace("Z", "+00:00")
-    parsed = dt.datetime.fromisoformat(s)
+    try:
+        parsed = dt.datetime.fromisoformat(s)
+    except ValueError as exc:
+        raise RigopsError(
+            f"cannot read the date {value!r}: use an ISO date, 'today' or '-Nd'") from exc
     if parsed.tzinfo is None:
         parsed = parsed.astimezone()
     return parsed.astimezone(dt.timezone.utc)
