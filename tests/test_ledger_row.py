@@ -71,6 +71,11 @@ class ComparabilityTests(unittest.TestCase):
         self.assertEqual(deltas["turns"]["delta"], 2)
         self.assertNotIn("version", deltas)
 
+    def test_denials_headless_is_not_comparable_across_v0_v1(self):
+        old = {"date": "2026-08-08", "denials_headless": 1}
+        new = {"version": 1, "date": "2026-08-15", "denials_headless": 3}
+        self.assertFalse(ledger_row.comparable("denials_headless", old, new))
+
     def test_same_version_rows_stay_comparable(self):
         old = {"version": 1, "date": "a", "corrections": 2}
         new = {"version": 1, "date": "b", "corrections": 5}

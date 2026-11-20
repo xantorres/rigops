@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 ROW_VERSION = 1
-REDEFINED_METRICS = {1: frozenset({"corrections", "denials"})}
+REDEFINED_METRICS = {1: frozenset({"corrections", "denials", "denials_headless"})}
 CONFIG_SECTIONS = ("ledger", "fixed_tax", "sources", "transcripts_dir")
 
 
