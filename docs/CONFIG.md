@@ -134,7 +134,7 @@ Config for the plugin's `rigops hook` command and the statusline example (the `d
 
 Config for `rigops doctor` (see [REGISTRY.md](REGISTRY.md) for the judgment model this drives).
 
-- `registry` (`string`, default `~/.config/rigops/registry.md`) - path to the `rigops.v1` registry file. When the default path does not exist, doctor prints one `note:` line on stderr, treats the fleet as empty and runs the rest (config checks, gates record); `--list` prints an empty list. A missing `--registry PATH` is still an error and exits 1.
+- `registry` (`string`, default `~/.config/rigops/registry.md`) - path to the `rigops.v1` registry file. When the default path does not exist, doctor prints one `note:` line on stderr, treats the fleet as empty and runs the rest (config checks, gates record); `--list` prints an empty list. A missing `--registry PATH`, or a missing non-default `registry`, is still an error and exits 1.
 - `label_prefix` (`array<string>`, default `["local."]`) - launchd label prefixes tried, in order, to guess a registry item's label when it has no explicit `plist:`. A guess only counts when it's both currently loaded in launchd *and* starts with one of these prefixes. The pointer check also reads them: a prefix ending in a dot followed by a hyphenated name (`user.sync-job`) in a scanned file must be a loaded label, on top of the `com.` and `local.` labels it always checks.
 - `kill_grace_s` (`number`, default `5`) - seconds between SIGTERM and SIGKILL for a hung job.
 - `heal_cooldown_h` (`number`, default `12`) - hours a repeat auto-heal of the same job id is suppressed after healing it once; the action becomes `notify` instead of `kickstart` while cooling down.

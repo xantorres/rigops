@@ -261,6 +261,18 @@ class CliContractTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn("registry file not found", proc.stderr)
 
+    def test_doctor_with_a_missing_configured_registry_exits_1(self):
+        missing = self.home / "custom-registry.md"
+
+        config = {"doctor": {"registry": str(missing)}}
+
+        proc = self.run_cmd("doctor", "--supervisor", "none", config=config)
+
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("registry file not found", proc.stderr)
+        self.assertIn(str(missing), proc.stderr)
+        self.assertNotIn("Traceback", proc.stderr)
+
     def test_stable_commands_without_a_config_file_never_traceback(self):
         forms = [
             ("authprobe",), ("backlog", "lint"), ("config", "check"),
