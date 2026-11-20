@@ -177,7 +177,7 @@ class CheckBudgetTests(unittest.TestCase):
             always = claude_dir / "rules" / "always.md"
             always.write_text("always-on body with no frontmatter\n")
             with mock.patch.object(core, "CLAUDE_DIR", claude_dir):
-                members = check_budget.members({})
+                members = check_budget.members()
             self.assertNotIn(scoped, members)
             self.assertIn(always, members)
 
@@ -649,7 +649,7 @@ class CheckBudgetMembersTests(unittest.TestCase):
                 "doctor": {"budget": {"always_on_tokens": 10}},
             }
             with mock.patch.object(core, "CLAUDE_DIR", claude_dir):
-                members = check_budget.members(cfg)
+                members = check_budget.members()
                 findings = check_budget.run(cfg)
         self.assertEqual(members, [])
         self.assertEqual(findings, [])
@@ -666,7 +666,7 @@ class CheckBudgetMembersTests(unittest.TestCase):
             index.parent.mkdir(parents=True)
             index.write_text("index\n")
             with mock.patch.object(core, "CLAUDE_DIR", claude_dir):
-                members = check_budget.members({})
+                members = check_budget.members()
         self.assertEqual(members, [law, rule, index])
 
 

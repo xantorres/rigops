@@ -43,7 +43,7 @@ def _memory_index():
     return indexes[:1]
 
 
-def members(cfg):
+def members():
     files = []
     law = core.CLAUDE_DIR / "CLAUDE.md"
     if law.is_file():
@@ -66,12 +66,12 @@ def _total(files):
 
 
 def tokens(cfg):
-    return _total(members(cfg))
+    return _total(members())
 
 
 def run(cfg):
     ceiling = core.cfg_get(cfg, "doctor.budget.always_on_tokens", DEFAULT_CEILING)
-    files = members(cfg)
+    files = members()
     total = _total(files)
     if total <= ceiling:
         return []

@@ -175,7 +175,7 @@ def main(argv=None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="print the report; the only mode")
     ap.add_argument("--since", default="90d", help="window such as 90d (default 90d)")
     ap.add_argument("--min-sessions", type=int, default=MIN_SESSIONS,
-                    help="sessions a group must span; 1 lists single corrections, never dropped")
+                    help="sessions a group must span to be listed; 1 lists single corrections")
     ap.add_argument("--transcripts-dir", default=None)
     args = ap.parse_args(argv)
     if not args.dry_run:
