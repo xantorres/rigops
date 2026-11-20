@@ -14,9 +14,9 @@ A missing config file is not an error: every command runs on built-in defaults a
 
 Commands:
 
-- `rigops config get <dotted.key>` - prints the value at that dotted path in the merged config. Dicts/lists print as compact JSON; scalars print bare. Exits `1` if the key isn't present anywhere in the merged config (including defaults).
+- `rigops config get <dotted.key>` - prints the value at that dotted path in the merged config as compact JSON with sorted keys: strings are quoted, so `rigops config get transcripts_dir` prints `"~/.claude/projects"`. Exits `1` with nothing on stdout if the key isn't present anywhere in the merged config (including defaults).
 - `rigops config path` - prints the resolved config file path (the file need not exist).
-- `rigops config check` - loads the config (prints the load error to stderr and exits `2` on failure), warns on stderr about any top-level key not recognized by the schema, then prints `config: OK (<path>)`.
+- `rigops config check` - loads and validates the config (prints the error to stderr and exits `2` on failure), then reports on stderr every unknown key at any depth, one line each, and every key that 0.10 read and 0.11 dropped as `removed in 0.11: <key> (<note>)`. Neither changes the exit code. It ends with `config: OK (<path>)`.
 
 All paths anywhere in config accept `~` and `$VAR` expansion.
 
@@ -318,6 +318,110 @@ Defaults for `rigops eval run` (see [EVAL.md](EVAL.md)). Each key has a matching
   }
 }
 ```
+
+## Validation
+
+Every command loads the config through one validator driven by the key table below. A known key with the wrong type stops the command with exit `2` and one line naming the full path, for example `error: config key doctor.levers.max_age_days: expected integer, got string`. Array entries show as `path[i]`, entries of an open map as `path.name`.
+
+- `integer` rejects JSON booleans; `number` accepts an integer or a float and rejects booleans.
+- `object of X` is an open map: any name is allowed, each value must be `X`.
+- `janitor.rules` entries are a tagged union on `action` (default `report`); an unknown action is an error.
+- A key that is not in the table is never an error and never prints at run time. `rigops config check` lists it. `rigops doctor` prints one `info:` line naming the unknown keys, and `rigops doctor --json` carries them in `unknown_config_keys`. Neither is a finding and neither changes the exit code or the gates record.
+- Keys inside open maps, and inside entries of `array of object` keys, are not audited.
+
+### Removed keys
+
+These prefixes were read by 0.10 and are gone. They are never type-checked and print nothing anywhere except `rigops config check`, so a config that still carries them (for a 0.10 install sharing the file) behaves exactly as without them. `context.card.doctor_max_age_h` is still read.
+
+| Prefix | Note |
+|---|---|
+| `context.preload` | the card left; nothing reads it |
+| `context.card` | the card left; only context.card.doctor_max_age_h is still read, by the hook |
+| `context.nudges_path` | the prompt nudge left |
+| `context.prompt_nudge` | the prompt nudge left |
+| `doctor.imports` | the imports check left |
+| `doctor.plans` | the plans check left |
+| `doctor.rtk` | the rtk check left; pin a version with a doctor.checks.custom entry |
+| `render` | the render command left |
+| `retrieval` | the retrieval subsystem left |
+| `sources.rtk` | the rtk source is not built in; add a sources.custom entry |
+| `sources.caveman` | the caveman source is not built in; add a sources.custom entry |
+
+## Key reference
+
+Every key the code reads. "none" means no built-in default: the key is absent until set.
+
+| Key | Type | Default | What it does |
+|---|---|---|---|
+| `transcripts_dir` | string | `"~/.claude/projects"` | Root of the Claude Code project transcripts. |
+| `ledger.watch_projects` | object of string | `{}` | Column name to transcript-path substring. |
+| `ledger.derive_interventions` | array of string or object | `[]` | Repos whose commits count as interventions. |
+| `ledger.extra_correction_patterns` | array of string | `[]` | Regexes that also count a prompt as a correction. |
+| `ledger.correction_exclude_patterns` | array of string | `[]` | Regexes that stop a line counting as a correction. |
+| `ledger.extra_denial_patterns` | array of string | `[]` | Regexes that also count a tool error as a denial. |
+| `ledger.week_reports` | string | none | Glob of weekly reports written by other tools. |
+| `fixed_tax.paths` | array of string | `[]` | Files always counted toward the fixed tax. |
+| `fixed_tax.globs` | array of string | `[]` | Globs of always-loaded files counted toward the fixed tax. |
+| `friction.headless_projects` | array of string | `[]` | Transcript-path substrings counted as headless. |
+| `context.nudge_tiers` | array of integer | `[250000,350000,500000]` | Ascending token thresholds for the context nudge. |
+| `context.rearm_tokens` | integer | `50000` | Token climb needed to re-fire the nudge. |
+| `context.card.doctor_max_age_h` | integer | `2` | Hours before a doctor gate record counts as stale. |
+| `doctor.registry` | string | `"~/.config/rigops/registry.md"` | Path of the job registry file. |
+| `doctor.label_prefix` | array of string | `["local."]` | launchd label prefixes tried for a registry item. |
+| `doctor.kill_grace_s` | number | `5` | Seconds between SIGTERM and SIGKILL for a hung job. |
+| `doctor.heal_cooldown_h` | number | `12` | Hours a repeat heal of the same job is suppressed. |
+| `doctor.checks.custom` | array of object | `[]` | Custom checks judged by exit code. |
+| `doctor.checks.disk_free` | object or null | `null` | Disk free check; null skips it. |
+| `doctor.notify_command` | string | `""` | Command run with the report path when a page is due. |
+| `doctor.cause_policy` | string | `"off"` | Failure-cause policy: off, shadow or on. |
+| `doctor.cause_probe_command` | string | `""` | Command whose exit 0 releases one held kick. |
+| `doctor.budget.always_on_tokens` | integer | `6000` | Ceiling for the always-loaded instruction tokens. |
+| `doctor.levers.rules` | object of any value | `{}` | Lever rules keyed by ledger column. |
+| `doctor.levers.defaults` | boolean | `true` | False drops the built-in lever rules. |
+| `doctor.levers.max_age_days` | integer | `10` | Days before the newest ledger row is stale. |
+| `doctor.memory.sources` | array of string | `["~/.claude/projects/*/memory/*.md"]` | Globs of memory notes to check. |
+| `doctor.memory.index_max_lines` | integer | `150` | Line cap for a memory index. |
+| `doctor.memory.index_max_bytes` | integer | `20000` | Byte cap for a memory index. |
+| `doctor.mcp.stdio_allow` | array of string | `[]` | stdio MCP server names the mcp check accepts. |
+| `doctor.pointers.sources` | array of string | none | Files the pointer check scans; unset uses a built-in list. |
+| `doctor.pointers.skill_roots` | array of string | none | Roots skills resolve against; unset uses a built-in list. |
+| `doctor.pointers.agent_roots` | array of string | none | Roots agents resolve against; unset uses a built-in list. |
+| `doctor.pointers.memory_roots` | array of string | none | Roots a memory note's paths must resolve under; unset uses a built-in list. |
+| `doctor.pointers.ignore_prefixes` | array of string | none | Path prefixes the pointer check skips; unset uses a built-in list. |
+| `doctor.pointers.ignore_segments` | array of string | none | Placeholder path segments to skip; unset uses a built-in list. |
+| `doctor.pointers.known_mcp` | array of string | none | Extra MCP server names the pointer check accepts. |
+| `doctor.pointers.known_agents` | array of string | none | Extra agent names the pointer check accepts. |
+| `doctor.pointers.known_skills` | array of string | none | Extra skill names the pointer check accepts. |
+| `doctor.pointers.known_models` | array of string | none | Model ids the pointer check accepts; unset uses a built-in list. |
+| `reaper.roots` | array of string | `[]` | Trees scanned for repositories. |
+| `reaper.sessions_dir` | string | `"~/.claude/sessions"` | Directory of live-session JSON files. |
+| `reaper.grace_days` | integer | `14` | Age of an unmerged branch tip before it is reapable. |
+| `reaper.max_kills_per_tree` | integer | `20` | More matched processes than this under one worktree stops the reap. |
+| `reaper.orphan_min_age_s` | integer | `172800` | Minimum runtime before a build daemon counts as orphaned. |
+| `reaper.orphan_sweep` | boolean | `false` | Run the orphan-daemon sweep. |
+| `reaper.kill_grace_s` | number | `5` | Seconds between SIGTERM and SIGKILL when clearing a worktree. |
+| `reaper.max_worktrees` | integer | `5` | Linked worktrees per repo before it is flagged; 0 disables. |
+| `reaper.ignored_untracked_dirs` | array of string | `["node_modules","dist",".turbo"]` | Directory names treated as regenerated output. |
+| `reaper.ignored_untracked_prefixes` | array of string | `["coverage"]` | Directory-name prefixes treated as regenerated output. |
+| `janitor.rules` | array of janitor rule | `[]` | Cleanup rules applied in order. |
+| `janitor.watermarks` | array of object | `[]` | Size watermarks that append to the backlog. |
+| `janitor.max_delete` | integer | `200` | Delete budget for one run. |
+| `backlog.path` | string | `"~/.config/rigops/backlog.md"` | The backlog markdown file. |
+| `backlog.areas` | array of string | see section | Allowed area tags in backlog lines. |
+| `sources.ccusage.argv` | array of string | `["ccusage","daily","--json"]` | Command line of the ccusage source. |
+| `sources.ccusage.timeout_s` | number | `60` | Timeout of the ccusage source. |
+| `sources.custom` | array of object | `[]` | Custom JSON-emitting sources run on every ledger write. |
+| `authprobe.enabled` | boolean | `false` | Run the credential probe without --force. |
+| `authprobe.command` | array of string | `["claude","-p","reply with exactly: ok","--max-turns","1"]` | Argv the probe runs. |
+| `authprobe.expect` | string | `"ok"` | Exact stdout expected on success. |
+| `authprobe.timeout_s` | number | `60` | Probe timeout. |
+| `authprobe.path` | string | `"/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"` | PATH of the scrubbed probe environment. |
+| `authprobe.keychain_service` | string | `""` | Keychain service holding the long-lived token. |
+| `eval.cases_dir` | string | `""` | Directory of eval case files. |
+| `eval.system_file` | string | `""` | System prompt file sent before every case. |
+| `eval.endpoint` | string | `""` | Base URL of the OpenAI-compatible API. |
+| `eval.model` | string | `""` | Model id sent with every request. |
+| `eval.api_key_env` | string | `""` | Name of the env var holding the bearer token. |
 
 ## See also
 

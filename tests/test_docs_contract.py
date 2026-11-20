@@ -3,10 +3,15 @@ from __future__ import annotations
 
 import re
 import shlex
+import sys
 import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+
+from rigops import config_spec  # noqa: E402
+
 README = REPO_ROOT / "README.md"
 PLUGIN_COMMANDS = REPO_ROOT / "plugin" / "commands"
 DOC_PAGES = (
@@ -232,6 +237,27 @@ class DocsContractTests(unittest.TestCase):
         self.assertEqual(check_span('rigops ledger note "<text>" --at YYYY-MM-DD'), [])
         text = "see `rigops tax --dead` and `rigops`\n```\n$ rigops doctor\n```"
         self.assertEqual(rigops_spans(text), [(1, "rigops tax --dead"), (3, "rigops doctor")])
+
+
+class ConfigDocsMatchSpecTests(unittest.TestCase):
+    @staticmethod
+    def documented() -> dict[str, str]:
+        text = (REPO_ROOT / "docs" / "CONFIG.md").read_text(encoding="utf-8")
+        section = re.search(r"^## Key reference\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+        assert section, "docs/CONFIG.md has no '## Key reference' section"
+        rows = re.findall(r"^\| `([^`]+)` \| ([^|]+?) \|", section.group(1), re.M)
+        return dict(rows)
+
+    def test_every_spec_key_is_documented_with_its_type(self):
+        documented = self.documented()
+        spec = {key.path: key.type.label for key in config_spec.SPEC}
+        self.assertEqual(sorted(spec.keys() - documented.keys()), [])
+        wrong = {k: (documented[k], spec[k]) for k in spec if documented[k] != spec[k]}
+        self.assertEqual(wrong, {})
+
+    def test_every_documented_key_is_in_the_spec(self):
+        spec = {key.path for key in config_spec.SPEC}
+        self.assertEqual(sorted(self.documented().keys() - spec), [])
 
 
 if __name__ == "__main__":
