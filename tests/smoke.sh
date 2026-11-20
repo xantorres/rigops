@@ -181,6 +181,19 @@ for cmd in config doctor eit eval ledger tax; do
     esac
 done
 
+echo "smoke: the public redaction patterns install beside the package and mine runs without a registry"
+PATTERNS_REL="lib/rigops/redaction-patterns.public.txt"
+INSTALLED_PATTERNS="$SMOKE_HOME/.local/share/rigops/$PATTERNS_REL"
+[ -f "$INSTALLED_PATTERNS" ] || fail "public patterns not installed: $INSTALLED_PATTERNS"
+cmp -s "$INSTALLED_PATTERNS" "$REPO_ROOT/$PATTERNS_REL" || fail "installed public patterns differ from the repo copy"
+mkdir -p "$SMOKE_HOME/mine-transcripts"
+run "$RIGOPS_LINK" mine --dry-run --transcripts-dir "$SMOKE_HOME/mine-transcripts"
+[ "$RC" -eq 0 ] || fail "installed mine --dry-run exit $RC: $OUT"
+case "$OUT" in
+    *"# rigops mine --dry-run"*) : ;;
+    *) fail "installed mine --dry-run missing report header: $OUT" ;;
+esac
+
 MANIFEST="$SMOKE_HOME/.local/share/rigops/install.manifest.json"
 [ -f "$MANIFEST" ] || fail "manifest missing: $MANIFEST"
 python3 -m json.tool "$MANIFEST" >/dev/null || fail "manifest not valid JSON"
