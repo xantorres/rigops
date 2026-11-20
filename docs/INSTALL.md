@@ -138,7 +138,7 @@ Config and registry are scaffolded **only if the destination doesn't already exi
 
 ### Statusline
 
-The statusline is an example, not an installed component: see [../patterns/statusline.md](../patterns/statusline.md) for wiring it by hand. `--statusline`, which earlier versions used to edit `~/.claude/settings.json`, now exits 2.
+The statusline is an example, not an installed component: see [../patterns/statusline.md](../patterns/statusline.md) for wiring it by hand. `--statusline`, which earlier versions used to edit `~/.claude/settings.json`, now exits 2. Re-applying this version over an install that used it restores the `statusLine` it replaced (or drops the key) and prints a note, before the copied script is removed.
 
 ### Uninstall and purge
 

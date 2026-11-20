@@ -31,6 +31,7 @@ export RIGOPS_INSTALL_LABEL_PREFIX="com.rigops.smoke$$"
 LABEL="${RIGOPS_INSTALL_LABEL_PREFIX}.doctor"
 ALL_JOBS="doctor ledger janitor reap"
 UID_NUM="$(id -u)"
+BROKEN_SRC=""
 
 cleanup() {
     local job
@@ -39,6 +40,7 @@ cleanup() {
         launchctl bootout "user/$UID_NUM/$RIGOPS_INSTALL_LABEL_PREFIX.$job" >/dev/null 2>&1 || true
     done
     rm -rf "$SMOKE_HOME"
+    if [ -n "$BROKEN_SRC" ]; then rm -rf "$BROKEN_SRC"; fi
 }
 trap cleanup EXIT
 
@@ -75,12 +77,32 @@ set -e
 leftover="$(find "$SMOKE_HOME" -name '*rigops*' 2>/dev/null || true)"
 [ -z "$leftover" ] || fail "leftover rigops paths after purge: $leftover"
 
-echo "smoke-launchd: reinstall keeps the job"
+echo "smoke-launchd: manifest job record survives a later mid-install failure"
 run bash "$INSTALL_SH" --apply --jobs doctor --yes
 [ "$RC" -eq 0 ] || fail "second install exit $RC: $OUT"
 
 run launchctl list "$LABEL"
 [ "$RC" -eq 0 ] || fail "label not loaded after second install: $LABEL ($OUT)"
+
+BROKEN_SRC="$(mktemp -d)"
+cp -R "$REPO_ROOT/." "$BROKEN_SRC/"
+rm -f "$BROKEN_SRC/templates/launchd/doctor.plist.in"
+
+run bash "$BROKEN_SRC/install.sh" --apply --jobs doctor --yes
+[ "$RC" -eq 1 ] || fail "missing-template install expected exit 1, got $RC: $OUT"
+
+MANIFEST="$SMOKE_HOME/.local/share/rigops/install.manifest.json"
+python3 - "$MANIFEST" "$LABEL" <<'PYEOF' || fail "manifest lost job record after mid-install failure"
+import json
+import sys
+
+manifest_path, label = sys.argv[1], sys.argv[2]
+data = json.load(open(manifest_path, encoding="utf-8"))
+labels = [j.get("label") for j in data.get("jobs", [])]
+sys.exit(0 if label in labels else 1)
+PYEOF
+rm -rf "$BROKEN_SRC"
+BROKEN_SRC=""
 
 run bash "$INSTALL_SH" --uninstall --apply --yes
 [ "$RC" -eq 0 ] || fail "final uninstall exit $RC: $OUT"

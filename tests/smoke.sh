@@ -624,6 +624,37 @@ import sys
 sys.exit(0 if json.load(open(sys.argv[1], encoding="utf-8")) == {"theme": "dark"} else 1)
 PYEOF
 
+echo "smoke: re-applying over an earlier statusline install unwires it"
+printf '{"existing": true, "statusLine": {"type": "command", "command": "%s"}}' "$OLD_CMD" >"$SETTINGS"
+seed_old_install "$OLD_PREV" 0
+before_settings="$(cat "$SETTINGS")"
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --no-jobs --yes
+[ "$RC" -eq 0 ] || fail "upgrade plan exit $RC: $OUT"
+[ "$(cat "$SETTINGS")" = "$before_settings" ] || fail "upgrade plan changed settings.json"
+case "$OUT" in
+    *"plan: would restore"*) : ;;
+    *) fail "upgrade plan did not say it would restore the statusLine: $OUT" ;;
+esac
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --yes
+[ "$RC" -eq 0 ] || fail "upgrade apply exit $RC: $OUT"
+case "$OUT" in
+    *"note: statusline unwired; it is now an example, see patterns/statusline.md"*) : ;;
+    *) fail "upgrade apply missing the unwired note: $OUT" ;;
+esac
+python3 - "$SETTINGS" "$OLD_PREFIX/install.manifest.json" <<'PYEOF' || fail "upgrade left settings or manifest wrong: $(cat "$SETTINGS")"
+import json
+import sys
+
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+if data.get("statusLine") != {"type": "command", "command": "/usr/bin/true"} or data.get("existing") is not True:
+    sys.exit(1)
+manifest = json.load(open(sys.argv[2], encoding="utf-8"))
+sys.exit(1 if "statusline" in manifest else 0)
+PYEOF
+[ -e "$OLD_CMD" ] && fail "upgrade left the old statusline script"
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "uninstall after upgrade exit $RC: $OUT"
+
 echo "smoke: hash-mismatch uninstall path"
 TAX_PATH="$SMOKE_HOME/.local/share/rigops/libexec/rigops-tax"
 printf '\n# smoke-test local edit\n' >>"$TAX_PATH"

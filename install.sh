@@ -906,10 +906,6 @@ manifest = {
     "jobs": jobs,
     "scaffolded": scaffolded,
 }
-# An earlier version's wiring stays in settings.json, so its record carries
-# forward for --uninstall to undo.
-if isinstance(existing, dict) and isinstance(existing.get("statusline"), dict):
-    manifest["statusline"] = existing["statusline"]
 
 
 def without_created(data):
@@ -1004,7 +1000,7 @@ purge_safe() {
 undo_statusline() {
     local mode="plan"
     [ "$APPLY" -eq 1 ] && mode="apply"
-    step_log "uninstall statusLine wiring"
+    step_log "${2:-uninstall statusLine wiring}"
     "$PY_ABS" - "$1" "$mode" <<'PYEOF'
 import json
 import os
@@ -1329,6 +1325,27 @@ PYEOF
     fi
 }
 
+# The statusline is now an example, so an earlier version's wiring is undone
+# before step_prune removes the script settings.json still points at.
+step_unwire_statusline() {
+    local manifest="$PREFIX/install.manifest.json"
+    [ -f "$manifest" ] || return 0
+    "$PY_ABS" - "$manifest" <<'PYEOF' || return 0
+import json
+import sys
+
+try:
+    record = json.load(open(sys.argv[1], encoding="utf-8")).get("statusline")
+except (OSError, ValueError, AttributeError):
+    sys.exit(1)
+sys.exit(0 if isinstance(record, dict) else 1)
+PYEOF
+    undo_statusline "$manifest" "unwire statusLine from an earlier install"
+    if [ "$APPLY" -eq 1 ]; then
+        echo "     note: statusline unwired; it is now an example, see patterns/statusline.md"
+    fi
+}
+
 if [ "$UNINSTALL" -eq 1 ]; then
     ACTION_WORD="uninstall"
 else
@@ -1349,6 +1366,7 @@ else
     INSTALL_VERSION="$("$PY_ABS" -c 'import json, sys
 print(json.load(open(sys.argv[1]))["version"])' "$ROOT_DIR/plugin/.claude-plugin/plugin.json")"
     step_preflight
+    step_unwire_statusline
     step_copy_tree
     step_prune
     step_symlink
