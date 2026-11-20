@@ -13,7 +13,7 @@ Usage: redaction-gate.sh [--history] [--message <file>] [--help]
   --message <file>  Scan a single file (e.g. a commit message) for hits.
   --help            Show this help and exit.
 
-Private pattern layers, on top of tools/redaction-patterns.public.txt:
+Private pattern layers, on top of lib/rigops/redaction-patterns.public.txt:
   RIGOPS_REDACTION_PATTERNS_B64  base64 rule file, the only private layer when set (CI).
   RIGOPS_REDACTION_PATTERNS      colon-separated rule files, each required; defaults
                                  to ~/.config/rigops/redaction-patterns.txt and
@@ -27,7 +27,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 
-PUBLIC_PATTERNS="tools/redaction-patterns.public.txt"
+PUBLIC_PATTERNS="lib/rigops/redaction-patterns.public.txt"
 PRIVATE_FILES=()
 PRIVATE_LABELS=()
 WORK_DIR=""
@@ -366,7 +366,7 @@ run_history() {
   # diff log holds no metadata, which the meta log scans once.
   if ! git log --all --full-history -m -p --pretty='tformat:commit %H' --no-color \
     --src-prefix=a/ --dst-prefix=b/ \
-    -- . ':(exclude)tools/redaction-patterns.public.txt' >"$diff_log"; then
+    -- . ':(exclude)lib/rigops/redaction-patterns.public.txt' ':(exclude)tools/redaction-patterns.public.txt' >"$diff_log"; then
     echo "redaction gate: git log failed reading history diff" >&2
     exit 2
   fi

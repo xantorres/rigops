@@ -62,10 +62,12 @@ def sandbox_gate(root, public=PLACEHOLDER_RULE):
     """Copies the gate under root/tools, with `public` as its public layer."""
     tools = Path(root) / "tools"
     tools.mkdir(parents=True, exist_ok=True)
+    package = Path(root) / "lib" / "rigops"
+    package.mkdir(parents=True, exist_ok=True)
     script = tools / "redaction-gate.sh"
     shutil.copy(GATE, script)
     if public is not None:
-        (tools / "redaction-patterns.public.txt").write_text(public, encoding="utf-8")
+        (package / "redaction-patterns.public.txt").write_text(public, encoding="utf-8")
     return script
 
 

@@ -480,7 +480,7 @@ copy_lib_py() {
         [ -n "$f" ] || continue
         rel="${f#"$ROOT_DIR"/lib/}"
         copy_file_step "$f" "$PREFIX/lib/$rel" "lib/$rel" 0
-    done < <(find "$ROOT_DIR/lib" -type f -name '*.py' -not -path '*/__pycache__/*' | sort)
+    done < <(find "$ROOT_DIR/lib" -type f \( -name '*.py' -o -name 'redaction-patterns.public.txt' \) -not -path '*/__pycache__/*' | sort)
 }
 
 step_preflight() {

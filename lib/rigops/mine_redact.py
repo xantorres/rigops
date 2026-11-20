@@ -114,8 +114,7 @@ GENERIC_RULES = (
     (re.compile(r"\bP\.?\s?O\.?\s?Box\s+\d+\b|\bapartado\s+(?:(?:de\s+correos|postal)\s+\d+|\d{3,})\b",
                 re.IGNORECASE), "[address]"),
 )
-PUBLIC_PATTERNS = (Path(__file__).resolve().parent.parent.parent / "tools"
-                   / "redaction-patterns.public.txt")
+PUBLIC_PATTERNS = Path(__file__).resolve().parent / "redaction-patterns.public.txt"
 PRIVATE_DEFAULTS = ("~/.config/rigops/redaction-patterns.txt",
                     "~/.config/rigops/redaction-patterns.rigops.txt")
 

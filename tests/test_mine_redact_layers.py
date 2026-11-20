@@ -85,5 +85,14 @@ class GateLayerParityTests(unittest.TestCase):
         self.assertEqual(mine_redact.redact("see zzpackedzz"), "see [redacted]")
 
 
+class PublicPatternsShipWithTheModuleTests(unittest.TestCase):
+    def test_public_file_sits_beside_the_module(self):
+        self.assertEqual(mine_redact.PUBLIC_PATTERNS.parent, Path(mine_redact.__file__).resolve().parent)
+        self.assertTrue(mine_redact.PUBLIC_PATTERNS.is_file())
+
+    def test_public_rules_load_without_error(self):
+        self.assertEqual(mine_redact.broken_rules([mine_redact.PUBLIC_PATTERNS]), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
