@@ -144,6 +144,21 @@ class CommandPathsRefuseTests(unittest.TestCase):
         self.assertRefused(self.run_cmd(["ledger", "write", "--dry-run"], cfg))
         self.assertFalse(self.marker.exists())
 
+    def _trees(self) -> str:
+        trees = self.home / "trees"
+        trees.mkdir(exist_ok=True)
+        return str(trees)
+
+    def test_reap_apply_refuses(self):
+        for extra in ((), ("--dry-run",)):
+            with self.subTest(extra):
+                self.assertRefused(
+                    self.run_cmd(["reap", "--apply", *extra, "--root", self._trees()], {}))
+
+    def test_reap_preview_still_runs(self):
+        proc = self.run_cmd(["reap", "--root", self._trees()], {})
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

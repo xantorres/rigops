@@ -105,6 +105,7 @@ def main() -> int:
     args.precious = tuple(rigops_config.get(cfg, "reaper.precious", []))
 
     if args.apply:
+        rigops_config.require_private(rigops_config.config_path())
         with state.locked(state.state_dir() / "reap"):
             return reap.run(args)
     return reap.run(args)
