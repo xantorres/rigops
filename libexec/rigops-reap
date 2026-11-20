@@ -59,7 +59,8 @@ def main() -> int:
         return reap_selftest.run_selftest()
 
     for key, default in (("roots", []), ("ignored_untracked_dirs", []),
-                         ("ignored_untracked_prefixes", [])):
+                         ("ignored_untracked_prefixes", []),
+                         ("precious", [])):
         problem = reap_guards.list_setting_error(
             f"reaper.{key}", rigops_config.get(cfg, f"reaper.{key}", default))
         if problem:
@@ -100,6 +101,8 @@ def main() -> int:
     args.ignored_untracked_prefixes = tuple(
         rigops_config.get(cfg, "reaper.ignored_untracked_prefixes", [])
     )
+
+    args.precious = tuple(rigops_config.get(cfg, "reaper.precious", []))
 
     if args.apply:
         with state.locked(state.state_dir() / "reap"):

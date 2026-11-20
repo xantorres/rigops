@@ -181,6 +181,7 @@ Config for `rigops reap` (see [SAFETY.md](SAFETY.md) for the kill/removal guards
 - `kill_grace_s` (`number`, default `5`) - SIGTERM-to-SIGKILL grace when clearing processes out of a reapable worktree.
 - `max_worktrees` (`int`, default `5`) - a repository left with more linked worktrees than this, once the run's removals and prunes land, is flagged: a `!` line in the report, `over_cap` and `worktrees_left` in its `--json` entry, and an `over_cap=` count in the log line. Nothing extra is removed. `0` turns the check off. Anything but a non-negative integer exits 2 with an error naming the key.
 - `ignored_untracked_dirs` (`array<string>`, default `["node_modules", "dist", ".turbo"]`) / `ignored_untracked_prefixes` (`array<string>`, default `["coverage"]`) - an untracked path is treated as regenerated build output, never work in progress, when **any one** of its path segments is listed in `ignored_untracked_dirs` or starts with a listed prefix (`lib/rigops/reap.py` `is_ignored_untracked`).
+- `precious` (`array<string>`, default `[".env*", "*.pem", "*.key", "*.p12", "*.pfx", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"]`) - file-name globs (matched on the file name, not the path). A merged, clean worktree that holds a gitignored file matching one of them is kept with the verdict `skip: precious`; the report, the `--apply --dry-run` output, the log and `--json` (`precious_file`) name the file. Paths under `node_modules`, `site-packages` and the `ignored_untracked_*` entries are not checked. `[]` makes no file name precious; an ignored nested git repository still keeps its tree.
 
 ```json
 {
@@ -194,7 +195,8 @@ Config for `rigops reap` (see [SAFETY.md](SAFETY.md) for the kill/removal guards
     "kill_grace_s": 5,
     "max_worktrees": 5,
     "ignored_untracked_dirs": ["node_modules", "dist", ".turbo"],
-    "ignored_untracked_prefixes": ["coverage"]
+    "ignored_untracked_prefixes": ["coverage"],
+    "precious": [".env*", "*.pem", "*.key", "*.p12", "*.pfx", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"]
   }
 }
 ```
@@ -403,6 +405,7 @@ Every key the code reads. "none" means no built-in default: the key is absent un
 | `reaper.max_worktrees` | integer | `5` | Linked worktrees per repo before it is flagged; 0 disables. |
 | `reaper.ignored_untracked_dirs` | array of string | `["node_modules","dist",".turbo"]` | Directory names treated as regenerated output. |
 | `reaper.ignored_untracked_prefixes` | array of string | `["coverage"]` | Directory-name prefixes treated as regenerated output. |
+| `reaper.precious` | array of string | `[".env*","*.pem","*.key","*.p12","*.pfx","id_rsa","id_dsa","id_ecdsa","id_ed25519"]` | File-name globs; a tree holding an ignored match is kept, not removed. |
 | `janitor.rules` | array of janitor rule | `[]` | Cleanup rules applied in order. |
 | `janitor.watermarks` | array of object | `[]` | Size watermarks that append to the backlog. |
 | `janitor.max_delete` | integer | `200` | Delete budget for one run. |

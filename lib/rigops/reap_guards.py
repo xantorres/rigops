@@ -23,9 +23,10 @@ def is_ignored_untracked(path: str, ignored_dirs: set[str],
 
 
 def precious_path(paths: list[str], ignored_dirs: set[str],
-                  ignored_prefixes: tuple[str, ...]) -> str | None:
-    """First ignored file that looks like a secret or key, outside dependency
-    and generated directories."""
+                  ignored_prefixes: tuple[str, ...],
+                  patterns: tuple[str, ...] | list[str] = PRECIOUS_PATTERNS) -> str | None:
+    """First ignored file whose name matches patterns, outside dependency
+    and generated directories; an ignored nested repository always counts."""
     for path in paths:
         if not path or DEPENDENCY_DIRS & set(path.split("/")):
             continue
@@ -33,7 +34,7 @@ def precious_path(paths: list[str], ignored_dirs: set[str],
             continue
         if path.endswith("/"):  # nested repository: git lists it without looking inside
             return path
-        if any(fnmatchcase(path.rsplit("/", 1)[-1], pat) for pat in PRECIOUS_PATTERNS):
+        if any(fnmatchcase(path.rsplit("/", 1)[-1], pat) for pat in patterns):
             return path
     return None
 

@@ -48,7 +48,13 @@ from pathlib import Path
 from typing import Any
 
 from rigops.errors import RigopsError
-from rigops.reap_guards import human, is_ignored_untracked, orphan_sweep, precious_path
+from rigops.reap_guards import (
+    PRECIOUS_PATTERNS,
+    human,
+    is_ignored_untracked,
+    orphan_sweep,
+    precious_path,
+)
 from rigops.reap_procs import (  # noqa: F401
     ETIME_RE,
     _alive_for_blocking,
@@ -456,7 +462,10 @@ def commit_age_days(repo: Path, sha: str, timeout: int = 120) -> int | None:
 
 def classify(wt: dict, repo: Path, target: str, live: list[Path], self_cwd: Path,
              default_branch_ref: str, grace_days: int, ignored_dirs: set[str],
-             ignored_prefixes: tuple[str, ...], remaining_s: float | None = None) -> str:
+             ignored_prefixes: tuple[str, ...], remaining_s: float | None = None,
+             precious: tuple[str, ...] | list[str] = PRECIOUS_PATTERNS) -> str:
+    wt.pop("precious_file", None)
+    wt.pop("ignored_files", None)
     if wt["prunable"]:
         return PRUNE
     if wt["bare"]:
@@ -530,17 +539,29 @@ def classify(wt: dict, repo: Path, target: str, live: list[Path], self_cwd: Path
     ignored = git_lines(path, "ls-files", "-z", "-oi", "--exclude-standard", timeout=timeout)
     if ignored is None:
         return "skip: unreadable"
-    hit = precious_path(ignored.split("\0"), ignored_dirs, ignored_prefixes)
+    files = [f for f in ignored.split("\0") if f]
+    hit = precious_path(files, ignored_dirs, ignored_prefixes, precious)
     if hit:
-        log(f"SKIP-PRECIOUS tree={wt_path_str} file={hit}")
+        wt["precious_file"] = hit
+        log(f"SKIP-PRECIOUS tree={wt_path_str} file={hit} key=reaper.precious")
         return "skip: precious"
 
+    wt["ignored_files"] = top_level_entries(files)
     return REAP
+
+
+IGNORED_LIST_CAP = 10
+
+
+def top_level_entries(paths: list[str]) -> list[str]:
+    """Ignored paths collapsed to their first segment; a directory keeps a trailing slash."""
+    return sorted({p.split("/", 1)[0] + "/" if "/" in p.rstrip("/") else p for p in paths})
 
 
 def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_days: int,
               ignored_dirs: set[str], ignored_prefixes: tuple[str, ...],
-              remaining_s: float | None = None) -> dict:
+              remaining_s: float | None = None,
+              precious: tuple[str, ...] | list[str] = PRECIOUS_PATTERNS) -> dict:
     scan_start = time.monotonic()
     result = {"repo": str(repo), "target": None, "default_branch": None, "worktrees": [],
               "note": None, "timed_out": False, "listing_ok": True, "listing_skipped": False}
@@ -629,7 +650,7 @@ def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_d
         wt["verdict"] = classify(
             wt, repo, target, live, self_cwd, default_branch_ref, grace_days,
             ignored_dirs, ignored_prefixes,
-            remaining_s=remaining_after(remaining_s, scan_start),
+            remaining_s=remaining_after(remaining_s, scan_start), precious=precious,
         )
         if wt["verdict"] == DEADLINE_SKIP:
             result["timed_out"] = True
@@ -692,6 +713,11 @@ def worktrees_left(res: dict, preview: bool) -> int:
                if w["verdict"] not in gone and not (w.get("applied") or {}).get("removed"))
 
 
+def capped(entries: list[str], limit: int = IGNORED_LIST_CAP) -> str:
+    shown = ", ".join(entries[:limit])
+    return shown if len(entries) <= limit else f"{shown} and {len(entries) - limit} more"
+
+
 def render(results: list[dict], apply_mode: bool, cap: int = 0) -> str:
     lines: list[str] = []
     counts: dict[str, int] = {}
@@ -719,6 +745,12 @@ def render(results: list[dict], apply_mode: bool, cap: int = 0) -> str:
             age = f"{wt['age_days']}d" if wt.get("age_days") is not None else "-"
             size = f"  {human(wt['size'])}" if wt.get("size") else ""
             lines.append(f"  {wt['verdict']:<18} {age:>5}  {name:<34} {branch}{size}")
+            if wt.get("precious_file"):
+                lines.append(f"      kept because of {wt['precious_file']}; "
+                             "change the reaper.precious config key to release it")
+            elif wt["verdict"] == REAP and wt.get("ignored_files"):
+                lines.append(f"      {'removed' if apply_mode else 'removes'} ignored: "
+                             f"{capped(wt['ignored_files'])}")
 
     lines.append("")
     if counts:
@@ -755,6 +787,7 @@ def refresh_verdict(wt: dict, res: dict, opts: Any, self_cwd: Path,
         res["default_branch"], opts.grace_days,
         opts.ignored_untracked_dirs, opts.ignored_untracked_prefixes,
         remaining_s=remaining_after(remaining_s, started),
+        precious=getattr(opts, "precious", PRECIOUS_PATTERNS),
     )
 
 
@@ -800,6 +833,7 @@ def run(opts: Any) -> int:
             ignored_dirs=opts.ignored_untracked_dirs,
             ignored_prefixes=opts.ignored_untracked_prefixes,
             remaining_s=remaining_after(opts.deadline_s, run_start),
+            precious=getattr(opts, "precious", PRECIOUS_PATTERNS),
         ))
 
     snap = ps_snapshot()
@@ -831,7 +865,9 @@ def run(opts: Any) -> int:
         wt["verdict"] = fresh
         wt["applied"] = {"removed": False, "detail": f"verdict changed: {fresh}"}
         if not opts.json:
-            print(f"skip: {Path(wt['path']).name} -- verdict changed: {fresh}")
+            why = (f" ({wt['precious_file']} matches reaper.precious)"
+                   if wt.get("precious_file") else "")
+            print(f"skip: {Path(wt['path']).name} -- verdict changed: {fresh}{why}")
         log(f"SKIP-CHANGED tree={tree} verdict={fresh}")
         return True
 
@@ -875,6 +911,8 @@ def run(opts: Any) -> int:
                     continue
                 if not opts.dry_run and verdict_changed(wt, res, tree):
                     continue  # judged again: the kill wait can leave new work behind
+                if not opts.dry_run and wt.get("ignored_files"):
+                    log(f"REAP-IGNORED tree={tree} files={','.join(wt['ignored_files'])}")
                 ok, detail = reap(repo, wt, opts.dry_run)
                 wt["applied"] = {"removed": ok and not opts.dry_run, "detail": detail}
                 prefix = "would run" if opts.dry_run else ("ok" if ok else "FAILED")

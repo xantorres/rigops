@@ -30,12 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ledger write` warns on stderr when more than 1% of transcript lines did not parse and when the week has no turns, and still writes the row and exits `0`. The doctor lever check warns about the newest row for the same two reasons (`parse`, `no-turns`) and stays silent for a row without the fields.
 - `ledger diff` prints `insufficient data` instead of percentage changes when either row has fewer than 20 turns or is marked empty; `--json` gains `insufficient_data`. The exit code stays `0`.
 
+- `rigops reap` lists the gitignored files that go with a tree it will remove (top-level entries, ten shown, then `and N more`) in the report and the `--apply --dry-run` output, writes the full list to the reap log before a real removal, and adds `ignored_files` to the worktree entry in `--json`. A merged tree holding only `.DS_Store` and `node_modules` is removed.
+- A tree kept as `skip: precious` names the file and the `reaper.precious` key in the report, the log and `--json` (`precious_file`).
+
 ### Fixed
 
 - Day windows are built from local calendar days. The ledger window and every date-only or `today` bound use the UTC offset that holds on the day itself, not today's, and a seven-day window is seven local days, not 168 hours. A window that spans a clock change is now 167 or 169 hours long and both edges are local midnights. The stored `window.since` and `window.until` strings are still UTC.
 
 ### Upgrading from 0.11.x
 
+- New key `reaper.precious`: the file-name globs that keep a tree from being removed. Its default is the list reap already used (`.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`), so nothing changes until you set it. `[]` makes no file name precious.
 - `--json` shape changes (existing keys unchanged): `ledger write --show --json` was a list of rows, now `{"version", "rows", "skipped"}`; `ledger write --json` was the row, now `{"version", "row"}`; `ledger diff --json` gains `version`, `skipped`, `incomplete`; `tax --history --json` was a list of `{date, fixed_tax_b}`, now `{"version", "skipped", "rows"}`; `tax --starts --session --json` was a list, now `{"version", "rows"}`; `eval list --json` was a list, now `{"version", "rows"}`; `doctor --list --json` was a list, now `{"version", "items"}`; `doctor --config-only --json` was a list, now `{"version", "findings"}`. `doctor`, `reap`, `eit`, `eit --rebuilds`, `tax`, `tax --dead`, `eval run`, `eval diff`, `janitor`, `authprobe` and `backlog lint` gain `version`.
 - State file shapes: `interventions.jsonl`, `eval.jsonl` and `doctor/events.jsonl` rows gain `version`. `heal-stamps.json`, `holds.json`, `kicked.json` and `notified.json` change from a flat object (`kicked.json` possibly a list) to `{"version": 1, "entries": {...}}`; the old shape still reads. 0.11 reads neither new shape, so do not run an older rigops against a state directory a newer one has written. `doctor/gates.json`, the context nudge file and `ledger.jsonl` rows are unchanged in content.
 - `rigops doctor` exits `2` whenever guard state is unreadable, malformed or newer, and `--exit-zero` no longer turns that into `0`.
