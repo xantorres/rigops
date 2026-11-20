@@ -608,7 +608,7 @@ seed_old_install - 1
 uninstall_old "created"
 [ -e "$SETTINGS" ] && fail "uninstall left the settings.json it created: $(cat "$SETTINGS")"
 
-echo "smoke: uninstall of a 0.10 prefix removes the files this version no longer ships"
+seed_retired_prefix() {
 python3 - "$STATUSLINE_HOME" <<'PYEOF'
 import hashlib
 import json
@@ -629,6 +629,12 @@ for rel in rels:
     body = ("retired " + rel + "\n").encode()
     with open(path, "wb") as fh:
         fh.write(body)
+    if rel.endswith(".py"):
+        cache = os.path.join(os.path.dirname(path), "__pycache__")
+        os.makedirs(cache, exist_ok=True)
+        stem = os.path.basename(path)[:-3]
+        with open(os.path.join(cache, stem + ".cpython-39.pyc"), "wb") as fh:
+            fh.write(b"pyc")
     files.append({"path": rel, "sha256": hashlib.sha256(body).hexdigest()})
 manifest = {
     "version": "0.10.1", "home": home, "prefix": prefix,
@@ -639,6 +645,10 @@ manifest = {
 with open(prefix + "/install.manifest.json", "w", encoding="utf-8") as fh:
     json.dump(manifest, fh, indent=2, sort_keys=True)
 PYEOF
+}
+
+echo "smoke: uninstall of a 0.10 prefix removes the files this version no longer ships"
+seed_retired_prefix
 uninstall_old "retired-files"
 for rel in libexec/rigops-card libexec/rigops-nudge libexec/rigops-render libexec/rigops-retrieval \
     lib/rigops/retrieval/index.py lib/rigops/render/claude.py lib/rigops/context/card.py \
@@ -696,6 +706,21 @@ PYEOF
 [ -e "$OLD_CMD" ] && fail "upgrade left the old statusline script"
 run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
 [ "$RC" -eq 0 ] || fail "uninstall after upgrade exit $RC: $OUT"
+
+echo "smoke: upgrading over a 0.10 prefix then uninstalling leaves nothing behind"
+rm -rf "$OLD_PREFIX"
+seed_retired_prefix
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --yes
+[ "$RC" -eq 0 ] || fail "upgrade over retired files exit $RC: $OUT"
+for pyc in lib/rigops/__pycache__/mine_dedupe.cpython-39.pyc lib/rigops/doctor/__pycache__/check_plans.cpython-39.pyc; do
+    [ -e "$OLD_PREFIX/$pyc" ] && fail "upgrade left the stale cache file $pyc"
+done
+for dir in lib/rigops/retrieval lib/rigops/render lib/rigops/context; do
+    [ -d "$OLD_PREFIX/$dir" ] && fail "upgrade left the emptied $dir directory"
+done
+run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
+[ "$RC" -eq 0 ] || fail "uninstall after retired-file upgrade exit $RC: $OUT"
+[ -e "$OLD_PREFIX" ] && fail "uninstall after upgrade left the prefix: $(fd . "$OLD_PREFIX" | head)"
 
 echo "smoke: hash-mismatch uninstall path"
 TAX_PATH="$SMOKE_HOME/.local/share/rigops/libexec/rigops-tax"

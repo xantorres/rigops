@@ -512,13 +512,14 @@ step_prune() {
         esac
         # A case-only rename is the same file on a default macOS volume.
         grep -Fxiq -- "$rel" "$SHIPPED_TXT" && continue
-        printf '%s\t%s\n' "$rel" "$sha" >>"$stale"
+        printf 'FILE\t%s\t%s\n' "$rel" "$sha" >>"$stale"
     done <"$OLD_DATA_TSV"
     [ -s "$stale" ] || return 0
     step_log "remove files this version no longer ships"
-    while IFS=$'\t' read -r rel sha; do
+    while IFS=$'\t' read -r tag rel sha; do
         remove_recorded_file "$PREFIX/$rel" "$sha"
     done <"$stale"
+    sweep_cache_and_dirs "$PREFIX" "$stale"
 }
 
 do_symlink() {
@@ -1146,6 +1147,46 @@ remove_recorded_file() {
     fi
 }
 
+# Drops the byte-code cache of each FILE record in the TSV ($2) and the
+# directories those records emptied, never the prefix ($1) while it holds files.
+sweep_cache_and_dirs() {
+    [ "$APPLY" -eq 1 ] && [ -d "$1" ] || return 0
+    "$PY_ABS" - "$1" "$2" <<'PYEOF'
+import glob
+import os
+import sys
+
+prefix = os.path.normpath(sys.argv[1])
+dirs = set()
+with open(sys.argv[2], encoding="utf-8") as fh:
+    for line in fh:
+        parts = line.rstrip("\n").split("\t")
+        if parts[0] != "FILE" or len(parts) < 2:
+            continue
+        path = os.path.normpath(os.path.join(prefix, parts[1]))
+        if not path.startswith(prefix + os.sep):
+            continue
+        folder, name = os.path.split(path)
+        if name.endswith(".py"):
+            cache = os.path.join(folder, "__pycache__")
+            for pyc in glob.glob(os.path.join(glob.escape(cache), glob.escape(name[:-3]) + ".*.pyc")):
+                try:
+                    os.remove(pyc)
+                except OSError:
+                    pass
+            dirs.add(cache)
+        while folder != prefix and folder.startswith(prefix + os.sep):
+            dirs.add(folder)
+            folder = os.path.dirname(folder)
+        dirs.add(prefix)
+for d in sorted(dirs, key=lambda x: x.count(os.sep), reverse=True):
+    try:
+        os.rmdir(d)
+    except OSError:
+        pass
+PYEOF
+}
+
 do_uninstall() {
     local manifest_path="$PREFIX/install.manifest.json"
     if [ ! -f "$manifest_path" ]; then
@@ -1202,42 +1243,7 @@ PYEOF
         remove_recorded_file "$m_prefix/$rel" "$sha"
     done <"$dump"
 
-    if [ "$APPLY" -eq 1 ] && [ -d "$m_prefix" ]; then
-        "$PY_ABS" - "$m_prefix" "$dump" <<'PYEOF'
-import glob
-import os
-import sys
-
-prefix = os.path.normpath(sys.argv[1])
-dirs = set()
-with open(sys.argv[2], encoding="utf-8") as fh:
-    for line in fh:
-        parts = line.rstrip("\n").split("\t")
-        if parts[0] != "FILE" or len(parts) < 2:
-            continue
-        path = os.path.normpath(os.path.join(prefix, parts[1]))
-        if not path.startswith(prefix + os.sep):
-            continue
-        folder, name = os.path.split(path)
-        if name.endswith(".py"):
-            cache = os.path.join(folder, "__pycache__")
-            for pyc in glob.glob(os.path.join(glob.escape(cache), glob.escape(name[:-3]) + ".*.pyc")):
-                try:
-                    os.remove(pyc)
-                except OSError:
-                    pass
-            dirs.add(cache)
-        while folder != prefix and folder.startswith(prefix + os.sep):
-            dirs.add(folder)
-            folder = os.path.dirname(folder)
-        dirs.add(prefix)
-for d in sorted(dirs, key=lambda x: x.count(os.sep), reverse=True):
-    try:
-        os.rmdir(d)
-    except OSError:
-        pass
-PYEOF
-    fi
+    sweep_cache_and_dirs "$m_prefix" "$dump"
 
     step_log "uninstall symlink"
     local link_path target cur
