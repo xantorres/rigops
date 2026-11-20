@@ -69,6 +69,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rigops mine`'s memory dedupe and Spanish modules (`mine_dedupe`, `mine_es`).
 - The matching config keys and example entries (`render`, `context.prompt_nudge`, `context.nudges_path`, `context.card.max_tokens`, `context.preload`, `doctor.plans.dir`).
 
+### Fixed
+
+- `install.sh --apply` over an earlier prefix install now also removes the byte-code cache of the modules it retires and the directories they leave empty, so a later `install.sh --uninstall` can remove the prefix.
+
 ## [0.10.1] - 2026-11-20
 
 ### Upgrading from 0.10.0
