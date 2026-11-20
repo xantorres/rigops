@@ -26,7 +26,6 @@ LEAVING_MODULES = (
     "rigops.mine_dedupe",
     "rigops.mine_es",
 )
-KNOWN_UNTIL_MINE_DECOUPLED = {"lib/rigops/mine.py"}
 
 
 def _is_leaving(rel: str) -> bool:
@@ -80,16 +79,10 @@ class KeptImportsTests(unittest.TestCase):
     def test_kept_code_does_not_import_leaving_modules(self):
         bad = {}
         for rel in _kept_modules():
-            if rel in KNOWN_UNTIL_MINE_DECOUPLED:
-                continue
             found = _violations(rel)
             if found:
                 bad[rel] = found
         self.assertEqual(bad, {})
-
-    def test_the_known_carve_out_is_still_needed(self):
-        for rel in KNOWN_UNTIL_MINE_DECOUPLED:
-            self.assertTrue(_violations(rel), f"{rel} is clean: drop its carve-out")
 
     def test_leaving_entries_exist(self):
         missing = [p for p in LEAVING if not (ROOT / p).exists()]

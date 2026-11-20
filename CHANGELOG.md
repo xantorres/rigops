@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Watermarks no longer route to realm backlogs: every tripped watermark appends to `backlog.path`, and the `unrouted` status is gone.
 - `checks.custom[].realm` is accepted and ignored.
 - Gate records in `gates.json` no longer carry `realm`; `version` stays 1.
+- `rigops mine` needs no registry or index. `--registry` is removed and now fails as an unknown argument.
+- The `rigops mine` report drops memory dedupe and realm labels: every group over the session threshold is listed, with no `realm:` or `nearest memory:` line and no "Dropped as already in memory" section.
+- Registry `client_tokens` are no longer masked in the report; list client names in the private pattern files instead.
+- The public redaction pattern file moved from `tools/` to `lib/rigops/redaction-patterns.public.txt` and installs with the package.
 
 ## [0.10.1] - 2026-11-20
 

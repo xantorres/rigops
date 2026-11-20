@@ -217,7 +217,7 @@ Case format, regression rules and CI wiring: [docs/EVAL.md](docs/EVAL.md).
 
 ### `rigops mine`
 
-`rigops mine --dry-run` calls no model and writes nothing: it reports the corrections that repeat across sessions over a window (`--since`, default 90d), with paths, amounts, domains, ids and addresses masked. `--min-sessions` sets how many sessions a group has to span (default 2; 1 lists one-off corrections too), `--transcripts-dir` reads a tree other than `transcripts_dir`, and `--registry` names another roots registry, the source of the realms and the retrieval index mine reads.
+`rigops mine --dry-run` calls no model and writes nothing: it reports the corrections that repeat across sessions over a window (`--since`, default 90d), with paths, amounts, domains, ids and addresses masked. `--min-sessions` sets how many sessions a group has to span (default 2; 1 lists one-off corrections too), and `--transcripts-dir` reads a tree other than `transcripts_dir`. It needs no registry or index; list your own client names in `~/.config/rigops/redaction-patterns.txt` to mask them.
 
 ## Quickstart
 

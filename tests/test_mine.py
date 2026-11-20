@@ -12,7 +12,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import mine  # noqa: E402
-from rigops.retrieval import index, roots  # noqa: E402
 
 from tests.support import es_detector  # noqa: E402
 
@@ -40,12 +39,6 @@ def _write(path: Path, *rows: dict) -> None:
     with path.open("a", encoding="utf-8") as fh:
         for row in rows:
             fh.write(json.dumps(row) + "\n")
-
-
-def _registry(tmp: Path, raw: dict) -> roots.Registry:
-    path = tmp / "roots.json"
-    path.write_text(json.dumps(raw))
-    return roots.load(path)
 
 
 _ES = es_detector()
@@ -178,134 +171,14 @@ class RedactTests(unittest.TestCase):
         self.assertNotIn("CaseOnly", out)
         self.assertIn("caseonly", out)
 
-    def test_registry_client_tokens_are_masked(self):
-        registry = _registry(self.tmp, {"client_tokens": ["Globex"], "roots": []})
-        self.assertNotIn("globex", mine.redact("ask the GLOBEX team", registry=registry).lower())
 
-
-class RealmTests(unittest.TestCase):
+class HardeningTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = Path(self._tmp.name)
-        self.client = self.tmp / "clientwork" / "svc"
-        self.mine_dir = self.tmp / "mine" / "tool"
-        self.client.mkdir(parents=True)
-        (self.mine_dir / "sub").mkdir(parents=True)
-        self.registry = _registry(self.tmp, {"roots": [
-            {"path": str(self.client), "realm": "client", "scope": "repo", "repo": True},
-            {"path": str(self.mine_dir), "realm": "personal", "scope": "repo", "repo": True},
-        ]})
 
     def tearDown(self):
         self._tmp.cleanup()
-
-    def test_project_dir_maps_to_root_realm(self):
-        self.assertEqual(mine.realm_for_project(self.registry, roots.encode_project(self.client)),
-                         "client")
-        self.assertEqual(mine.realm_for_project(
-            self.registry, roots.encode_project(self.mine_dir) + "-sub"), "personal")
-
-    def test_unmapped_project_is_none(self):
-        self.assertIsNone(mine.realm_for_project(self.registry, "-elsewhere"))
-
-
-class DedupeTests(unittest.TestCase):
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.tmp = Path(self._tmp.name)
-        repo = self.tmp / "repos" / "alpha"
-        repo.mkdir(parents=True)
-        self.repo = repo
-        self.memory_root = self.tmp / "claude-projects"
-        memory = self.memory_root / roots.encode_project(repo) / "memory"
-        memory.mkdir(parents=True)
-        (memory / "lint.md").write_text(
-            "## Lint before pull request\nAlways run the lint step before opening a pull request "
-            "because the pipeline rejects unlinted branches.\n"
-        )
-        self.registry = _registry(self.tmp, {
-            "realms": ["client", "personal", "mixed"],
-            "scopes": ["memory", "repo"],
-            "memory_root": {"path": str(self.memory_root)},
-            "index": {"db": str(self.tmp / "idx.sqlite")},
-            "roots": [{"path": str(repo), "realm": "personal", "scope": "repo", "repo": False,
-                       "index": False, "cwd_scopes": ["memory", "repo"]}],
-        })
-        index.build(self.registry)
-
-    def tearDown(self):
-        self._tmp.cleanup()
-
-    def test_known_fact_is_found_with_a_score(self):
-        hit = mine.nearest_memory(
-            self.registry, "always run the lint step before opening a pull request", ["personal"])
-        self.assertIsNotNone(hit)
-        self.assertTrue(hit.path.endswith("lint.md"))
-        self.assertIsInstance(hit.rank, float)
-
-    def test_unrelated_text_has_no_hit(self):
-        self.assertIsNone(mine.nearest_memory(self.registry, "zebra pineapple harmonica",
-                                              ["personal"]))
-
-    def test_run_discards_known_and_keeps_new_groups(self):
-        projects = self.tmp / "tr" / roots.encode_project(self.repo)
-        _write(projects / "a.jsonl",
-               _user("s1", "no, always run the lint step before opening a pull request"),
-               _user("s1", "no, rename the database column created_at to inserted_at everywhere"))
-        _write(projects / "b.jsonl",
-               _user("s2", "no, run the lint step before you open a pull request"),
-               _user("s2", "no, rename the database column created_at to inserted_at please"))
-        report = mine.run(NOW - dt.timedelta(days=90), self.tmp / "tr", self.registry,
-                          max_rank=0.0)
-
-        self.assertEqual(report.stats["groups"], 2)
-        self.assertEqual(report.stats["deduped"], 1)
-        self.assertEqual(len(report.kept), 1)
-        self.assertIn("rename", report.kept[0].group.representative.text)
-        self.assertTrue(report.discarded[0].hit.path.endswith("lint.md"))
-        self.assertEqual(report.kept[0].group.realm, "personal")
-
-    def test_run_never_modifies_memory(self):
-        before = {p: p.read_bytes() for p in self.memory_root.rglob("*") if p.is_file()}
-        projects = self.tmp / "tr" / roots.encode_project(self.repo)
-        _write(projects / "a.jsonl", _user("s1", "no, use the other flag for deploys now"))
-        mine.run(None, self.tmp / "tr", self.registry, max_rank=0.0)
-        after = {p: p.read_bytes() for p in self.memory_root.rglob("*") if p.is_file()}
-        self.assertEqual(before, after)
-
-
-class HardeningTests(DedupeTests):
-    def test_render_masks_path_and_snippet_highlights(self):
-        registry = _registry(self.tmp, {"client_tokens": ["globex inc"], "roots": []})
-        hit = mine.search.Hit(
-            path="/x/-Users-jane-projects-globex/memory/f.md", line=3, section="", title="",
-            realm="client", scope="memory", repo="", verified="",
-            snippet="ask [Globex] [Inc] at dev@[example].com", rank=-20.0)
-        grp = mine.Group(members=[], representative=mine.Correction("s", "p", NOW, "no, x"),
-                         sessions=2)
-        out = mine.render(mine.Report({k: 0 for k in (
-            "files", "prompts", "detected", "extra_added", "excluded", "remaining",
-            "groups", "deduped",
-            "dedupe_skipped")}, [mine.Entry(grp, hit)], []), registry, "90d")
-        for leaked in ("jane", "Globex", "example"):
-            self.assertNotIn(leaked, out)
-
-    def test_archived_memory_is_not_a_duplicate(self):
-        live = next(self.memory_root.rglob("lint.md"))
-        archive = live.parent / "archive"
-        archive.mkdir()
-        live.rename(archive / "lint.md")
-        index.build(self.registry)
-        self.assertIsNone(mine.nearest_memory(
-            self.registry, "always run the lint step before opening a pull request", ["personal"]))
-
-    def test_missing_index_is_reported_not_silent(self):
-        projects = self.tmp / "tr" / roots.encode_project(self.repo)
-        _write(projects / "a.jsonl", _user("s1", "no, always run the lint step first today"))
-        _write(projects / "b.jsonl", _user("s2", "no, always run the lint step first please"))
-        self.registry.raw["index"]["db"] = str(self.tmp / "absent.sqlite")
-        report = mine.run(None, self.tmp / "tr", self.registry)
-        self.assertEqual(report.stats["dedupe_skipped"], 1)
 
     def test_naive_timestamp_and_bad_session_id_do_not_crash(self):
         row = _user("s1", "no, use the other flag")
@@ -316,12 +189,12 @@ class HardeningTests(DedupeTests):
 
 
 class CliGuardTests(unittest.TestCase):
-    def test_missing_registry_is_an_error(self):
+    def test_registry_flag_is_rejected(self):
         proc = subprocess.run(
             [str(MINE), "mine", "--dry-run", "--registry", "/nonexistent/roots.json"],
             capture_output=True, text=True, check=False, timeout=60)
         self.assertEqual(proc.returncode, 2)
-        self.assertIn("registry", proc.stderr)
+        self.assertIn("unrecognized arguments", proc.stderr)
 
     def test_absurd_since_is_an_error(self):
         proc = subprocess.run([str(MINE), "mine", "--dry-run", "--since", "99999999999d"],
@@ -350,6 +223,16 @@ class CliTests(unittest.TestCase):
         self.assertIn("--dry-run", proc.stderr)
         self.assertEqual(proc.stdout, "")
 
+    def test_dry_run_needs_no_registry_index_or_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "tr").mkdir()
+            env = {k: v for k, v in os.environ.items() if not k.startswith("RIGOPS_")}
+            env["HOME"] = str(tmp / "home")
+            proc = self._run("--dry-run", "--transcripts-dir", str(tmp / "tr"), env=env)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(proc.stdout.startswith("# rigops mine --dry-run --since 90d"))
+
     def test_dry_run_prints_header_and_entries(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -360,16 +243,18 @@ class CliTests(unittest.TestCase):
                 row = _user(sid, text)
                 row["timestamp"] = today
                 _write(tr / "-proj" / f"{sid}.jsonl", row)
-            reg = tmp / "roots.json"
-            reg.write_text(json.dumps({"roots": []}))
-            env = dict(os.environ, RIGOPS_ROOTS=str(reg), RIGOPS_CONFIG=str(tmp / "c.json"))
+            env = dict(os.environ, HOME=str(tmp / "home"), RIGOPS_CONFIG=str(tmp / "c.json"))
+            env.pop("RIGOPS_ROOTS", None)
             proc = self._run("--dry-run", "--since", "90d", "--transcripts-dir", str(tr),
                              env=env)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("transcripts walked: 2", proc.stdout)
         self.assertIn("groups: 1", proc.stdout)
         self.assertIn("sessions: 2", proc.stdout)
-        self.assertIn("realm: unmapped", proc.stdout)
+        self.assertIn("transcripts walked: 2", proc.stdout.splitlines()[2])
+        self.assertTrue(proc.stdout.startswith("# rigops mine --dry-run --since 90d"))
+        for gone in ("realm:", "memory dedupe", "nearest memory", "already in memory"):
+            self.assertNotIn(gone, proc.stdout)
 
 
 if __name__ == "__main__":

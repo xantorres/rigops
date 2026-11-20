@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import sqlite3
 import sys
 import tempfile
@@ -14,7 +15,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from rigops import mine_dedupe, mine_group  # noqa: E402
 from rigops.retrieval import index, roots, search  # noqa: E402
 
-from tests.test_mine import NOW, _registry  # noqa: E402
+from tests.test_mine import NOW  # noqa: E402
+
+
+def _registry(tmp: Path, raw: dict) -> roots.Registry:
+    path = tmp / "roots.json"
+    path.write_text(json.dumps(raw))
+    return roots.load(path)
+
 
 LINT = "no, always run the lint step before opening a pull request"
 
@@ -27,6 +35,10 @@ def _c(session, text, days=0):
 class TokensTests(unittest.TestCase):
     def test_lowercases_and_returns_a_set(self):
         self.assertEqual(mine_group.tokens("Kiwi KIWI kiwi Lemon"), frozenset({"kiwi", "lemon"}))
+
+    def test_author_slang_is_not_a_stopword(self):
+        slang = frozenset({"tio", "tío", "mate", "man"})
+        self.assertEqual(mine_group.tokens("tio tío mate man"), slang)
 
     def test_drops_short_words_and_stopwords_in_both_languages(self):
         self.assertEqual(mine_group.tokens("it is the kiwi and que los mango"),
@@ -59,8 +71,6 @@ class GroupEdgeTests(unittest.TestCase):
         self.assertEqual(len(groups), 1)
         self.assertEqual(groups[0].sessions, 2)
         self.assertEqual(len(groups[0].members), 2)
-        self.assertEqual(groups[0].realm, "unmapped")
-        self.assertEqual(groups[0].realms, ())
 
     def test_a_correction_under_the_token_floor_never_joins(self):
         short = "no, kiwi lemon"

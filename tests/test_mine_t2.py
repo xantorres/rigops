@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime as dt
 import sys
 import tempfile
 import unittest
@@ -10,10 +9,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import mine, mine_redact  # noqa: E402
 from rigops.detector import BUILTIN  # noqa: E402
-from rigops.retrieval import index, roots  # noqa: E402
 
 from tests.support import es_detector  # noqa: E402
-from tests.test_mine import NOW, _excluded, _registry, _user, _write  # noqa: E402
+from tests.test_mine import NOW, _excluded, _user, _write  # noqa: E402
 
 _ES = es_detector()
 
@@ -131,30 +129,6 @@ class SpanishDetectorTests(unittest.TestCase):
         self.assertEqual(harvest.detected, 2)
 
 
-class RealmInheritanceTests(unittest.TestCase):
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self._tmp.cleanup)
-        tmp = Path(self._tmp.name)
-        self.repo = tmp / "clientwork" / "alpha"
-        (self.repo / "packages" / "core").mkdir(parents=True)
-        self.registry = _registry(tmp, {"roots": [
-            {"path": str(self.repo), "realm": "client", "scope": "repo", "repo": True}]})
-        self.enc = roots.encode_project(self.repo)
-
-    def test_sibling_sharing_the_name_prefix_does_not_inherit(self):
-        self.assertIsNone(mine.realm_for_project(self.registry, self.enc + "-sandbox"))
-
-    def test_worktree_under_a_hidden_dir_inherits(self):
-        self.assertEqual(
-            mine.realm_for_project(self.registry, self.enc + "--worktrees-t2"), "client")
-
-    def test_existing_subdir_inherits(self):
-        self.assertEqual(
-            mine.realm_for_project(self.registry, self.enc + "-packages-core"), "client")
-        self.assertEqual(mine.realm_for_project(self.registry, self.enc), "client")
-
-
 class RedactionRuleTests(unittest.TestCase):
     def test_broken_rules_are_counted(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -164,11 +138,9 @@ class RedactionRuleTests(unittest.TestCase):
             self.assertEqual(mine_redact.broken_rules([rules, Path(tmp) / "absent.txt"]), 4)
 
     def test_render_reports_the_count(self):
-        registry = _registry(Path(tempfile.mkdtemp()), {"roots": []})
         stats = {k: 0 for k in ("files", "prompts", "detected", "extra_added",
-                                "excluded", "remaining", "groups", "deduped",
-                                "dedupe_skipped")}
-        out = mine.render(mine.Report(stats, [], [], broken_rules=3), registry, "90d")
+                                "excluded", "remaining", "groups")}
+        out = mine.render(mine.Report(stats, [], broken_rules=3), "90d")
         self.assertIn("redaction rules skipped as broken or unreadable: 3", out)
 
 
@@ -289,103 +261,6 @@ class RedactionFinalGapTests(unittest.TestCase):
         for text in ("schema.ai", "foo.co", "docker.co.run"):
             with self.subTest(text=text):
                 self.assertIn("[domain]", self._out(text))
-
-
-class RealmOnlyDedupeTests(unittest.TestCase):
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self._tmp.cleanup)
-        self.tmp = Path(self._tmp.name)
-        parent = self.tmp / "repos"
-        self.memory_root = self.tmp / "memory-root"
-        for name, body in (("alpha", "Deploys use the blue pipeline only."),
-                           ("beta", "## Lint before pull request\nAlways run the lint step "
-                            "before opening a pull request because the pipeline rejects "
-                            "unlinted branches.\n")):
-            (parent / name).mkdir(parents=True)
-            memory = self.memory_root / roots.encode_project(parent / name) / "memory"
-            memory.mkdir(parents=True)
-            (memory / f"{name}.md").write_text(body)
-        self.registry = _registry(self.tmp, {
-            "realms": ["client", "personal", "mixed"],
-            "scopes": ["memory", "repo"],
-            "memory_root": {"path": str(self.memory_root)},
-            "index": {"db": str(self.tmp / "idx.sqlite")},
-            "roots": [{"path": f"{parent}/*", "realm": "personal", "scope": "repo",
-                       "repo": True, "index": False, "cwd_scopes": ["memory", "repo"]}],
-        })
-        index.build(self.registry)
-
-    def test_memory_of_any_repo_of_the_realm_is_searched(self):
-        hit = mine.nearest_memory(
-            self.registry, "always run the lint step before opening a pull request",
-            ["personal"])
-        self.assertIsNotNone(hit)
-        self.assertTrue(hit.path.endswith("beta.md"))
-
-
-class PrefetchGateTests(unittest.TestCase):
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self._tmp.cleanup)
-        self.tmp = Path(self._tmp.name)
-        repo = self.tmp / "repos" / "alpha"
-        repo.mkdir(parents=True)
-        self.repo = repo
-        self.memory_root = self.tmp / "memory-root"
-        memory = self.memory_root / roots.encode_project(repo) / "memory"
-        memory.mkdir(parents=True)
-        (memory / "lint.md").write_text(
-            "## Lint before pull request\nAlways run the lint step before opening a pull "
-            "request because the pipeline rejects unlinted branches.\n")
-        self.registry = _registry(self.tmp, {
-            "realms": ["client", "personal", "mixed"],
-            "scopes": ["memory", "repo"],
-            "memory_root": {"path": str(self.memory_root)},
-            "index": {"db": str(self.tmp / "idx.sqlite")},
-            "roots": [{"path": str(repo), "realm": "personal", "scope": "repo", "repo": False,
-                       "index": False, "cwd_scopes": ["memory", "repo"]}],
-        })
-        index.build(self.registry)
-
-    def _run(self, text_a, text_b):
-        projects = self.tmp / "tr" / roots.encode_project(self.repo)
-        _write(projects / "a.jsonl", _user("s1", text_a))
-        _write(projects / "b.jsonl", _user("s2", text_b))
-        return mine.run(NOW - dt.timedelta(days=90), self.tmp / "tr", self.registry,
-                        max_rank=0.0)
-
-    def test_a_single_shared_word_does_not_drop_a_group(self):
-        report = self._run("no, rename the database column created_at lint everywhere",
-                           "no, rename the database column created_at lint please")
-        self.assertEqual(report.stats["groups"], 1)
-        self.assertEqual(report.stats["deduped"], 0)
-        self.assertEqual(len(report.kept), 1)
-
-    def test_a_single_correction_is_annotated_never_dropped(self):
-        projects = self.tmp / "tr" / roots.encode_project(self.repo)
-        _write(projects / "a.jsonl", _user(
-            "s1", "no, always run the lint step before opening a pull request"))
-        report = mine.run(NOW - dt.timedelta(days=90), self.tmp / "tr", self.registry,
-                          max_rank=0.0, min_sessions=1)
-        self.assertEqual(report.stats["deduped"], 0)
-        self.assertEqual(len(report.kept), 1)
-        self.assertEqual(report.kept[0].group.sessions, 1)
-        self.assertIsNotNone(report.kept[0].hit)
-        out = mine.render(report, self.registry, "90d")
-        self.assertIn("nearest memory:", out)
-        self.assertIn("score", out)
-
-    def test_the_dropped_section_says_only_groups_are_dropped(self):
-        out = mine.render(mine.Report({k: 0 for k in (
-            "files", "prompts", "detected", "extra_added", "excluded", "remaining",
-            "groups", "deduped", "dedupe_skipped")}, [], []), self.registry, "90d")
-        self.assertIn("groups only", out)
-
-    def test_a_real_match_still_drops(self):
-        report = self._run("no, always run the lint step before opening a pull request",
-                           "no, run the lint step before you open a pull request")
-        self.assertEqual(report.stats["deduped"], 1)
 
 
 if __name__ == "__main__":

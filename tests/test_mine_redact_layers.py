@@ -87,7 +87,8 @@ class GateLayerParityTests(unittest.TestCase):
 
 class PublicPatternsShipWithTheModuleTests(unittest.TestCase):
     def test_public_file_sits_beside_the_module(self):
-        self.assertEqual(mine_redact.PUBLIC_PATTERNS.parent, Path(mine_redact.__file__).resolve().parent)
+        beside = Path(mine_redact.__file__).resolve().parent
+        self.assertEqual(mine_redact.PUBLIC_PATTERNS.parent, beside)
         self.assertTrue(mine_redact.PUBLIC_PATTERNS.is_file())
 
     def test_public_rules_load_without_error(self):

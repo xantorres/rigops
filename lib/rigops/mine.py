@@ -1,7 +1,6 @@
 """Repeated user corrections across sessions, as candidates for durable memory.
 
-No model call and no write: the miner reads transcripts and the memory index and
-prints a report for a human to judge.
+No model call and no write: the miner reads transcripts and prints a report for a human to judge.
 """
 
 from __future__ import annotations
@@ -15,14 +14,6 @@ from pathlib import Path
 from rigops import config as rigops_config
 from rigops import transcripts
 from rigops.detector import BUILTIN, Detector, first_nonblank_line
-from rigops.mine_dedupe import (  # noqa: F401
-    DEDUPE_MAX_RANK,
-    check,
-    dedupe_gate,
-    nearest_memory,
-    realm_cwds,
-    realm_for_project,
-)
 from rigops.mine_group import (  # noqa: F401
     JACCARD,
     MIN_SESSIONS,
@@ -33,7 +24,6 @@ from rigops.mine_group import (  # noqa: F401
     tokens,
 )
 from rigops.mine_redact import broken_rules, redact
-from rigops.retrieval import roots, search  # noqa: F401
 
 MAX_TEXT = 300
 KEEP_TEXT = 1000
@@ -50,17 +40,9 @@ class Harvest:
 
 
 @dataclass
-class Entry:
-    group: Group
-    hit: object = None
-    duplicate: bool = False
-
-
-@dataclass
 class Report:
     stats: dict
     kept: list
-    discarded: list
     broken_rules: int = 0
 
 
@@ -147,33 +129,9 @@ def collect(since, transcripts_dir=None, until=None, detector=BUILTIN) -> Harves
     return harvest
 
 
-def _label_realms(registry, g: Group) -> None:
-    found = {realm_for_project(registry, m.project) for m in g.members}
-    mapped = sorted(r for r in found if r)
-    g.realms = tuple(mapped)
-    g.realm = "+".join(mapped) if mapped else "unmapped"
-    if None in found and mapped:
-        g.realm += "+unmapped"
-
-
-def run(since, transcripts_dir, registry, max_rank=None, min_sessions=MIN_SESSIONS,
-        detector=BUILTIN) -> Report:
-    max_rank = dedupe_gate(registry) if max_rank is None else max_rank
-    index_ready = Path(registry.db_path).exists()
+def run(since, transcripts_dir, min_sessions=MIN_SESSIONS, detector=BUILTIN) -> Report:
     harvest = collect(since, transcripts_dir, detector=detector)
     groups = group(harvest.kept, min_sessions=min_sessions)
-    kept, discarded, skipped = [], [], 0
-    for g in groups:
-        _label_realms(registry, g)
-        realms = g.realms or ("personal",)
-        if not index_ready or not any(realm_cwds(registry, r) for r in realms):
-            skipped += 1
-            hit, duplicate = None, False
-        else:
-            hit, duplicate = check(registry, g.representative.text, realms, max_rank)
-            # singles are listed with their nearest memory, never dropped, even at --min-sessions 1
-            duplicate = duplicate and g.sessions >= MIN_SESSIONS
-        (discarded if duplicate else kept).append(Entry(group=g, hit=hit, duplicate=duplicate))
     stats = {
         "files": harvest.files,
         "prompts": harvest.prompts,
@@ -182,27 +140,11 @@ def run(since, transcripts_dir, registry, max_rank=None, min_sessions=MIN_SESSIO
         "excluded": len(harvest.filtered),
         "remaining": len(harvest.kept),
         "groups": len(groups),
-        "deduped": len(discarded),
-        "dedupe_skipped": skipped,
     }
-    return Report(stats=stats, kept=kept, discarded=discarded, broken_rules=broken_rules())
+    return Report(stats=stats, kept=groups, broken_rules=broken_rules())
 
 
-def _entry_lines(registry, entry: Entry, n: int) -> list:
-    g = entry.group
-    text = redact(g.representative.text, registry)[:MAX_TEXT]
-    if entry.hit is None:
-        nearest = "none"
-    else:
-        hit = entry.hit
-        snippet = redact(hit.snippet.replace("[", "").replace("]", ""), registry)
-        where = redact(f"{hit.short_path}:{hit.line}", registry)
-        nearest = f"{where} score {hit.rank:.2f} | {snippet}"
-    return [f"### {n}. {text}", f"- sessions: {g.sessions}", f"- realm: {g.realm}",
-            f"- nearest memory: {nearest}", ""]
-
-
-def render(report: Report, registry, since_label: str) -> str:
+def render(report: Report, since_label: str) -> str:
     s = report.stats
     lines = [
         f"# rigops mine --dry-run --since {since_label}", "",
@@ -213,21 +155,14 @@ def render(report: Report, registry, since_label: str) -> str:
         f"- dropped by correction exclude patterns: {s['excluded']}",
         f"- corrections after the filter: {s['remaining']}",
         f"- groups: {s['groups']}",
-        f"- groups dropped by memory dedupe: {s['deduped']}",
-        f"- groups not checked against memory (no index or realm cwd): {s['dedupe_skipped']}",
         f"- groups kept: {len(report.kept)}",
         f"- redaction rules skipped as broken or unreadable: {report.broken_rules}", "",
         "## New candidates", "",
     ]
-    for n, entry in enumerate(report.kept, 1):
-        lines += _entry_lines(registry, entry, n)
+    for n, g in enumerate(report.kept, 1):
+        text = redact(g.representative.text)[:MAX_TEXT]
+        lines += [f"### {n}. {text}", f"- sessions: {g.sessions}", ""]
     if not report.kept:
-        lines += ["none", ""]
-    lines += ["## Dropped as already in memory (groups only, single corrections are never dropped)",
-              ""]
-    for n, entry in enumerate(report.discarded, 1):
-        lines += _entry_lines(registry, entry, n)
-    if not report.discarded:
         lines += ["none", ""]
     return "\n".join(lines)
 
@@ -242,7 +177,6 @@ def main(argv=None) -> int:
     ap.add_argument("--min-sessions", type=int, default=MIN_SESSIONS,
                     help="sessions a group must span; 1 lists single corrections, never dropped")
     ap.add_argument("--transcripts-dir", default=None)
-    ap.add_argument("--registry", default=None)
     args = ap.parse_args(argv)
     if not args.dry_run:
         print("rigops mine: only --dry-run is supported; the miner never writes memory",
@@ -254,16 +188,8 @@ def main(argv=None) -> int:
     except ValueError as exc:
         print(f"rigops mine: {exc}", file=sys.stderr)
         return 2
-    try:
-        registry = roots.load(args.registry)
-    except (OSError, ValueError, AttributeError) as exc:
-        print(f"rigops mine: unreadable registry: {exc}", file=sys.stderr)
-        return 2
-    if not registry.path.is_file():
-        print(f"rigops mine: registry not found: {registry.path}", file=sys.stderr)
-        return 2
-    report = run(since, args.transcripts_dir, registry, min_sessions=args.min_sessions,
+    report = run(since, args.transcripts_dir, min_sessions=args.min_sessions,
                  detector=detector)
     sys.stdout.reconfigure(errors="replace")
-    print(render(report, registry, args.since))
+    print(render(report, args.since))
     return 0

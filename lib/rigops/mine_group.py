@@ -15,7 +15,7 @@ STOPWORDS = frozenset(
     "does did can should here there then than them they his her its our your about have has "
     "had not but you use too just now please also all any one out get got let make like".split()
     + "que los las una unos unas del por con para como pero mas más muy ese esa eso esto "
-    "este esta son era ser hay nos les mis tus sus the tio tío mate man".split()
+    "este esta son era ser hay nos les mis tus sus the".split()
 )
 
 
@@ -32,8 +32,6 @@ class Group:
     members: list
     representative: Correction
     sessions: int
-    realm: str = "unmapped"
-    realms: tuple = ()
 
 
 def tokens(text: str) -> frozenset:

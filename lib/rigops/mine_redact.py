@@ -183,13 +183,10 @@ def broken_rules(pattern_files=None) -> int:
     return _compile_rules(*_layers(pattern_files))[1]
 
 
-def redact(text: str, registry=None, pattern_files=None) -> str:
-    """Mask secrets, identifiers and everything the repo's redaction rules or the registry name."""
+def redact(text: str, pattern_files=None) -> str:
+    """Mask secrets, identifiers and everything the redaction rules name."""
     for pattern, mask in GENERIC_RULES:
         text = pattern.sub(mask, text)
     for pattern in _compile_rules(*_layers(pattern_files))[0]:
         text = pattern.sub("[redacted]", text)
-    if registry is not None:
-        for token in registry.client_tokens:
-            text = re.sub(re.escape(token), "[client]", text, flags=re.IGNORECASE)
     return text
