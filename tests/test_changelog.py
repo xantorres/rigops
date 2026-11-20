@@ -31,11 +31,8 @@ def _hash(value) -> str:
 
 def _upgrade_notes() -> str:
     text = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    unreleased = re.search(r"^## \[Unreleased\]\n(.*?)(?=^## \[)", text, re.S | re.M)
-    assert unreleased, "no [Unreleased] section"
-    pattern = rf"^{re.escape(HEADING)}\n(.*?)(?=^### |\Z)"
-    notes = re.search(pattern, unreleased.group(1), re.S | re.M)
-    assert notes, f"no '{HEADING}' subsection under [Unreleased]"
+    notes = re.search(rf"^{re.escape(HEADING)}\n(.*?)(?=^##|\Z)", text, re.S | re.M)
+    assert notes, f"no '{HEADING}' section in CHANGELOG.md"
     return notes.group(1)
 
 
