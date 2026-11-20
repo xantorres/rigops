@@ -14,6 +14,7 @@ from rigops.errors import RigopsError
 
 MAX_OUTPUT_BYTES = 1000
 TIME_BUDGET_S = 1.0
+MAX_SESSION_ID = 100
 
 DEFAULT_DOCTOR_MAX_AGE_H = 2
 DEFAULT_TIERS = (250000, 350000, 500000)
@@ -34,11 +35,23 @@ events:
 
 
 def _cap(text: str) -> str:
-    raw = text.encode("utf-8")
+    raw = (text + "\n").encode("utf-8")
     if len(raw) <= MAX_OUTPUT_BYTES:
         return text
-    room = MAX_OUTPUT_BYTES - len("…".encode())
+    room = MAX_OUTPUT_BYTES - len("…\n".encode())
     return raw[:room].decode("utf-8", errors="ignore") + "…"
+
+
+def _emit(text: str) -> None:
+    """The only writer to stdout: capped, and a dead stdout never fails the hook."""
+    try:
+        sys.stdout.write(_cap(text.rstrip("\n")) + "\n")
+        sys.stdout.flush()
+    except BaseException:
+        try:
+            os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
+        except OSError:
+            pass
 
 
 def _read_gates(path):
@@ -169,7 +182,7 @@ def _user_prompt_submit() -> str:
     transcript, sid = payload.get("transcript_path"), payload.get("session_id")
     if not (isinstance(transcript, str) and transcript and isinstance(sid, str) and sid):
         return ""
-    sid = re.sub(r"[^A-Za-z0-9_-]", "_", sid)
+    sid = re.sub(r"[^A-Za-z0-9_-]", "_", sid)[:MAX_SESSION_ID]
 
     directory = core.local_state_path("ctx-nudge")
     directory.mkdir(parents=True, exist_ok=True)
@@ -202,7 +215,7 @@ EVENTS = {"session-start": _session_start, "user-prompt-submit": _user_prompt_su
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] in ("-h", "--help"):
-        sys.stdout.write(USAGE)
+        _emit(USAGE)
         return 0
     handler = EVENTS.get(argv[0]) if argv else None
     if handler is None:
@@ -210,8 +223,7 @@ def main(argv=None) -> int:
     try:
         text = handler()
         if text:
-            sys.stdout.write(_cap(text) + "\n")
-            sys.stdout.flush()
+            _emit(text)
     except BaseException:
         pass
     return 0

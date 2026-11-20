@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import os
@@ -222,6 +223,132 @@ class UserPromptSubmitTests(HookCase):
         self.assertNotEqual(self.prompt(path), "")
 
 
+class NoChildProcessTests(HookCase):
+    def test_hook_starts_no_child_process(self):
+        transcript = self.tmp / "t.jsonl"
+        transcript.write_text(json.dumps({"type": "assistant", "message": {"usage": {
+            "input_tokens": 260000}}}) + "\n")
+        payload = {"transcript_path": str(transcript), "session_id": "nochild"}
+
+        def boom(*args, **kwargs):
+            raise AssertionError("hook started a child process")
+
+        for event in (*hook.EVENTS, "bogus", "--help"):
+            with self.subTest(event=event), contextlib.ExitStack() as stack:
+                for owner, name in ((subprocess, "Popen"), (os, "system"),
+                                    (os, "posix_spawn"), (os, "fork")):
+                    stack.enter_context(mock.patch.object(owner, name, boom))
+                self.run_hook(event, payload)
+
+
+class ExitZeroTests(HookCase):
+    def test_every_failure_path_exits_0_and_prints_nothing_extra(self):
+        (self.tmp / "config.json").write_text("{bad")
+        for event in hook.EVENTS:
+            for stdin in ("", "not json", "[]", "null", '{"transcript_path": 5, "session_id": 7}'):
+                with self.subTest(event=event, stdin=stdin):
+                    out = self.run_hook(event, stdin)
+                    self.assertLessEqual(len(out.encode()), hook.MAX_OUTPUT_BYTES)
+
+    def test_unreadable_config_still_nudges_with_defaults(self):
+        transcript = self.tmp / "t.jsonl"
+        transcript.write_text(json.dumps({"type": "assistant", "message": {"usage": {
+            "input_tokens": 260000}}}) + "\n")
+        (self.tmp / "config.json").mkdir()
+        out = self.run_hook("user-prompt-submit",
+                            {"transcript_path": str(transcript), "session_id": "cfgdir"})
+        self.assertIn("[ctx-nudge]", out)
+
+    def test_state_dir_that_cannot_be_created_exits_0(self):
+        (self.tmp / "xdg-state").write_text("a file, not a directory")
+        transcript = self.tmp / "t.jsonl"
+        transcript.write_text("")
+        self.assertEqual(self.run_hook(
+            "user-prompt-submit", {"transcript_path": str(transcript), "session_id": "s"}), "")
+
+    def test_broken_stdout_exits_0(self):
+        class Broken:
+            def write(self, _):
+                raise BrokenPipeError
+
+            def flush(self):
+                raise BrokenPipeError
+
+        with mock.patch.object(sys, "stdout", Broken()), mock.patch.object(os, "dup2"):
+            self.assertEqual(hook.main(["session-start"]), 0)
+
+    def test_closed_stdout_exits_0_through_the_real_entry_point(self):
+        proc = subprocess.run(
+            ["sh", "-c", '"$0" "$1" "$2" 1>&-', sys.executable, str(HOOK_BIN), "session-start"],
+            capture_output=True, text=True, timeout=30,
+            env={**os.environ, "XDG_STATE_HOME": str(self.tmp / "x"),
+                 "RIGOPS_CONFIG": str(self.tmp / "config.json")})
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_stdout_pipe_closed_early_exits_0(self):
+        proc = subprocess.Popen(
+            [sys.executable, str(HOOK_BIN), "session-start"], stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env={**os.environ, "XDG_STATE_HOME": str(self.tmp / "x"),
+                 "RIGOPS_CONFIG": str(self.tmp / "config.json")})
+        proc.stdout.close()
+        _, err = proc.communicate(timeout=30)
+        self.assertEqual(proc.returncode, 0, err)
+
+
+class CapTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+        self.env = {**os.environ, "XDG_STATE_HOME": str(self.tmp / "xdg"),
+                    "RIGOPS_CONFIG": str(self.tmp / "config.json")}
+
+    def run_entry(self, event, stdin=""):
+        return subprocess.run([sys.executable, str(HOOK_BIN), event], input=stdin.encode(),
+                              capture_output=True, timeout=30, env=self.env)
+
+    def seed_gates(self, text):
+        path = Path(self.env["XDG_STATE_HOME"]) / "rigops" / core.GATES_STATE_NAME
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"ts": _stamp(), "gates": [
+            {"kind": "check", "name": text, "status": text},
+            {"kind": "config", "name": text, "status": text}]}))
+
+    def test_output_stays_under_the_cap_on_a_10k_character_input(self):
+        for label, unit in (("ascii", "a"), ("multibyte", "é"), ("wide", "日")):
+            big = unit * 10000
+            transcript = self.tmp / f"{label}.jsonl"
+            transcript.write_text(json.dumps({"type": "assistant", "message": {"usage": {
+                "input_tokens": 260000}}}) + "\n")
+            self.seed_gates(big)
+            payloads = {
+                "session-start": json.dumps({"prompt": big}),
+                "user-prompt-submit": json.dumps({
+                    "transcript_path": str(transcript), "session_id": label + big, "prompt": big,
+                    "cwd": big}),
+            }
+            for event, stdin in payloads.items():
+                with self.subTest(label=label, event=event):
+                    proc = self.run_entry(event, stdin)
+                    self.assertEqual(proc.returncode, 0, proc.stderr)
+                    self.assertTrue(proc.stdout, "event printed nothing")
+                    self.assertLessEqual(len(proc.stdout), hook.MAX_OUTPUT_BYTES)
+                    proc.stdout.decode("utf-8")
+            (Path(self.env["XDG_STATE_HOME"]) / "rigops" / core.GATES_STATE_NAME).unlink()
+
+    def test_a_long_config_error_message_is_capped_including_the_newline(self):
+        self.seed_gates("x")
+        (self.tmp / "config.json").write_text("{" + "é" * 5000)
+        proc = self.run_entry("session-start")
+        self.assertLessEqual(len(proc.stdout), hook.MAX_OUTPUT_BYTES)
+        self.assertTrue(proc.stdout.endswith(b"\n"))
+
+    def test_usage_goes_through_the_cap(self):
+        proc = self.run_entry("--help")
+        self.assertLessEqual(len(proc.stdout), hook.MAX_OUTPUT_BYTES)
+
+
 class SubprocessTests(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -249,6 +376,30 @@ class SubprocessTests(unittest.TestCase):
                     self.assertEqual(proc.returncode, 0, proc.stderr)
                     times.append(elapsed)
                 self.assertLess(statistics.median(times), hook.TIME_BUDGET_S)
+
+    def test_hook_p95_is_at_or_under_250_ms_over_20_runs(self):
+        transcript = self.tmp / "t.jsonl"
+        transcript.write_text("\n".join(json.dumps({"type": "assistant", "message": {"usage": {
+            "input_tokens": 260000 + n}}}) for n in range(400)) + "\n")
+        gates = Path(self.env["XDG_STATE_HOME"]) / "rigops" / core.GATES_STATE_NAME
+        gates.parent.mkdir(parents=True)
+        gates.write_text(json.dumps({"ts": _stamp(5), "gates": [
+            {"kind": "check", "name": "paths", "status": "failing"}]}))
+        for event in ("session-start", "user-prompt-submit"):
+            with self.subTest(event=event):
+                payload = json.dumps({"transcript_path": str(transcript), "session_id": event})
+                cmd = [str(BIN), "hook", event]
+                subprocess.run(cmd, input=payload, capture_output=True, text=True,
+                               timeout=30, env=self.env)
+                times = []
+                for _ in range(20):
+                    start = time.monotonic()
+                    proc = subprocess.run(cmd, input=payload, capture_output=True, text=True,
+                                          timeout=30, env=self.env)
+                    times.append(time.monotonic() - start)
+                    self.assertEqual(proc.returncode, 0, proc.stderr)
+                p95 = sorted(times)[18]
+                self.assertLessEqual(p95, 0.250, f"p95 {p95:.3f}s, times {sorted(times)}")
 
     def test_help_exits_0(self):
         proc, _ = self.run_bin("--help")

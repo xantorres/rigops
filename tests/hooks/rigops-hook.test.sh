@@ -36,7 +36,11 @@ check() { # check <name> <expected-output> <path> <home> <event>
   fi
 }
 
-registered="$(jq -r '.hooks[][].hooks[].command' "$ROOT/plugin/hooks/hooks.json" 2>/dev/null)"
+registered="$(python3 -c 'import json,sys
+for groups in json.load(open(sys.argv[1]))["hooks"].values():
+    for group in groups:
+        for hook in group["hooks"]:
+            print(hook["command"])' "$ROOT/plugin/hooks/hooks.json" 2>/dev/null)"
 for event in session-start user-prompt-submit; do
   case "$registered" in
     *"/hooks/rigops-hook.sh\" $event"*) PASS=$((PASS + 1)); printf 'ok    %s\n' "hooks.json runs the shim for $event" ;;
