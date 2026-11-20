@@ -39,7 +39,6 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import signal
 import subprocess
 import sys
 import time
@@ -47,6 +46,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from rigops import procgroup
 from rigops.errors import RigopsError
 from rigops.reap_guards import (
     PRECIOUS_PATTERNS,
@@ -126,32 +126,11 @@ def clamp_timeout(base_s: int, remaining_s: float | None, floor_s: int = 5) -> i
 def _run_captured(
     argv: list[str], timeout: int, env: dict[str, str],
 ) -> subprocess.CompletedProcess:
-    """Run argv with captured output; a timeout SIGKILLs the whole process group.
-
-    start_new_session makes the child its own group leader (pgid == pid), so
-    the SIGKILL reaches git's ssh/credential-helper children too -- those are
-    exactly what a plain terminate leaves behind. The reaper's own process
-    group is a different pgid and is never touched.
-    """
+    """Run argv in its own process group: a timeout kills git's ssh and
+    credential-helper children too, which a plain terminate leaves behind."""
     # surrogateescape: a non-UTF-8 path from `status -z` survives and re-encodes
     # to the same bytes when passed back to git as a pathspec.
-    with subprocess.Popen(
-        argv, start_new_session=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, errors="surrogateescape", env=env,
-    ) as proc:
-        try:
-            stdout, stderr = proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                pass
-            try:
-                proc.communicate(timeout=5)
-            except subprocess.TimeoutExpired:
-                pass
-            raise subprocess.TimeoutExpired(argv, timeout) from None
-        return subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
+    return procgroup.run_group(argv, timeout=timeout, env=env, errors="surrogateescape")
 
 
 def git(repo: Path, *args: str, timeout: int = 120) -> subprocess.CompletedProcess:

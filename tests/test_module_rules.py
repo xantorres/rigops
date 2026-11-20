@@ -23,7 +23,7 @@ DEFAULT_MAX_LINES = 400
 EXEMPT_PACKAGES = {"core", "sources"}
 
 LINE_ALLOWANCES = {
-    "rigops/reap.py": 955,
+    "rigops/reap.py": 918,
     "rigops/janitor.py": 422,
 }
 
@@ -93,7 +93,7 @@ class RepoTreeTests(unittest.TestCase):
         self.assertEqual(violations(PACKAGE_ROOT), [])
 
     def test_recorded_allowances_are_unchanged(self):
-        self.assertEqual(LINE_ALLOWANCES, {"rigops/reap.py": 955, "rigops/janitor.py": 422})
+        self.assertEqual(LINE_ALLOWANCES, {"rigops/reap.py": 918, "rigops/janitor.py": 422})
 
 
 class ImportRuleTests(unittest.TestCase):

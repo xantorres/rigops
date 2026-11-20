@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from rigops import reap, reap_procs, state  # noqa: E402
+from rigops import procgroup, reap, reap_procs, state  # noqa: E402
 
 # Resolved before any test rewrites the environment: the log the operator's own
 # reaper runs append to, which no test may touch.
@@ -130,6 +130,19 @@ class RunCapturedKillsProcessGroupTests(EnvIsolatedTestCase):
                     break
                 time.sleep(0.05)
             self.assertTrue(gone, "process group still alive after _run_captured timeout")
+
+    def test_git_runs_through_the_shared_process_group_helper(self):
+        seen = {}
+
+        def record(argv, **kwargs):
+            seen.update(kwargs, argv=argv)
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        self.addCleanup(setattr, procgroup, "run_group", procgroup.run_group)
+        procgroup.run_group = record
+        reap._run_captured(["true"], timeout=3, env={"A": "b"})
+        self.assertEqual(seen, {"argv": ["true"], "timeout": 3, "env": {"A": "b"},
+                                "errors": "surrogateescape"})
 
 
 class RunCapturedUndecodableOutputTests(EnvIsolatedTestCase):
