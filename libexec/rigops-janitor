@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
+from rigops import cli  # noqa: E402
 from rigops import config as rigops_config  # noqa: E402
 from rigops import janitor as rigops_janitor  # noqa: E402
 
@@ -74,7 +75,7 @@ def main() -> int:
         payload["watermarks"] = wm_results
         payload["apply"] = args.apply
         print(json.dumps(payload, indent=2))
-        return 1 if had_errors else 0
+        return 2 if had_errors else 0
 
     print(f"janitor {'apply' if args.apply else 'dry-run'}")
     for rule_result in report["rules"]:
@@ -86,8 +87,8 @@ def main() -> int:
             + (f" -> {wm['backlog']}" if wm["backlog"] else "")
         )
     print(f"total deleted: {report['total_deleted']} (files, directory contents included)")
-    return 1 if had_errors else 0
+    return 2 if had_errors else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(cli.run(main))

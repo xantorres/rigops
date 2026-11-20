@@ -4,6 +4,7 @@ import math
 import re
 
 from rigops import config
+from rigops.errors import RigopsError
 
 DEFAULT_MAX_RUNTIME_H = 6.0
 REQUIRED_FIELDS = (
@@ -22,7 +23,7 @@ def parse_front_matter(text: str) -> dict:
     with an optional `notes: |` literal block. No nesting, anchors, or
     multi-document support -- the registry format never needs them.
 
-    Returns `{}` when no `items:` line is found. Raises SystemExit naming
+    Returns `{}` when no `items:` line is found. Raises RigopsError naming
     the offending line for anything under `items:` that isn't a comment,
     a new `- id: ...` entry, or a `key: value` field of the current entry.
     """
@@ -88,7 +89,7 @@ def parse_front_matter(text: str) -> dict:
             current[key] = val
             continue
 
-        raise SystemExit(f"error: malformed registry line {line_no}: {raw!r}")
+        raise RigopsError(f"malformed registry line {line_no}: {raw!r}")
 
     if in_notes and current is not None:
         current[notes_key] = "\n".join(notes_lines)
@@ -104,9 +105,9 @@ def _coerce_max_runtime_h(raw, item_id: str) -> float:
     try:
         value = float(raw)
     except (TypeError, ValueError) as exc:
-        raise SystemExit(f"error: item {item_id!r}: invalid max_runtime_h {raw!r}") from exc
+        raise RigopsError(f"item {item_id!r}: invalid max_runtime_h {raw!r}") from exc
     if not math.isfinite(value) or value <= 0:
-        raise SystemExit(f"error: item {item_id!r}: invalid max_runtime_h {raw!r}")
+        raise RigopsError(f"item {item_id!r}: invalid max_runtime_h {raw!r}")
     return value
 
 
@@ -114,22 +115,22 @@ def load_registry(path) -> list[dict]:
     """Load and parse a registry file, applying defaults for optional fields."""
     p = config.expand(path)
     if not p.exists():
-        raise SystemExit(f"error: registry file not found: {p}")
+        raise RigopsError(f"registry file not found: {p}")
     text = p.read_text(encoding="utf-8")
     front_matter = parse_front_matter(text)
     if "items" in front_matter and front_matter.get("schema") != "rigops.v1":
         got = front_matter.get("schema")
-        raise SystemExit(f"error: registry schema must be 'rigops.v1', got: {got!r}")
+        raise RigopsError(f"registry schema must be 'rigops.v1', got: {got!r}")
     items = front_matter.get("items", [])
     seen_ids = set()
     for item in items:
         item_id = item.get("id", "")
         if item_id in seen_ids:
-            raise SystemExit(f"error: duplicate registry item id: {item_id!r}")
+            raise RigopsError(f"duplicate registry item id: {item_id!r}")
         seen_ids.add(item_id)
         missing = [key for key in REQUIRED_FIELDS if not item.get(key, "").strip()]
         if missing:
-            raise SystemExit(f"error: item {item_id!r}: missing {', '.join(missing)}")
+            raise RigopsError(f"item {item_id!r}: missing {', '.join(missing)}")
         item.setdefault("plist", "")
         item.setdefault("notes", "")
         item["max_runtime_h"] = _coerce_max_runtime_h(item.get("max_runtime_h"), item_id)

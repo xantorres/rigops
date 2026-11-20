@@ -14,9 +14,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
+from rigops import cli  # noqa: E402
 from rigops import config as rigops_config  # noqa: E402
 from rigops import core, fmt, state  # noqa: E402
 from rigops import eval as rigops_eval  # noqa: E402
+from rigops.errors import RigopsError  # noqa: E402
 
 SETTINGS = (
     ("cases_dir", "cases"),
@@ -37,11 +39,11 @@ def _load_rows() -> list:
     try:
         rows = state.read_jsonl(path)
     except state.MalformedJsonl as exc:
-        raise SystemExit(f"error: {exc}") from exc
+        raise RigopsError(str(exc)) from exc
     for row in rows:
         problem = rigops_eval.row_problem(row)
         if problem:
-            raise SystemExit(f"error: malformed eval row in {path}: {problem}")
+            raise RigopsError(f"malformed eval row in {path}: {problem}")
     return rows
 
 
@@ -363,15 +365,12 @@ def main(argv=None) -> int:
     except KeyboardInterrupt:
         print("interrupted: nothing recorded", file=sys.stderr)
         return 130
-    except SystemExit as exc:
+    except RigopsError as exc:
         # A load error (config, results file) must not exit 1, which means regression.
-        if not isinstance(exc.code, str):
-            raise
-        print(_clean(exc.code), file=sys.stderr)
-        return 2
+        return _fail(str(exc))
     except Exception as exc:  # noqa: BLE001 - exit 1 is reserved for a real regression
         return _fail(f"{type(exc).__name__}: {exc}")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(cli.run(main))

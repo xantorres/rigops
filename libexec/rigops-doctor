@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import cause as rigops_cause  # noqa: E402
+from rigops import cli  # noqa: E402
 from rigops import config as rigops_config  # noqa: E402
 from rigops import core as rigops_core  # noqa: E402
 from rigops import doctor as config_checks  # noqa: E402
@@ -604,10 +605,10 @@ def main(argv=None) -> int:
         print(render_summary(jobs, checks, findings, gates, ts), end="")
         print(render_findings(findings), end="")
 
-    # The scheduled job passes --exit-zero because its own registry row judges it
-    # by this exit code. Elsewhere a failing finding exits 1; a warning never does.
-    return 1 if _failing(findings) and not args.heal and not args.exit_zero else 0
+    # Scheduled runs pass --exit-zero so the supervisor does not read a verdict as a crash.
+    verdict = bool(fail_count or _failing(findings))
+    return 1 if verdict and not args.exit_zero else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(cli.run(main))

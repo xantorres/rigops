@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 
+from rigops.errors import RigopsError
+
 DEFAULTS = {
     "transcripts_dir": "~/.claude/projects",
     "ledger": {
@@ -95,13 +97,13 @@ def load(path=None) -> dict:
     try:
         text = cfg_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
-        raise SystemExit(f"error: cannot read config {cfg_path}: {exc}") from exc
+        raise RigopsError(f"cannot read config {cfg_path}: {exc}") from exc
     try:
         overlay = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise SystemExit(f"error: invalid JSON in config {cfg_path}: {exc}") from exc
+        raise RigopsError(f"invalid JSON in config {cfg_path}: {exc}") from exc
     if not isinstance(overlay, dict):
-        raise SystemExit(f"error: config {cfg_path} must be a JSON object")
+        raise RigopsError(f"config {cfg_path} must be a JSON object")
     return _deep_merge(DEFAULTS, overlay)
 
 

@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 
 from rigops import config as rigops_config
+from rigops.errors import RigopsError
 
 # Config patterns change what the metric counts; config_sha records them, so ledger diff flags it.
 _DENIAL_ALTERNATIVES = (
@@ -45,15 +46,15 @@ def _compile(cfg, key: str) -> tuple:
     path = f"ledger.{key}"
     raw = rigops_config.get(cfg, path, [])
     if not isinstance(raw, list):
-        raise SystemExit(f"error: {path}: must be a list of regex strings")
+        raise RigopsError(f"{path}: must be a list of regex strings")
     out = []
     for i, entry in enumerate(raw):
         if not isinstance(entry, str):
-            raise SystemExit(f"error: {path}[{i}]: must be a string")
+            raise RigopsError(f"{path}[{i}]: must be a string")
         try:
             out.append(re.compile(entry, re.IGNORECASE))
         except re.error as exc:
-            raise SystemExit(f"error: {path}[{i}]: {exc.msg}") from exc
+            raise RigopsError(f"{path}[{i}]: {exc.msg}") from exc
     return tuple(out)
 
 

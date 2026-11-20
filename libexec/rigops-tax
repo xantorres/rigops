@@ -9,6 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
+from rigops import cli  # noqa: E402
 from rigops import config as rigops_config  # noqa: E402
 from rigops import fmt  # noqa: E402
 from rigops import levers  # noqa: E402
@@ -229,9 +230,9 @@ def main() -> int:
             return cmd_history(args.json)
         except state.MalformedJsonl as exc:
             print(f"error: {exc}", file=sys.stderr)
-            return 1
+            return 2
     return cmd_current(cfg, args.json)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(cli.run(main))

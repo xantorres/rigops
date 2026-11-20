@@ -13,12 +13,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
+from rigops import cli  # noqa: E402
 from rigops import config as rigops_config  # noqa: E402
 from rigops import fmt  # noqa: E402
 from rigops import ledger_row  # noqa: E402
 from rigops import levers  # noqa: E402
 from rigops import state  # noqa: E402
 from rigops.doctor import check_levers  # noqa: E402
+from rigops.errors import RigopsError  # noqa: E402
 
 
 def _rewrite_jsonl(path: Path, rows: list) -> None:
@@ -30,7 +32,7 @@ def _load_ledger_rows(path: Path) -> list:
     rows = state.read_jsonl(path)
     for row in rows:
         if "date" not in row:
-            raise SystemExit(f"error: ledger row missing 'date' in {path}")
+            raise RigopsError(f"ledger row missing 'date' in {path}")
     return rows
 
 
@@ -309,8 +311,8 @@ def main() -> int:
         return cmd_write(args)
     except state.MalformedJsonl as exc:
         print(f"error: {exc}", file=sys.stderr)
-        return 1
+        return 2
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(cli.run(main))

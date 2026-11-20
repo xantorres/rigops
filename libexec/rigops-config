@@ -8,7 +8,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
+from rigops import cli  # noqa: E402
 from rigops import config as rigops_config  # noqa: E402
+from rigops.errors import RigopsError  # noqa: E402
 
 _MISSING = object()
 
@@ -17,7 +19,7 @@ def cmd_get(args) -> int:
     cfg = rigops_config.load()
     value = rigops_config.get(cfg, args.key, _MISSING)
     if value is _MISSING:
-        return 3
+        return 1
     if isinstance(value, (dict, list)):
         print(json.dumps(value, separators=(",", ":"), sort_keys=True))
     else:
@@ -34,9 +36,9 @@ def cmd_check(_args) -> int:
     path = rigops_config.config_path()
     try:
         cfg = rigops_config.load()
-    except SystemExit as exc:
-        print(exc, file=sys.stderr)
-        return 1
+    except RigopsError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     for key in cfg:
         if key not in rigops_config.DEFAULTS:
             print(f"warning: unknown top-level config key: {key}", file=sys.stderr)
@@ -63,4 +65,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(cli.run(main))

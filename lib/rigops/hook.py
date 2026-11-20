@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from rigops import core
+from rigops.errors import RigopsError
 
 MAX_OUTPUT_BYTES = 1000
 TIME_BUDGET_S = 1.0
@@ -91,9 +92,8 @@ def _session_start_line() -> str:
 def _session_start() -> str:
     try:
         return _session_start_line()
-    except SystemExit as exc:
-        message = str(exc.code).removeprefix("error: ").strip()
-        return f"rigops: config unreadable: {message}"
+    except RigopsError as exc:
+        return f"rigops: config unreadable: {exc}"
     except Exception as exc:
         return f"rigops: session-start hook failed ({type(exc).__name__})"
 
@@ -105,7 +105,7 @@ def _valid_int(value) -> bool:
 def _limits():
     try:
         cfg = core.load_config()
-    except SystemExit:
+    except RigopsError:
         return DEFAULT_TIERS, DEFAULT_REARM
     tiers = core.cfg_get(cfg, "context.nudge_tiers")
     if not (isinstance(tiers, list) and len(tiers) >= 3 and all(_valid_int(t) for t in tiers[:3])):

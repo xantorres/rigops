@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import config  # noqa: E402
+from rigops.errors import RigopsError  # noqa: E402
 
 
 class DeepMergeTests(unittest.TestCase):
@@ -99,11 +100,11 @@ class LoadTests(unittest.TestCase):
             self.assertEqual(loaded["janitor"]["max_delete"], 200)
             self.assertIn("memory", loaded["backlog"]["areas"])
 
-    def test_invalid_json_raises_system_exit_with_path(self):
+    def test_invalid_json_raises_typed_error_with_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg_path = Path(tmp) / "config.json"
             cfg_path.write_text("{not json")
-            with self.assertRaises(SystemExit) as ctx:
+            with self.assertRaises(RigopsError) as ctx:
                 config.load(cfg_path)
             self.assertIn(str(cfg_path), str(ctx.exception))
 

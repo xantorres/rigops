@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import config  # noqa: E402
 from rigops.detector import BUILTIN, Detector  # noqa: E402
+from rigops.errors import RigopsError  # noqa: E402
 
 
 def _cfg(**ledger) -> dict:
@@ -76,26 +77,26 @@ class ExtraPatternTests(unittest.TestCase):
 
 class ValidationTests(unittest.TestCase):
     def _error(self, **ledger) -> str:
-        with self.assertRaises(SystemExit) as ctx:
+        with self.assertRaises(RigopsError) as ctx:
             Detector.from_config(_cfg(**ledger))
         return str(ctx.exception)
 
     def test_non_list(self):
         self.assertEqual(
             self._error(extra_correction_patterns="x"),
-            "error: ledger.extra_correction_patterns: must be a list of regex strings",
+            "ledger.extra_correction_patterns: must be a list of regex strings",
         )
 
     def test_non_string_entry(self):
         self.assertEqual(
             self._error(correction_exclude_patterns=["ok", 3]),
-            "error: ledger.correction_exclude_patterns[1]: must be a string",
+            "ledger.correction_exclude_patterns[1]: must be a string",
         )
 
     def test_entry_that_does_not_compile(self):
         self.assertEqual(
             self._error(extra_denial_patterns=["ok", "ok", "(bad"]),
-            "error: ledger.extra_denial_patterns[2]: missing ), unterminated subpattern",
+            "ledger.extra_denial_patterns[2]: missing ), unterminated subpattern",
         )
 
 

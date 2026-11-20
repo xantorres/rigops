@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import registry  # noqa: E402
+from rigops.errors import RigopsError  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EXAMPLE_REGISTRY = REPO_ROOT / "config" / "registry.example.md"
@@ -82,15 +83,15 @@ class ParseFrontMatterTests(unittest.TestCase):
         fm = registry.parse_front_matter(text)
         self.assertEqual(fm["items"], [{"id": "a", "domain": "x"}])
 
-    def test_malformed_line_raises_system_exit_naming_line(self):
+    def test_malformed_line_raises_typed_error_naming_line(self):
         text = "items:\n  - id: a\n    not a field or item\n---\n"
-        with self.assertRaises(SystemExit) as ctx:
+        with self.assertRaises(RigopsError) as ctx:
             registry.parse_front_matter(text)
         self.assertIn("3", str(ctx.exception))
 
     def test_field_before_any_item_is_malformed(self):
         text = "items:\n  domain: orphan\n  - id: a\n---\n"
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(RigopsError):
             registry.parse_front_matter(text)
 
 
@@ -119,9 +120,9 @@ class LoadRegistryTests(unittest.TestCase):
         self.assertEqual(by_id["log-prune"]["notes"], "")
         self.assertIn("Rolls up per-minute", by_id["metrics-rollup"]["notes"])
 
-    def test_missing_file_raises_system_exit(self):
+    def test_missing_file_raises_typed_error(self):
         with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaises(SystemExit):
+            with self.assertRaises(RigopsError):
                 registry.load_registry(Path(tmp) / "nope.md")
 
     def test_no_items_key_returns_empty_list(self):
@@ -137,7 +138,7 @@ class LoadRegistryTests(unittest.TestCase):
                 "schema: rigops.v1\nitems:\n" + _item("a", max_runtime_h="not-a-number")
                 + "---\n"
             )
-            with self.assertRaisesRegex(SystemExit, "invalid max_runtime_h"):
+            with self.assertRaisesRegex(RigopsError, "invalid max_runtime_h"):
                 registry.load_registry(path)
 
     def test_max_runtime_h_non_positive_or_non_finite_exits(self):
@@ -148,7 +149,7 @@ class LoadRegistryTests(unittest.TestCase):
                     path.write_text(
                         "schema: rigops.v1\nitems:\n" + _item("a", max_runtime_h=bad) + "---\n"
                     )
-                    with self.assertRaisesRegex(SystemExit, "invalid max_runtime_h"):
+                    with self.assertRaisesRegex(RigopsError, "invalid max_runtime_h"):
                         registry.load_registry(path)
 
     def test_duplicate_item_ids_exits(self):
@@ -159,7 +160,7 @@ class LoadRegistryTests(unittest.TestCase):
                 + _item("a") + _item("a", domain="y")
                 + "---\n"
             )
-            with self.assertRaisesRegex(SystemExit, "duplicate registry item id"):
+            with self.assertRaisesRegex(RigopsError, "duplicate registry item id"):
                 registry.load_registry(path)
 
     def test_missing_required_field_exits_naming_item_and_field(self):
@@ -170,14 +171,14 @@ class LoadRegistryTests(unittest.TestCase):
                     path.write_text(
                         "schema: rigops.v1\nitems:\n" + _item("a", **{field: None}) + "---\n"
                     )
-                    with self.assertRaisesRegex(SystemExit, rf"item 'a': missing {field}$"):
+                    with self.assertRaisesRegex(RigopsError, rf"item 'a': missing {field}$"):
                         registry.load_registry(path)
 
     def test_blank_required_field_counts_as_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "reg.md"
             path.write_text("schema: rigops.v1\nitems:\n" + _item("a", cadence="") + "---\n")
-            with self.assertRaisesRegex(SystemExit, r"item 'a': missing cadence$"):
+            with self.assertRaisesRegex(RigopsError, r"item 'a': missing cadence$"):
                 registry.load_registry(path)
 
     def test_complete_item_loads(self):
@@ -190,14 +191,14 @@ class LoadRegistryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "reg.md"
             path.write_text("schema: rigops.v2\nitems:\n  - id: a\n---\n")
-            with self.assertRaises(SystemExit):
+            with self.assertRaises(RigopsError):
                 registry.load_registry(path)
 
     def test_missing_schema_with_items_exits(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "reg.md"
             path.write_text("items:\n  - id: a\n---\n")
-            with self.assertRaises(SystemExit):
+            with self.assertRaises(RigopsError):
                 registry.load_registry(path)
 
 
