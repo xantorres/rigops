@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrading from 0.10.x
+
+- `reaper.roots` now defaults to `[]`; it was the home projects directory. Set `reaper.roots` to the directories to scan to keep the old behaviour. Until then `rigops reap` prints one line to stderr and exits 0, so a scheduled run no longer scans anything.
+- `reaper.ignored_untracked_dirs` lost one author-specific build directory from its default. Add it back to the list if your repos need it.
+- `sources.rtk.argv` and `sources.rtk.timeout_s` are gone: the `rtk` source is no longer built in, and a config that still holds `sources.rtk` is silently ignored. Move it to a `sources.custom` entry (the example is in `docs/CONFIG.md`) to keep recording it. The `caveman` source is gone the same way. Rows written by 0.10 keep their columns.
+- The corrections and denials metrics are redefined: Spanish handling is no longer built in, and two author-specific denial patterns are dropped. `ledger diff` marks both `not comparable` across the 0.10 to 0.11 row change. To keep the old counting, put the old rules in `ledger.extra_correction_patterns`, `ledger.correction_exclude_patterns` and `ledger.extra_denial_patterns` (all three default to `[]`; see `docs/CONFIG.md`).
+- `pointers.memory_roots` no longer lists the author's personal rig path by default. Add it under `doctor.pointers.memory_roots` if your memory notes point there.
+- `install.sh --statusline` is removed and exits 2. Wire the statusline by hand from `patterns/statusline.md`. Re-running `install.sh --apply` over a 0.10 statusline install unwires it and prints a note.
+- The plugin `card.sh` and `ctx-nudge.sh` hook scripts are replaced by `plugin/hooks/rigops-hook.sh`, which calls the hidden `rigops hook <event>`. Update the plugin; a hand-wired copy of either script must point at the new one. The prompt-scoped nudge is gone, so `context.prompt_nudge` has no effect. `ctx-probe.sh` moved to `patterns/statusline/`.
+- The `imports` and `rtk` doctor checks and `doctor.imports.max_lines` are removed, and `doctor --config-only` no longer runs them. To keep an rtk check, copy the `checks.custom` example from `docs/CONFIG.md`.
+- `rigops mine --registry` is removed and fails as an unknown argument. Registry client tokens are no longer masked; list them in your private redaction pattern files.
+- `rigops janitor` no longer routes watermarks to realm backlogs and has no `unrouted` status, so it no longer exits non-zero for one. Every tripped watermark goes to `backlog.path`.
+- Gate records and custom doctor check results no longer carry `realm`; a `realm` on `checks.custom[]` is accepted and ignored.
+- The public redaction pattern file moved from `tools/` to `lib/rigops/redaction-patterns.public.txt`. Point any script that read the old path at the new one.
+
 ### Added
 
 - `rigops hook <event>` (`session-start`, `user-prompt-submit`) replaces the plugin's card and nudge scripts. It always exits 0, prints at most 1000 bytes and is held to a one-second budget in CI. It is hidden from `rigops help`.
