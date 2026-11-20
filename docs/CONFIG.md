@@ -333,7 +333,7 @@ Every command loads the config through one validator driven by the key table bel
 
 ### File permissions
 
-rigops refuses to run commands from, or delete because of, a config file that group or others can write. The command exits `2` and names the file; the fix is `chmod go-w <path>`. The check follows symlinks and a missing file passes. It applies to `doctor` fleet runs and `--heal`, `janitor --apply`, `reap --apply`, `authprobe` and `ledger write` with `sources.custom` (including `--dry-run`, which still runs the custom sources). Under `doctor`, the registry named by `doctor.registry` or `--registry` gets the same check. `doctor --list`, `doctor --config-only`, a janitor dry run and a reap preview are not checked.
+rigops refuses to run commands from, or delete because of, a config file that group or others can write. The command exits `2` and names the file; the fix is `chmod go-w <path>`. The check follows symlinks and a missing file passes. It applies to `doctor` fleet runs and `--heal`, `janitor --apply`, `reap --apply`, `authprobe` and `ledger write` with `sources.custom` or a changed `sources.ccusage.argv` (including `--dry-run`, which still runs those commands). Under `doctor`, the registry named by `doctor.registry` or `--registry` gets the same check. `doctor --list`, `doctor --config-only`, a janitor dry run and a reap preview are not checked.
 
 ### Removed keys
 

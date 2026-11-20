@@ -70,10 +70,10 @@ A case that got no usable reply (refused connection, timeout, HTTP error, a redi
 
 - Every compared case that passed in the base run and does not pass in the head run is a regression, reported under its group. A case that starts passing never offsets one that stops, in the same group or another: a prompt that leaks one secret while guarding another better is not even.
 - Cases that flip either way are listed, the newly failing ones with their reason.
-- A case that errored in the base run and does not pass in the head run cannot be judged either way. It is listed as unverified, and a diff with unverified cases and no regression exits `2`: re-run the baseline.
-- A case that passed in the base run and is missing or edited in the head run is listed as dropped, and a diff with dropped cases and no regression exits `2`: deleting or loosening a failing case is the cheapest way to hide it. To change the suite itself, merge the case edit and refresh the baseline, or judge both runs with the base commit's cases, as below.
+- A case that errored in the base run and does not pass in the head run cannot be judged either way. It is listed as unverified, and a diff with unverified cases exits `2`: re-run the baseline.
+- A case that passed in the base run and is missing or edited in the head run is listed as dropped, and a diff with dropped cases exits `2`: deleting or loosening a failing case is the cheapest way to hide it. To change the suite itself, merge the case edit and refresh the baseline, or judge both runs with the base commit's cases, as below.
 - `--latency-tolerance PCT` also fails a group whose p95 grew by more than `PCT` percent. It is off by default: a local model shares the machine with everything else running on it, so latency only gates at a tolerance you chose.
-- Exit `0` means no regression, `1` a regression. Exit `2` means there was nothing valid to compare: fewer than two runs, an unknown `--base` or `--head`, both selecting the same run, no unchanged case in common, an unreadable results file, or unverified or dropped cases with no regression. The gate fails closed; a missing baseline is an error, never a pass.
+- Exit `0` means no regression, `1` a regression. Exit `2` means there was nothing valid to compare: fewer than two runs, an unknown `--base` or `--head`, both selecting the same run, no unchanged case in common, an unreadable results file, or unverified or dropped cases. `2` wins over `1`: a diff with a regression and an unverified or dropped case exits `2`, and the report still lists the regression. The gate fails closed; a missing baseline is an error, never a pass.
 
 ## Commands
 
