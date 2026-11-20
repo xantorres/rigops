@@ -28,9 +28,3 @@ far argues for or against building it.
 
 - [ ] No chain-step evidence checks (a job that only proves itself via another
   job's output file); such items read `unknown`.
-
-## Config
-
-- [ ] `config check` warns on unknown top-level keys only, so a nested shape mistake
-  (e.g. `watermarks` as an object instead of an array) surfaces as a runtime crash on
-  the first `--apply`.

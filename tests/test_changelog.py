@@ -1,4 +1,4 @@
-"""The 0.11 upgrade notes name every config default that changed since 0.10.1."""
+"""Each release's upgrade notes name every config default that changed since the previous one."""
 from __future__ import annotations
 
 import hashlib
@@ -13,8 +13,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 from rigops import config  # noqa: E402
 
-OLD_DEFAULTS = REPO_ROOT / "tests" / "fixtures" / "config" / "defaults-0.10.1.json"
-HEADING = "### Upgrading from 0.10.x"
+FIXTURES = REPO_ROOT / "tests" / "fixtures" / "config"
 
 
 def _leaves(tree: dict, prefix: str = ""):
@@ -29,22 +28,39 @@ def _hash(value) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
-def _upgrade_notes() -> str:
+def _fixture(name: str) -> dict:
+    return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+
+
+def _hashed(defaults: dict) -> dict:
+    return {key: _hash(value) for key, value in _leaves(defaults)}
+
+
+def _changed(old: dict, new: dict) -> list:
+    return sorted(key for key in old.keys() | new.keys() if old.get(key) != new.get(key))
+
+
+def _upgrade_notes(heading: str) -> str:
     text = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    notes = re.search(rf"^{re.escape(HEADING)}\n(.*?)(?=^##|\Z)", text, re.S | re.M)
-    assert notes, f"no '{HEADING}' section in CHANGELOG.md"
+    notes = re.search(rf"^{re.escape(heading)}\n(.*?)(?=^##|\Z)", text, re.S | re.M)
+    assert notes, f"no '{heading}' section in CHANGELOG.md"
     return notes.group(1)
 
 
 class UpgradeNotesTests(unittest.TestCase):
-    def test_every_changed_default_is_named(self):
-        old = json.loads(OLD_DEFAULTS.read_text(encoding="utf-8"))
-        new = {key: _hash(value) for key, value in _leaves(config.DEFAULTS)}
-        changed = sorted(key for key in old.keys() | new.keys() if old.get(key) != new.get(key))
+    def assert_named(self, changed: list, heading: str) -> None:
         self.assertTrue(changed, "no changed default found; the comparison is vacuous")
-        notes = _upgrade_notes()
+        notes = _upgrade_notes(heading)
         missing = [key for key in changed if f"`{key}`" not in notes]
-        self.assertEqual(missing, [], f"changed defaults not named in the upgrade notes: {missing}")
+        self.assertEqual(missing, [], f"changed defaults not named under '{heading}': {missing}")
+
+    def test_defaults_changed_in_0_11_are_named(self):
+        changed = _changed(_fixture("defaults-0.10.1.json"), _fixture("defaults-0.11.0.json"))
+        self.assert_named(changed, "### Upgrading from 0.10.x")
+
+    def test_defaults_changed_since_0_11_are_named(self):
+        changed = _changed(_fixture("defaults-0.11.0.json"), _hashed(config.DEFAULTS))
+        self.assert_named(changed, "### Upgrading from 0.11.x")
 
 
 if __name__ == "__main__":

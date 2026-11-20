@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rigops doctor --exit-zero` turns exit `1` into `0` and leaves `2` alone.
 - The doctor never judges, kills or kickstarts its own registry row: an item whose `entry_point` runs `rigops-doctor` or `rigops doctor` is reported `ok` with no action, under both supervisors.
 
+- Config is validated on load from one key table. A known key with the wrong type, such as `"14"` for `reaper.grace_days` or `true` for an integer, exits `2` for every command and names the full key path.
+- `rigops config get` always prints JSON, so a string value now prints quoted. A missing key still exits `1`.
+- `rigops config check` reports unknown keys at every depth, not only the top level, and reports the keys 0.11 dropped as `removed in 0.11` with a note. The exit code does not change.
+- `rigops doctor` prints one `info:` line naming unknown config keys, and `--json` carries them in `unknown_config_keys`. It is not a finding.
+- The config defaults now cover keys the code already read with an inline fallback; each default equals that fallback.
+
 ### Upgrading from 0.11.x
 
 - `rigops config get` on a missing key exited 3 and now exits 1. Treat 1 as "not found".
@@ -25,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Plain `rigops doctor` ignored failing and hung jobs and exited 0 with `--heal`. It now exits 1 on a failing or hung job, a failing check or a failing finding, with or without `--heal`. Pass `--exit-zero` to keep exit 0.
 - Scheduled doctor jobs must pass `--exit-zero`, or a failing job makes the scheduled run itself fail. The launchd template already carries it: reinstall the job (`install.sh --apply`) or edit the plist's `ProgramArguments`. For cron, add `--exit-zero` to the `rigops doctor` line (`templates/cron/crontab.example`).
 - A doctor registry row whose `entry_point` runs the doctor is no longer judged. Delete the row if you only kept it to watch the doctor.
+- A config key of the wrong type used to fail late or be ignored; it now stops every command with exit `2`. Run `rigops config check` once and fix what it names. Integer keys no longer accept `true`/`false`, and a float is accepted only where the key is a number.
+- `rigops config get <key>` printed a bare string; it now prints JSON, so strings are quoted. Scripts that read a string value must strip the quotes or parse the JSON.
+- Keys 0.10 read and 0.11 dropped (`context.preload`, `context.card` except `context.card.doctor_max_age_h`, `context.nudges_path`, `context.prompt_nudge`, `doctor.imports`, `doctor.plans`, `doctor.rtk`, `render`, `retrieval`, `sources.rtk`, `sources.caveman`) are still ignored silently everywhere except `rigops config check`, which now says `removed in 0.11`.
+- These keys gained a built-in default equal to the value the code already assumed, so nothing behaves differently until you set them: `context.card.doctor_max_age_h`, `doctor.budget.always_on_tokens`, `doctor.levers.defaults`, `doctor.levers.max_age_days`, `doctor.levers.rules`, `doctor.mcp.stdio_allow`, `doctor.memory.index_max_bytes`, `doctor.memory.index_max_lines`, `doctor.memory.sources`.
 
 ## [0.11.0] - 2026-11-20
 
