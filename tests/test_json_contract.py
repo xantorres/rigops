@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests.test_eval_cli import _content_reply, _run_eval, _StubServerMixin, _write_case
+
 LIBEXEC = Path(__file__).resolve().parent.parent / "libexec"
 
 FORMS = [
@@ -55,6 +57,29 @@ class EveryJsonPayloadTests(unittest.TestCase):
                     payload = json.loads(proc.stdout)
                     self.assertIsInstance(payload, dict)
                     self.assertEqual(payload.get("version"), 1)
+
+
+class EvalJsonPayloadTests(_StubServerMixin, unittest.TestCase):
+    def test_eval_run_and_diff_are_versioned_objects(self):
+        endpoint, _ = self._start_stub(_content_reply(lambda payload: "hi"))
+        with tempfile.TemporaryDirectory() as tmp:
+            cases = Path(tmp) / "cases"
+            cases.mkdir()
+            _write_case(cases, "greets")
+            env = {
+                **os.environ, "HOME": tmp, "RIGOPS_STATE_DIR": str(Path(tmp) / "state"),
+                "RIGOPS_CONFIG": str(Path(tmp) / "config.json"),
+                "XDG_CONFIG_HOME": str(Path(tmp) / "xc"), "XDG_STATE_HOME": str(Path(tmp) / "xs"),
+            }
+            run = ["run", "--cases", str(cases), "--endpoint", endpoint, "--model", "m", "--json"]
+            outputs = [_run_eval([*run, "--label", label], env) for label in ("r1", "r2")]
+            outputs.append(_run_eval(["diff", "--json"], env))
+        for proc in outputs:
+            with self.subTest(args=proc.args[2:4]):
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                payload = json.loads(proc.stdout)
+                self.assertIsInstance(payload, dict)
+                self.assertEqual(payload.get("version"), 1)
 
 
 if __name__ == "__main__":

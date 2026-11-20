@@ -251,6 +251,22 @@ class PrivateDirTests(unittest.TestCase):
         state.atomic_write(outside / "x.txt", "x")
         self.assertEqual(self.mode(outside), 0o755)
 
+    def test_a_directory_made_outside_the_state_dir_follows_the_umask(self):
+        previous = os.umask(0o022)
+        self.addCleanup(os.umask, previous)
+        state.atomic_write(self.root / "reports" / "x.txt", "x")
+        self.assertEqual(self.mode(self.root / "reports"), 0o755)
+
+    def test_the_xdg_state_dir_is_tightened_when_the_override_points_elsewhere(self):
+        xdg = self.root / "xdg"
+        (xdg / "rigops").mkdir(parents=True)
+        os.chmod(xdg / "rigops", 0o755)
+        with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(xdg)}):
+            state.atomic_write(xdg / "rigops" / "doctor" / "gates.json", "{}")
+        self.assertEqual(self.mode(xdg / "rigops"), 0o700)
+        self.assertEqual(self.mode(xdg / "rigops" / "doctor"), 0o700)
+        self.assertEqual(self.mode(xdg), 0o755)
+
 
 if __name__ == "__main__":
     unittest.main()

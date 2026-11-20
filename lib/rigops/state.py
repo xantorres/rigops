@@ -19,12 +19,14 @@ class MalformedJsonl(ValueError):
     pass
 
 
-def state_root() -> Path:
-    env_dir = os.environ.get("RIGOPS_STATE_DIR")
-    if env_dir:
-        return expand(env_dir)
+def _xdg_root() -> Path:
     xdg = os.environ.get("XDG_STATE_HOME") or "~/.local/state"
     return expand(Path(xdg) / "rigops")
+
+
+def state_root() -> Path:
+    env_dir = os.environ.get("RIGOPS_STATE_DIR")
+    return expand(env_dir) if env_dir else _xdg_root()
 
 
 def state_dir() -> Path:
@@ -34,12 +36,15 @@ def state_dir() -> Path:
 
 
 def _ensure_parent(path: Path) -> None:
-    """Create the parent of `path`; a directory of the state tree is tightened to 0700."""
+    """Create the parent of `path`; a directory of a state tree is made and kept 0700."""
     parent = path.parent
-    parent.mkdir(parents=True, exist_ok=True, mode=PRIVATE_MODE)
-    root = os.path.realpath(state_root())
     current = os.path.realpath(parent)
-    while current == root or current.startswith(root + os.sep):
+    # The gate record and nudge state stay under XDG even when the override points elsewhere.
+    roots = {os.path.realpath(state_root()), os.path.realpath(_xdg_root())}
+    inside = [r for r in roots if current == r or current.startswith(r + os.sep)]
+    root = min(inside, key=len, default=None)
+    parent.mkdir(parents=True, exist_ok=True, mode=PRIVATE_MODE if root else 0o777)
+    while root:
         with contextlib.suppress(OSError):
             if os.stat(current).st_mode & 0o077:
                 os.chmod(current, PRIVATE_MODE)

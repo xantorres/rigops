@@ -18,7 +18,7 @@ What each rigops command can destroy, what's opt-in, and the caps that bound it.
 
 ## State files
 
-- The state directory is `0700`; a wider one is tightened on first use. Keep it on a local disk, because locking is `flock` and appends are `O_APPEND`.
+- The state directory is `0700`; a wider one is tightened on first use. So is `${XDG_STATE_HOME:-~/.local/state}/rigops`, which holds the doctor gate record and the hook's nudge state even when `RIGOPS_STATE_DIR` points elsewhere. Keep it on a local disk, because locking is `flock` and appends are `O_APPEND`.
 - JSON state (`heal-stamps.json`, `holds.json`, `kicked.json`, `notified.json`, the nudge file, `report-latest.txt`) is written to a temp file and renamed, so a reader never sees half a file.
 - A JSONL row is appended with one write, and a row over 1 MiB (`MAX_ROW_BYTES`, 1048576 bytes) is refused with exit `2` instead of being truncated or interleaved.
 - Every JSONL row and every JSON state file carries an integer `version` (currently `1`). A row without one reads as version 0. The stamp files are `{"version": 1, "entries": {...}}`; the older flat object, and for `kicked.json` the older list, still read.

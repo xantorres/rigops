@@ -213,6 +213,16 @@ class TaxStartsCliTests(unittest.TestCase):
         self.assertIn("tools 4", single.stdout)
         self.assertIn("mcp__acme-docs", single.stdout)
 
+    def test_one_session_json_is_a_versioned_object_with_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "projects"
+            make_tree(str(root))
+            single = self._run(root, "--session", "sess-desk", "--json")
+        self.assertEqual(single.returncode, 0, single.stderr)
+        payload = json.loads(single.stdout)
+        self.assertEqual(payload["version"], 1)
+        self.assertEqual([row["session"] for row in payload["rows"]], ["sess-desk"])
+
     def test_dead_lists_uncalled_tools(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_tree(tmp)
