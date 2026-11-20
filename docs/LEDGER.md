@@ -5,11 +5,11 @@ Tracks whether a change to a Claude Code rig actually moved the numbers, one app
 ## Concepts
 
 - One row per `rigops ledger` run, one per calendar date; by convention run weekly.
-- **Window** = the 7 full days before the row's date (local midnight to local midnight, converted to UTC internally).
+- **Window** = the 7 full days before the row's date (local midnight to local midnight, each edge with the UTC offset of its own day, stored as UTC). A week that spans a clock change is 167 or 169 hours long.
 - `ledger.jsonl` (in the [state directory](CONFIG.md#resolution)) is the source of truth. `ledger.md` is fully regenerated from `ledger.jsonl` on every write - never hand-edit it, column additions would desync a hand-edited table from the jsonl anyway.
 - `interventions.jsonl` is a side file: free-text notes, each with a date and a UTC timestamp, written by `rigops ledger note`.
 - Every row in both files carries an integer `version`; a row without one reads as 0, and a row newer than this rigops is skipped by reports and refused by writers. A row over 1 MiB is refused. Writes take a lock, so concurrent `ledger write` and `ledger note` runs never interleave. See [SAFETY.md](SAFETY.md#state-files).
-- Every `--json` payload is one object with `"version": 1`. Lists sit under `rows`, `items` or `findings`, and report payloads carry `"skipped"`, the count of unreadable rows left out. `ledger write --show --json` is `{"version", "rows", "skipped"}`, `ledger write --json` is `{"version", "row"}`, and `ledger diff --json` gains `version`, `skipped` and `incomplete`.
+- Every `--json` payload is one object with `"version": 1`. Lists sit under `rows`, `items` or `findings`, and report payloads carry `"skipped"`, the count of unreadable rows left out. `ledger write --show --json` is `{"version", "rows", "skipped"}`, `ledger write --json` is `{"version", "row"}`, and `ledger diff --json` gains `version`, `skipped`, `incomplete` and `insufficient_data`.
 
 ## EIT
 
@@ -63,10 +63,14 @@ Appends today's row (or `--at`'s date). Flags:
 
 - `--at YYYY-MM-DD` - row date, default today.
 - `--label TEXT` - free-text tag stored on the row.
-- `--dry-run` - compute and print, write nothing. `sources.custom` commands still run to compute the row (see [CONFIG.md](CONFIG.md)).
+- `--dry-run` - compute and print, write nothing. Needs the transcripts dir like a real write. `sources.custom` commands still run to compute the row (see [CONFIG.md](CONFIG.md)).
 - `--force` - replace an existing row for that date.
 - `--show` - print the current ledger and exit; no write, no computation.
 - `--json` - machine-readable row instead of the summary line.
+
+A write reads each transcript once. It exits `2` with one `error:` line, and writes no row and no `ledger.md`, when `transcripts_dir` does not exist. Two things are written but flagged on stderr: more than 1% of transcript lines that did not parse (`warning: N of M transcript lines (P%) did not parse; this row may undercount`), and a week with no turns (`warning: no transcript turns in the 7 days before DATE; row written, marked empty`). Both exit `0`.
+
+Each row records `lines_seen` and `lines_parsed` (non-blank transcript lines in the whole corpus, and how many were valid JSON) and `window_empty` (`true` when the window holds no turns). Rows written before these fields have none of them, and a missing count means unknown, not zero. The row `version` is unchanged. `rigops doctor` warns (`parse`, `no-turns`) about the newest row when it crossed either line; it stays silent for a row without the fields.
 
 A row already existing for that date is a no-op ("row exists, nothing appended") unless `--force`.
 
@@ -82,7 +86,7 @@ Appends `{ts, date, text}` to `interventions.jsonl` (`ts` is a UTC, second-preci
 - `--since YYYY-MM-DD` - pick an explicit baseline.
 - `--json`.
 
-Needs at least 2 ledger rows total; with fewer it prints "not enough ledger rows to diff yet (need at least 2)" and exits `0`. Baseline selection: without `--since`, the baseline is the second-to-last row (the previous run). With `--since`, the baseline is the latest row on or before that date - an error if no row qualifies, and an error if the selected baseline turns out to be the same row as the latest one (a baseline can't be its own comparison point). When a metric's definition changed between the two rows' versions (`corrections`, `denials` and `denials_headless` from version 1), its delta prints `not comparable` and `--json` sets `comparable` to `false` with `delta` and `pct` null. After the table it prints `always-loaded files:` and `measurement config:`, each `changed`, `unchanged` or `unknown` (a row lacks the hash); `--json` returns them under `fingerprints`. The diff prints every numeric column's old/new/delta/percent, plus every intervention noted strictly after the baseline date and on or before the latest date. Commits in the repos listed under `ledger.derive_interventions` ([CONFIG.md](CONFIG.md)) that touch always-loaded config in the same window print in date order among the notes, tagged `[derived <repo>@<sha>]`; `--json` returns them under `derived`, with the files each commit touched.
+Needs at least 2 ledger rows total; with fewer it prints "not enough ledger rows to diff yet (need at least 2)" and exits `0`. Baseline selection: without `--since`, the baseline is the second-to-last row (the previous run). With `--since`, the baseline is the latest row on or before that date - an error if no row qualifies, and an error if the selected baseline turns out to be the same row as the latest one (a baseline can't be its own comparison point). When a metric's definition changed between the two rows' versions (`corrections`, `denials` and `denials_headless` from version 1), its delta prints `not comparable` and `--json` sets `comparable` to `false` with `delta` and `pct` null. When either row holds fewer than 20 turns, or is marked `window_empty`, the diff prints `insufficient data` in place of every percentage change and `--json` sets `insufficient_data` to `true` and every delta's `pct` to null; the exit code stays `0`. After the table it prints `always-loaded files:` and `measurement config:`, each `changed`, `unchanged` or `unknown` (a row lacks the hash); `--json` returns them under `fingerprints`. The diff prints every numeric column's old/new/delta/percent, plus every intervention noted strictly after the baseline date and on or before the latest date. Commits in the repos listed under `ledger.derive_interventions` ([CONFIG.md](CONFIG.md)) that touch always-loaded config in the same window print in date order among the notes, tagged `[derived <repo>@<sha>]`; `--json` returns them under `derived`, with the files each commit touched.
 
 ### `rigops eit`
 

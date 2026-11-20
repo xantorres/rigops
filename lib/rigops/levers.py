@@ -10,8 +10,9 @@ from collections import defaultdict
 from pathlib import Path
 
 from rigops import config as rigops_config
-from rigops import core, cost, fmt, ledger_row, modelmix, rebuilds, starts, transcripts
+from rigops import core, corpus, cost, fmt, ledger_row, modelmix, rebuilds, starts, transcripts
 from rigops.detector import Detector
+from rigops.errors import RigopsError
 from rigops.sources import ccusage, command
 
 WINDOW_DAYS = 7
@@ -147,9 +148,16 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
     until = transcripts.start_of_day(at)
     since = transcripts.start_of_day(at - dt.timedelta(days=WINDOW_DAYS))
     since_30 = transcripts.start_of_day(at - dt.timedelta(days=SMOOTH_DAYS))
+    if not Path(transcripts_dir).is_dir():
+        raise RigopsError(f"transcripts dir not found: {transcripts_dir}")
 
     # One pass over the corpus; first turns need history before the window, so no lower bound.
-    turns = transcripts.collect_turns(None, until, transcripts_dir=transcripts_dir)
+    headless = tuple(rigops_config.get(cfg, "friction.headless_projects", []) or [])
+    scanned = corpus.scan(
+        transcripts_dir, since, until, headless_projects=headless,
+        detector=Detector.from_config(cfg),
+    )
+    turns = scanned.turns
     main = [t for t in turns if "/subagents/" not in t.get("path", "")]
 
     first_by_session: dict[str, dict] = {}
@@ -170,11 +178,7 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
     win_main = [t for t in win if "/subagents/" not in t.get("path", "")]
     nudge_tiers = rigops_config.get(cfg, "context.nudge_tiers", [250000, 350000, 500000])
     tier3 = nudge_tiers[2] if isinstance(nudge_tiers, list) and len(nudge_tiers) >= 3 else None
-    headless = tuple(rigops_config.get(cfg, "friction.headless_projects", []) or [])
-    fr = transcripts.collect_friction(
-        since, until, transcripts_dir=transcripts_dir, headless_projects=headless,
-        detector=Detector.from_config(cfg),
-    )
+    fr = scanned.friction
     win30 = [t for t in turns if since_30 <= t["ts"] < until]
     n = len(win)
     eits = [transcripts.eit(t) for t in win]
@@ -206,6 +210,9 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
             "days": WINDOW_DAYS,
         },
         "turns": n,
+        "window_empty": n == 0,
+        "lines_seen": scanned.lines_seen,
+        "lines_parsed": scanned.lines_parsed,
         "sessions": len(started),
         "eit_total": round(total_eit),
         "eit_per_turn": round(total_eit / n) if n else None,
@@ -245,8 +252,8 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
     row["fixed_tax_b"] = sum(size for _, size in tax_entries) if tax_entries else None
     row["fixed_tax_sha"] = ledger_row.fixed_tax_sha(tax_entries)
     row["config_sha"] = ledger_row.config_sha(cfg)
-    row.update(starts.ledger_fields(starts.collect_starts(since, until, transcripts_dir)))
-    row.update(rebuilds.ledger_fields(*rebuilds.collect(since, until, transcripts_dir)))
+    row.update(starts.ledger_fields(scanned.starts))
+    row.update(rebuilds.ledger_fields(scanned.rebuilds, scanned.rebuild_eit))
     row.update(modelmix.ledger_fields(win_main, Path(transcripts_dir).parent / "settings.json"))
     row["sources"] = source_annotations(cfg, since, until)
     return row
@@ -274,6 +281,7 @@ def pct_delta(new, old) -> str:
 DIFF_SKIP_COLUMNS = {
     "date", "label", "notes", "version",
     "rtk_commands", "rtk_saved_pct", "rtk_saved_tokens",
+    "lines_seen", "lines_parsed",
 }
 
 

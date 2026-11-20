@@ -48,6 +48,16 @@ def _refuse_existing(at: dt.date) -> int:
     return 0
 
 
+def _warn_on_row_health(row: dict, at: dt.date) -> None:
+    lost = ledger_row.unparsed(row)
+    if lost:
+        print(f"warning: {ledger_row.unparsed_text(*lost)}; this row may undercount",
+              file=sys.stderr)
+    if row.get("window_empty"):
+        print(f"warning: no transcript turns in the {row['window']['days']} days before {at}; "
+              "row written, marked empty", file=sys.stderr)
+
+
 def cmd_write(args) -> int:
     cfg = rigops_config.load()
     watch_projects = rigops_config.get(cfg, "ledger.watch_projects", {}) or {}
@@ -79,6 +89,7 @@ def cmd_write(args) -> int:
         return _refuse_existing(at)
 
     row = levers.build_row(at, args.label, cfg=cfg)
+    _warn_on_row_health(row, at)
     prev = rows[-1] if rows else None
     base = rows[0] if rows else None
 
@@ -199,6 +210,7 @@ def cmd_diff(args) -> int:
     if len(rows) < 2:
         if args.json:
             print(json.dumps({"version": 1, "skipped": skipped, "incomplete": bool(skipped),
+                              "insufficient_data": False,
                               "baseline": None, "latest": None, "deltas": {},
                               "interventions": [], "derived": [],
                               "fingerprints": {"always_loaded_files": "unknown",
@@ -235,6 +247,9 @@ def cmd_diff(args) -> int:
     _report_skipped(iv_skipped, "intervention")
     skipped += iv_skipped
     incomplete = bool(skipped)
+    insufficient = ledger_row.thin(baseline) or ledger_row.thin(latest)
+    if insufficient:
+        deltas = {k: {**d, "pct": None} for k, d in deltas.items()}
     derived = _derived_between(rigops_config.load(), baseline.get("date", ""),
                                latest.get("date", ""))
 
@@ -243,6 +258,7 @@ def cmd_diff(args) -> int:
             "version": 1,
             "skipped": skipped,
             "incomplete": incomplete,
+            "insufficient_data": insufficient,
             "baseline": baseline["date"],
             "latest": latest["date"],
             "deltas": deltas,
@@ -261,10 +277,13 @@ def cmd_diff(args) -> int:
             levers.format_cell(col, d["old"]),
             levers.format_cell(col, d["new"]),
             levers.format_delta(col, d["delta"]) if d["comparable"] else "not comparable",
-            levers.format_pct(d["pct"]),
+            "insufficient data" if insufficient else levers.format_pct(d["pct"]),
         ]
         for col, d in deltas.items()
     ]
+    if insufficient:
+        print(f"insufficient data: a week needs at least {ledger_row.MIN_TURNS} turns on both sides, "
+              "so percentage changes are withheld")
     print(fmt.table(table_rows, ["column", "old", "new", "delta", "pct"]))
     print()
     print(f"always-loaded files: {fingerprints['always_loaded_files']}")

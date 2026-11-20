@@ -6,6 +6,8 @@ from pathlib import Path
 
 ROW_VERSION = 1
 REDEFINED_METRICS = {1: frozenset({"corrections", "denials", "denials_headless"})}
+MAX_UNPARSED_PCT = 1
+MIN_TURNS = 20
 CONFIG_SECTIONS = ("ledger", "fixed_tax", "sources", "transcripts_dir")
 
 
@@ -59,3 +61,28 @@ def fingerprints(old: dict, new: dict) -> dict:
         "always_loaded_files": fingerprint_state(old, new, "fixed_tax_sha"),
         "measurement_config": fingerprint_state(old, new, "config_sha"),
     }
+
+
+def _count(row: dict, key: str):
+    value = row.get(key)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def unparsed(row: dict) -> tuple[int, int] | None:
+    """(unparsed, seen) lines when more than MAX_UNPARSED_PCT percent failed to parse."""
+    seen, parsed = _count(row, "lines_seen"), _count(row, "lines_parsed")
+    if not seen or parsed is None or parsed >= seen:
+        return None
+    lost = seen - parsed
+    return (lost, seen) if lost * 100 > seen * MAX_UNPARSED_PCT else None
+
+
+def unparsed_text(lost: int, seen: int) -> str:
+    return f"{lost} of {seen} transcript lines ({lost / seen * 100:.1f}%) did not parse"
+
+
+def thin(row: dict) -> bool:
+    """A week too short to compare: marked empty, or fewer than MIN_TURNS turns."""
+    turns = row.get("turns")
+    counted = isinstance(turns, (int, float)) and not isinstance(turns, bool)
+    return row.get("window_empty") is True or (counted and turns < MIN_TURNS)

@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from rigops import cli, launchd  # noqa: E402
 from rigops.errors import RigopsError  # noqa: E402
 
+from tests.support import path_with_failing_sources  # noqa: E402
 from tests.test_doctor import (  # noqa: E402
     FAILING_ITEM,
     HUNG_ITEM,
@@ -128,6 +129,30 @@ class SubprocessExitCodes(unittest.TestCase):
                 proc = self.run_cmd(args, config)
                 self.assertEqual(proc.returncode, want, proc.stderr)
                 self.assertNotIn("Traceback", proc.stderr)
+
+    def test_ledger_exit_codes_on_missing_and_thin_data(self):
+        empty = self.home / "empty-transcripts"
+        empty.mkdir()
+        self.state.mkdir(parents=True)
+        thin = "".join(
+            json.dumps({"version": 1, "date": day, "turns": 3, "eit_per_turn": 100}) + "\n"
+            for day in ("2026-08-01", "2026-08-08"))
+        (self.state / "ledger.jsonl").write_text(thin)
+        rows = [
+            ("ledger write missing transcripts dir",
+             ["ledger", "write", "--at", "2026-08-15", "--force"],
+             {"transcripts_dir": str(self.home / "nope")}, 2),
+            ("ledger write empty transcripts dir",
+             ["ledger", "write", "--at", "2026-08-15", "--force"],
+             {"transcripts_dir": str(empty), "fixed_tax": {"paths": [], "globs": []}}, 0),
+            ("ledger diff with too few turns", ["ledger", "diff"], {}, 0),
+        ]
+        with mock.patch.dict(os.environ, {"PATH": path_with_failing_sources(os.environ["PATH"])}):
+            for name, args, config, want in rows:
+                with self.subTest(name):
+                    proc = self.run_cmd(args, config)
+                    self.assertEqual(proc.returncode, want, proc.stderr)
+                    self.assertNotIn("Traceback", proc.stderr)
 
     def test_a_report_over_a_malformed_row_says_how_many_it_skipped(self):
         self._malformed_ledger()

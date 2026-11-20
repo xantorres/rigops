@@ -126,7 +126,7 @@ class CliContractTests(unittest.TestCase):
         payload = self.json_out(self.run_cmd("ledger", "diff", "--json"))
 
         self.assertEqual(payload, {
-            "version": 1, "skipped": 0, "incomplete": False,
+            "version": 1, "skipped": 0, "incomplete": False, "insufficient_data": False,
             "baseline": None, "latest": None, "deltas": {}, "interventions": [], "derived": [],
             "fingerprints": {"always_loaded_files": "unknown", "measurement_config": "unknown"},
         })

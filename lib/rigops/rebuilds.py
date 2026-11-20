@@ -53,74 +53,78 @@ def _rebuild(prev: dict, cur: dict, turn: dict, between: set) -> dict | None:
     }
 
 
-def scan(path: str, since=None, until=None) -> tuple[list, float]:
+def scan(path: str, since=None, until=None, lines=None) -> tuple[list, float]:
     """Rebuild turns in one transcript, plus the main-thread EIT it spent inside the window."""
     found, total = [], 0.0
     prev = None
     seen = set()
     between: set = set()
     version = shape = None
-    try:
-        fh = open(path, encoding="utf-8", errors="replace")
-    except OSError:
-        return found, total
-    with fh:
-        for line in fh:
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(obj, dict):
-                continue
-            kind = obj.get("type")
-            version = obj.get("version") or version
-            if kind == "api-request":
-                shape = obj.get("shapeHash") or shape
-            if kind != "assistant":
-                sub = obj.get("subtype")
-                between.add(f"{kind}:{sub}" if sub else str(kind))
-                continue
-            message = obj.get("message") or {}
-            usage, mid = message.get("usage"), message.get("id")
-            if not usage or (mid is not None and mid in seen):
-                continue
-            seen.add(mid)
-            try:
-                ts = transcripts.parse_ts(obj.get("timestamp") or "")
-            except ValueError:
-                continue
-            turn = {
-                "input": usage.get("input_tokens") or 0,
-                "cache_creation": usage.get("cache_creation_input_tokens") or 0,
-                "cache_read": usage.get("cache_read_input_tokens") or 0,
-            }
-            cur = {"ts": ts, "ctx": transcripts.ctx(turn), "model": message.get("model"),
-                   "version": version, "shape": shape}
-            if (since is None or ts >= since) and (until is None or ts < until):
-                total += transcripts.eit(turn)
-                hit = _rebuild(prev, cur, turn, between) if prev is not None else None
-                if hit:
-                    found.append({**hit, "session": obj.get("sessionId") or "unknown"})
-            prev, between = cur, set()
+    if lines is None:
+        lines = transcripts.read_lines(path)
+        if lines is None:
+            return found, total
+    for line in lines:
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        kind = obj.get("type")
+        version = obj.get("version") or version
+        if kind == "api-request":
+            shape = obj.get("shapeHash") or shape
+        if kind != "assistant":
+            sub = obj.get("subtype")
+            between.add(f"{kind}:{sub}" if sub else str(kind))
+            continue
+        message = obj.get("message") or {}
+        usage, mid = message.get("usage"), message.get("id")
+        if not usage or (mid is not None and mid in seen):
+            continue
+        seen.add(mid)
+        try:
+            ts = transcripts.parse_ts(obj.get("timestamp") or "")
+        except ValueError:
+            continue
+        turn = {
+            "input": usage.get("input_tokens") or 0,
+            "cache_creation": usage.get("cache_creation_input_tokens") or 0,
+            "cache_read": usage.get("cache_read_input_tokens") or 0,
+        }
+        cur = {"ts": ts, "ctx": transcripts.ctx(turn), "model": message.get("model"),
+               "version": version, "shape": shape}
+        if (since is None or ts >= since) and (until is None or ts < until):
+            total += transcripts.eit(turn)
+            hit = _rebuild(prev, cur, turn, between) if prev is not None else None
+            if hit:
+                found.append({**hit, "session": obj.get("sessionId") or "unknown"})
+        prev, between = cur, set()
     return found, total
+
+
+def scan_file(path, root, since, until, lines=None) -> tuple[list, float]:
+    """One main-session transcript's rebuilds, labelled with its project, and its main EIT."""
+    if "/subagents/" in path:
+        return [], 0.0
+    try:
+        if since is not None and os.stat(path).st_mtime < since.timestamp():
+            return [], 0.0
+    except OSError:
+        return [], 0.0
+    hits, spent = scan(path, since, until, lines)
+    project = transcripts.project_label(path, root)
+    return [{**h, "project": project} for h in hits], spent
 
 
 def collect(since, until, transcripts_dir=None) -> tuple[list, float]:
     """Rebuilds across main-session transcripts and the main-thread EIT they sit in."""
     root = transcripts._resolve_dir(transcripts_dir)
-    floor = since.timestamp() if since is not None else None
     found, total = [], 0.0
     for path in transcripts.find_transcripts(root):
-        if "/subagents/" in path:
-            continue
-        try:
-            if floor is not None and os.stat(path).st_mtime < floor:
-                continue
-        except OSError:
-            continue
-        hits, spent = scan(path, since, until)
-        project = transcripts.project_label(path, root)
-        found.extend({**h, "project": project} for h in hits)
+        hits, spent = scan_file(path, root, since, until)
+        found.extend(hits)
         total += spent
     return sorted(found, key=lambda h: h["ts"]), total
 

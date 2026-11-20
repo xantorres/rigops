@@ -214,6 +214,24 @@ def _judge_lever(lever, rule, series, accepted, ledger) -> list:
     return found
 
 
+def _row_health(row, ledger) -> list:
+    where = f"{core.short(ledger)} row {row['date']}"
+    found = []
+    lost = core.unparsed_lines(row)
+    if lost:
+        found.append(_warning(
+            "parse", f"{core.unparsed_text(*lost)} on the {row['date']} ledger row",
+            where, "check the transcript format or the harness version; the row may undercount",
+            ledger,
+        ))
+    if row.get("window_empty") is True:
+        found.append(_warning(
+            "no-turns", f"the {row['date']} ledger row has no turns in its window", where,
+            "check `transcripts_dir` and that sessions ran that week", ledger,
+        ))
+    return found
+
+
 def judge(rows, notes, rules, today, ledger, max_age_days=DEFAULT_MAX_AGE_DAYS,
           builtin=frozenset()) -> list:
     """Judge the newest weekly row; ``builtin`` levers stay quiet about their own setup."""
@@ -237,6 +255,7 @@ def judge(rows, notes, rules, today, ledger, max_age_days=DEFAULT_MAX_AGE_DAYS,
             "check the job that runs `rigops ledger`; lever findings still describe that row",
             ledger,
         ))
+    found.extend(_row_health(latest, ledger))
     for lever, rule in sorted(rules.items()):
         if _malformed(rule):
             found.append(_warning(

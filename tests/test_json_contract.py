@@ -39,6 +39,8 @@ class EveryJsonPayloadTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
             (home / "transcripts").mkdir()
+            (home / "config.json").write_text(
+                json.dumps({"transcripts_dir": str(home / "transcripts")}))
             env = {
                 **os.environ, "HOME": str(home), "RIGOPS_STATE_DIR": str(home / "state"),
                 "RIGOPS_CONFIG": str(home / "config.json"),

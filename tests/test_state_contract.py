@@ -121,6 +121,7 @@ class ConcurrentWriteTests(Sandbox):
 
     def test_concurrent_forced_writes_and_appends_to_one_file_lose_no_row(self):
         self.seed()
+        (self.home / ".claude" / "projects").mkdir(parents=True)
         dates = ["2026-01-04", "2026-01-11", "2026-02-01", "2026-02-08", "2026-02-15"]
         procs = [self.spawn(["ledger", "write", "--at", d, "--force", "--json"]) for d in dates]
         for proc in procs:

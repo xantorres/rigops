@@ -56,34 +56,33 @@ def compose(shape: dict) -> dict:
     }
 
 
-def read_start(path: str) -> dict | None:
+def read_start(path: str, lines=None) -> dict | None:
     """The first request shape in one transcript, with the surface it ran on."""
     shape_obj = None
     entrypoint = None
-    try:
-        fh = open(path, encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-    with fh:
-        for line in fh:
-            if shape_obj is None and SHAPE_TYPE in line:
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    obj = None
-                if isinstance(obj, dict) and obj.get("type") == SHAPE_TYPE and isinstance(
-                    obj.get("shape"), dict
-                ):
-                    shape_obj = obj
-            if entrypoint is None and '"entrypoint"' in line:
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    obj = None
-                if isinstance(obj, dict) and isinstance(obj.get("entrypoint"), str):
-                    entrypoint = obj["entrypoint"]
-            if shape_obj is not None and entrypoint is not None:
-                break
+    if lines is None:
+        lines = transcripts.read_lines(path)
+        if lines is None:
+            return None
+    for line in lines:
+        if shape_obj is None and SHAPE_TYPE in line:
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                obj = None
+            if isinstance(obj, dict) and obj.get("type") == SHAPE_TYPE and isinstance(
+                obj.get("shape"), dict
+            ):
+                shape_obj = obj
+        if entrypoint is None and '"entrypoint"' in line:
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                obj = None
+            if isinstance(obj, dict) and isinstance(obj.get("entrypoint"), str):
+                entrypoint = obj["entrypoint"]
+        if shape_obj is not None and entrypoint is not None:
+            break
     if shape_obj is None:
         return None
     try:
@@ -99,36 +98,43 @@ def read_start(path: str) -> dict | None:
     }
 
 
+def start_in_window(path, root, since, until, subagents=False, session=None,
+                    lines=None) -> dict | None:
+    """The start of one transcript when it passes the filters and falls in [since, until)."""
+    is_sub = "/subagents/" in path
+    if is_sub and not subagents:
+        return None
+    if session and f"{os.sep}{session}" not in path:
+        return None
+    try:
+        if since is not None and os.stat(path).st_mtime < since.timestamp():
+            return None
+    except OSError:
+        return None
+    start = read_start(path, lines)
+    if start is None:
+        return None
+    if since is not None and start["ts"] < since:
+        return None
+    if until is not None and start["ts"] >= until:
+        return None
+    return {
+        **start, "path": path, "project": transcripts.project_label(path, root),
+        "subagent": is_sub,
+    }
+
+
 def collect_starts(since, until, transcripts_dir=None, subagents=False, session=None) -> list:
     """One start per transcript whose first request shape falls inside [since, until).
 
     ``session`` keeps only transcripts whose path names that session id prefix.
     """
     root = transcripts._resolve_dir(transcripts_dir)
-    floor = since.timestamp() if since is not None else None
     found = []
     for path in transcripts.find_transcripts(root):
-        is_sub = "/subagents/" in path
-        if is_sub and not subagents:
-            continue
-        if session and f"{os.sep}{session}" not in path:
-            continue
-        try:
-            if floor is not None and os.stat(path).st_mtime < floor:
-                continue
-        except OSError:
-            continue
-        start = read_start(path)
-        if start is None:
-            continue
-        if since is not None and start["ts"] < since:
-            continue
-        if until is not None and start["ts"] >= until:
-            continue
-        found.append({
-            **start, "path": path, "project": transcripts.project_label(path, root),
-            "subagent": is_sub,
-        })
+        start = start_in_window(path, root, since, until, subagents, session)
+        if start is not None:
+            found.append(start)
     return sorted(found, key=lambda s: s["ts"])
 
 

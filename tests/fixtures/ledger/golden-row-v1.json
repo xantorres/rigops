@@ -8,6 +8,9 @@
     "days": 7
   },
   "turns": 5,
+  "window_empty": false,
+  "lines_seen": 21,
+  "lines_parsed": 21,
   "sessions": 2,
   "eit_total": 314225,
   "eit_per_turn": 62845,

@@ -18,6 +18,7 @@ from pathlib import Path
 
 from rigops import config as _config
 from rigops import frontmatter as _frontmatter
+from rigops import ledger_row as _ledger_row
 from rigops import state as _state
 from rigops import transcripts as _transcripts
 from rigops.errors import RigopsError  # noqa: F401
@@ -69,6 +70,14 @@ def state_dir() -> Path:
 
 def read_rows(path, valid=None):
     return _state.read_rows(path, valid)
+
+
+def unparsed_lines(row):
+    return _ledger_row.unparsed(row)
+
+
+def unparsed_text(lost, seen) -> str:
+    return _ledger_row.unparsed_text(lost, seen)
 
 
 def local_state_path(name: str) -> Path:

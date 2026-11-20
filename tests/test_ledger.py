@@ -758,8 +758,8 @@ class LedgerDiffTests(EnvIsolatedTestCase):
             payload = json.loads(result.stdout)
             self.assertEqual(
                 set(payload),
-                {"version", "skipped", "incomplete", "baseline", "latest", "deltas",
-                 "interventions", "derived", "fingerprints"},
+                {"version", "skipped", "incomplete", "insufficient_data", "baseline", "latest",
+                 "deltas", "interventions", "derived", "fingerprints"},
             )
             for delta in payload["deltas"].values():
                 self.assertEqual(set(delta), {"old", "new", "delta", "pct", "comparable"})

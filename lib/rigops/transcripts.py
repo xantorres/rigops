@@ -123,8 +123,16 @@ def surface(entrypoint) -> str:
     return tag
 
 
-def collect_turns(since, until, transcripts_dir=None) -> list[dict]:
-    """Collect one row per assistant turn from every transcript under transcripts_dir.
+def read_lines(path) -> list[str] | None:
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return list(fh)
+    except OSError:
+        return None
+
+
+def turns_in_file(path, root, since, until, lines, counts=None) -> list[dict]:
+    """The assistant turns of one transcript, given its lines.
 
     A streamed turn can appear as multiple JSONL lines sharing the same
     message.id within one file, each line carrying one content block
@@ -132,98 +140,108 @@ def collect_turns(since, until, transcripts_dir=None) -> list[dict]:
     tool_use blocks are unioned across all lines for a given message.id;
     usage and timestamp are taken from the last line seen per message.id.
     Lines with no message.id are each treated as their own turn.
+    ``counts`` (a dict with ``seen`` and ``parsed``) accumulates how many non-blank
+    lines there were and how many were valid JSON.
     """
+    turns = []
+    proj = project_label(path, root)
+    entries = {}
+    none_key = 0
+    entrypoint = None
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if counts is not None:
+            counts["seen"] += 1
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if counts is not None:
+            counts["parsed"] += 1
+        entrypoint = entrypoint or obj.get("entrypoint")
+        if obj.get("type") != "assistant":
+            continue
+        message = obj.get("message") or {}
+        usage = message.get("usage")
+        if not usage:
+            continue
+        mid = message.get("id")
+        if mid is None:
+            key = ("none", none_key)
+            none_key += 1
+        else:
+            key = mid
+        tool_names = [
+            item.get("name")
+            for item in (message.get("content") or [])
+            if isinstance(item, dict) and item.get("type") == "tool_use"
+        ]
+        text_chars = sum(
+            len(item.get("text") or "")
+            for item in (message.get("content") or [])
+            if isinstance(item, dict) and item.get("type") == "text"
+        )
+        entry = entries.get(key)
+        if entry is None:
+            entries[key] = {
+                "ts_raw": obj.get("timestamp"),
+                "project": proj,
+                "session": obj.get("sessionId") or "unknown",
+                "model": message.get("model") or "unknown",
+                "usage": usage,
+                "tools": tool_names,
+                "text_chars": text_chars,
+            }
+        else:
+            entry["ts_raw"] = obj.get("timestamp") or entry["ts_raw"]
+            entry["usage"] = usage
+            entry["tools"].extend(tool_names)
+            entry["text_chars"] += text_chars
+
+    for entry in entries.values():
+        ts_raw = entry["ts_raw"]
+        if not ts_raw:
+            continue
+        try:
+            ts = parse_ts(ts_raw)
+        except ValueError:
+            continue
+        if since is not None and ts < since:
+            continue
+        if until is not None and ts >= until:
+            continue
+        usage = entry["usage"]
+        turns.append(
+            {
+                "ts": ts,
+                "path": path,
+                "project": entry["project"],
+                "session": entry["session"],
+                "model": entry["model"],
+                "surface": surface(entrypoint),
+                "input": usage.get("input_tokens") or 0,
+                "cache_creation": usage.get("cache_creation_input_tokens") or 0,
+                "cache_write_1h": (usage.get("cache_creation") or {})
+                .get("ephemeral_1h_input_tokens") or 0,
+                "cache_read": usage.get("cache_read_input_tokens") or 0,
+                "output": usage.get("output_tokens") or 0,
+                "tools": entry["tools"],
+                "text_chars": entry["text_chars"],
+            }
+        )
+    return turns
+
+
+def collect_turns(since, until, transcripts_dir=None) -> list[dict]:
+    """Collect one row per assistant turn from every transcript under transcripts_dir."""
     root = _resolve_dir(transcripts_dir)
     turns = []
     for path in find_transcripts(root):
-        proj = project_label(path, root)
-        entries = {}
-        none_key = 0
-        entrypoint = None
-        try:
-            fh = open(path, encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        with fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                entrypoint = entrypoint or obj.get("entrypoint")
-                if obj.get("type") != "assistant":
-                    continue
-                message = obj.get("message") or {}
-                usage = message.get("usage")
-                if not usage:
-                    continue
-                mid = message.get("id")
-                if mid is None:
-                    key = ("none", none_key)
-                    none_key += 1
-                else:
-                    key = mid
-                tool_names = [
-                    item.get("name")
-                    for item in (message.get("content") or [])
-                    if isinstance(item, dict) and item.get("type") == "tool_use"
-                ]
-                text_chars = sum(
-                    len(item.get("text") or "")
-                    for item in (message.get("content") or [])
-                    if isinstance(item, dict) and item.get("type") == "text"
-                )
-                entry = entries.get(key)
-                if entry is None:
-                    entries[key] = {
-                        "ts_raw": obj.get("timestamp"),
-                        "project": proj,
-                        "session": obj.get("sessionId") or "unknown",
-                        "model": message.get("model") or "unknown",
-                        "usage": usage,
-                        "tools": tool_names,
-                        "text_chars": text_chars,
-                    }
-                else:
-                    entry["ts_raw"] = obj.get("timestamp") or entry["ts_raw"]
-                    entry["usage"] = usage
-                    entry["tools"].extend(tool_names)
-                    entry["text_chars"] += text_chars
-
-        for entry in entries.values():
-            ts_raw = entry["ts_raw"]
-            if not ts_raw:
-                continue
-            try:
-                ts = parse_ts(ts_raw)
-            except ValueError:
-                continue
-            if since is not None and ts < since:
-                continue
-            if until is not None and ts >= until:
-                continue
-            usage = entry["usage"]
-            turns.append(
-                {
-                    "ts": ts,
-                    "path": path,
-                    "project": entry["project"],
-                    "session": entry["session"],
-                    "model": entry["model"],
-                    "surface": surface(entrypoint),
-                    "input": usage.get("input_tokens") or 0,
-                    "cache_creation": usage.get("cache_creation_input_tokens") or 0,
-                    "cache_write_1h": (usage.get("cache_creation") or {})
-                    .get("ephemeral_1h_input_tokens") or 0,
-                    "cache_read": usage.get("cache_read_input_tokens") or 0,
-                    "output": usage.get("output_tokens") or 0,
-                    "tools": entry["tools"],
-                    "text_chars": entry["text_chars"],
-                }
-            )
+        lines = read_lines(path)
+        if lines is not None:
+            turns.extend(turns_in_file(path, root, since, until, lines))
     return turns
 
 
@@ -244,94 +262,91 @@ def _flatten_tool_result_text(content) -> str:
 SKIP_PREFIXES = ("<system-reminder", "<command-", "Caveat:", "[Request interrupted")
 
 
+def new_friction() -> dict:
+    return {"denials": 0, "denials_headless": 0, "corrections": 0, "tool_errors": 0, "prompts": 0}
+
+
+def friction_in_file(path, root, since, until, lines, acc, headless_projects=(),
+                     detector=BUILTIN) -> None:
+    """Add one transcript's friction counts to ``acc``; subagent transcripts are excluded
+    since subagent tool errors are not user friction.
+    """
+    if "/subagents/" in path:
+        return
+    rel_path = os.path.relpath(path, str(root))
+    is_headless = any(sub and sub in rel_path for sub in headless_projects)
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict) or obj.get("type") != "user":
+            continue
+        ts_raw = obj.get("timestamp")
+        if not isinstance(ts_raw, str) or not ts_raw:
+            continue
+        try:
+            ts = parse_ts(ts_raw)
+        except ValueError:
+            continue
+        if since is not None and ts < since:
+            continue
+        if until is not None and ts >= until:
+            continue
+        message = obj.get("message")
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            items = [{"type": "text", "text": content}]
+        elif isinstance(content, list):
+            items = content
+        else:
+            items = []
+        prompted = False
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            itype = item.get("type")
+            if itype == "tool_result":
+                if not item.get("is_error"):
+                    continue
+                acc["tool_errors"] += 1
+                text = _flatten_tool_result_text(item.get("content"))
+                if detector.is_denial(text):
+                    acc["denials"] += 1
+                    if is_headless:
+                        acc["denials_headless"] += 1
+            elif itype == "text":
+                text = item.get("text")
+                if not isinstance(text, str):
+                    continue
+                if first_nonblank_line(text).startswith(SKIP_PREFIXES):
+                    continue
+                if not prompted:
+                    acc["prompts"] += 1
+                    prompted = True
+                if detector.is_correction(text):
+                    acc["corrections"] += 1
+                    break
+
+
 def collect_friction(since, until, transcripts_dir=None, headless_projects=(),
                      detector=BUILTIN) -> dict:
     """Count permission denials, self-corrections, tool errors, and human prompts from user-role
-    transcript rows. Mirrors collect_turns' file walk, rel-path derivation, and
-    window filter but keeps "user" rows; subagent transcripts are excluded since
-    subagent tool errors are not user friction.
+    transcript rows. Same window filter as collect_turns but keeps "user" rows.
     """
     root = _resolve_dir(transcripts_dir)
     headless = tuple(headless_projects)
-    denials = 0
-    denials_headless = 0
-    corrections = 0
-    tool_errors = 0
-    prompts = 0
+    acc = new_friction()
     for path in find_transcripts(root):
-        if "/subagents/" in path:
-            continue
-        rel_path = os.path.relpath(path, str(root))
-        is_headless = any(sub and sub in rel_path for sub in headless)
-        try:
-            fh = open(path, encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        with fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(obj, dict) or obj.get("type") != "user":
-                    continue
-                ts_raw = obj.get("timestamp")
-                if not isinstance(ts_raw, str) or not ts_raw:
-                    continue
-                try:
-                    ts = parse_ts(ts_raw)
-                except ValueError:
-                    continue
-                if since is not None and ts < since:
-                    continue
-                if until is not None and ts >= until:
-                    continue
-                message = obj.get("message")
-                if not isinstance(message, dict):
-                    continue
-                content = message.get("content")
-                if isinstance(content, str):
-                    items = [{"type": "text", "text": content}]
-                elif isinstance(content, list):
-                    items = content
-                else:
-                    items = []
-                prompted = False
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    itype = item.get("type")
-                    if itype == "tool_result":
-                        if not item.get("is_error"):
-                            continue
-                        tool_errors += 1
-                        text = _flatten_tool_result_text(item.get("content"))
-                        if detector.is_denial(text):
-                            denials += 1
-                            if is_headless:
-                                denials_headless += 1
-                    elif itype == "text":
-                        text = item.get("text")
-                        if not isinstance(text, str):
-                            continue
-                        if first_nonblank_line(text).startswith(SKIP_PREFIXES):
-                            continue
-                        if not prompted:
-                            prompts += 1
-                            prompted = True
-                        if detector.is_correction(text):
-                            corrections += 1
-                            break
-    return {
-        "denials": denials,
-        "denials_headless": denials_headless,
-        "corrections": corrections,
-        "tool_errors": tool_errors,
-        "prompts": prompts,
-    }
+        lines = read_lines(path)
+        if lines is not None:
+            friction_in_file(path, root, since, until, lines, acc, headless, detector)
+    return acc
 
 
 def percentile(sorted_vals, p) -> float:

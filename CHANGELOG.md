@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reports skip rows they cannot read, say `skipped N` on stderr and exit `0`; gates and writers stay strict. `ledger diff` marks the comparison `incomplete` and the doctor lever check warns with the count. An unreadable file exits `2` everywhere.
 - Guard state fails closed: a stamp file written by a newer rigops, like a corrupt one, stops `doctor --heal` from acting and exits `2`. `reap --apply` refuses when a session file is unreadable.
 - Every `--json` payload is one object with `"version": 1`, and a list is wrapped under a name. Existing keys are kept. `rigops config get` still prints a bare JSON value.
+- Each ledger row records `lines_seen`, `lines_parsed` and `window_empty`. The row `version` stays 1: the fields are additive and an older row without them reads as unknown.
+- `ledger write` reads each transcript once, not once per measure.
+- `ledger write` warns on stderr when more than 1% of transcript lines did not parse and when the week has no turns, and still writes the row and exits `0`. The doctor lever check warns about the newest row for the same two reasons (`parse`, `no-turns`) and stays silent for a row without the fields.
+- `ledger diff` prints `insufficient data` instead of percentage changes when either row has fewer than 20 turns or is marked empty; `--json` gains `insufficient_data`. The exit code stays `0`.
 
 ### Fixed
 
@@ -37,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rigops doctor` exits `2` whenever guard state is unreadable, malformed or newer, and `--exit-zero` no longer turns that into `0`.
 - A ledger or eval row over 1 MiB, or a state directory on a filesystem without `flock`, now fails; keep state on a local disk.
 - A wider state directory is tightened to `0700` on first use.
+- `rigops ledger write` exits `2` with one `error:` line, and writes no row and no `ledger.md`, when `transcripts_dir` does not exist; it used to write an empty row. `--dry-run` fails the same way and `--show` does not need the directory. A directory that exists but holds no turns still writes a row, now marked `window_empty` with a stderr warning. A scheduled `ledger write` pointed at a wrong path now fails instead of recording zeros.
+- New row fields `lines_seen`, `lines_parsed` and `window_empty`; `ledger diff --json` gains `insufficient_data` (also present when fewer than two rows exist). Parsers must tolerate the new keys.
 - Ledger weeks on either side of a clock change differ by an hour from what 0.11 computed: a row's window edges moved to the true local midnight, so turns in the hour around midnight can fall in the neighbouring week and a `ledger diff` across the change reads slightly differently. Rows already written are not rewritten. A date-only `--since`/`--until` with no offset is also read with the offset of that date. `ccusage` receives the local date of each edge.
 
 - `rigops config get` on a missing key exited 3 and now exits 1. Treat 1 as "not found".
