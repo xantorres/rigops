@@ -18,7 +18,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from rigops.errors import RigopsError
+from rigops import core
 
 from .checks import printable
 
@@ -61,7 +61,7 @@ def require_secure_endpoint(url: str, api_key: str | None) -> None:
     parts = urllib.parse.urlsplit(url)
     host = (parts.hostname or "").lower()
     if api_key and parts.scheme == "http" and not _is_loopback(host):
-        raise RigopsError(
+        raise core.RigopsError(
             f"refusing to send the API key over plain http to {host}: "
             "use an https endpoint or a loopback one (localhost, 127.0.0.0/8, ::1)"
         )
