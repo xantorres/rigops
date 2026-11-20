@@ -111,6 +111,8 @@ class SubprocessExitCodes(unittest.TestCase):
         self._malformed_ledger()
         empty_cases = self.home / "cases"
         empty_cases.mkdir()
+        (self.home / "roots").mkdir()
+        root = ["--root", str(self.home / "roots")]
         rows = [
             ("config get missing key", ["config", "get", "no.such.key"], {}, 1),
             ("config get present key", ["config", "get", "doctor.heal_cooldown_h"], {}, 0),
@@ -153,6 +155,9 @@ class SubprocessExitCodes(unittest.TestCase):
              ["janitor", "--apply"], {}, 2, 0o646),
             ("janitor --apply runs with a 0644 config", ["janitor", "--apply"], {}, 0, 0o644),
             ("janitor dry run ignores a writable config", ["janitor"], {}, 0, 0o664),
+            ("reap --apply refuses a writable config", ["reap", "--apply", *root], {}, 2, 0o664),
+            ("reap --apply runs with a 0644 config", ["reap", "--apply", *root], {}, 0, 0o644),
+            ("reap preview ignores a writable config", ["reap", *root], {}, 0, 0o664),
         ]
         if os.geteuid() != 0:
             self._unreadable_rule()
