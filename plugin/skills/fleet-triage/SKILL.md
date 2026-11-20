@@ -24,6 +24,8 @@ evidence age.
 | `stale` | not running, exit was clean (or unknown), but its evidence file is older than 1.5x the expected cadence interval | kickstart or notify |
 | `unknown` | not running, no exit status recorded and no evidence file exists at all | none |
 
+Exit code: `doctor` exits `1` when any job is `failing` or `hung` (or a finding fails), `2` when it cannot run, `0` otherwise; `stale` and `unknown` never make it `1`. `--exit-zero` turns `1` into `0`, and scheduled runs use it. The doctor skips its own registry row.
+
 Stale vs hung: hung is a live process past its ceiling (kill it). Stale is a
 dead-or-never-run job whose *output* is too old for its cadence (restart it).
 A job with an on-demand, event-driven, or keepalive cadence is never

@@ -26,7 +26,6 @@ far argues for or against building it.
 
 ## Doctor
 
-- [ ] Self-exclusion covers the live pid only: a nonzero exit on the doctor's own item still kickstarts it.
 - [ ] No chain-step evidence checks (a job that only proves itself via another
   job's output file); such items read `unknown`.
 

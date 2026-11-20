@@ -203,12 +203,32 @@ def _label_for_item(item: dict, prefixes: list):
     return None
 
 
+def _invokes_doctor(entry_point) -> bool:
+    tokens = str(entry_point or "").split()
+    for i, token in enumerate(tokens):
+        base = token.rsplit("/", 1)[-1]
+        if base == "rigops-doctor":
+            return True
+        if base == "rigops" and tokens[i + 1:i + 2] == ["doctor"]:
+            return True
+    return False
+
+
+def _own_row(item: dict, label=None, pid=None) -> dict:
+    return {
+        "id": item.get("id", "unknown"), "status": "ok", "action": "none",
+        "runtime_h": None, "evidence_age_h": None, "label": label, "pid": pid,
+    }
+
+
 def _judge_launchd_item(
     item: dict, prefixes: list, heal_cooldown_active: bool, cause_ctx: dict | None = None,
 ) -> dict:
     job_id = item.get("id", "unknown")
     seen = cause_ctx["labels"] if cause_ctx else {}
     label = seen[id(item)] if id(item) in seen else _label_for_item(item, prefixes)
+    if _invokes_doctor(item.get("entry_point")):
+        return _own_row(item, label)
     if label is None:
         # No label is not "no information": the item's own evidence file still
         # says whether it ran. Unknown means neither a label nor evidence.
@@ -216,10 +236,7 @@ def _judge_launchd_item(
 
     _, pid, last_exit = launchd.job_snapshot(label)
     if pid == os.getpid():
-        return {
-            "id": job_id, "status": "ok", "action": "none",
-            "runtime_h": None, "evidence_age_h": None, "label": label, "pid": pid,
-        }
+        return _own_row(item, label, pid)
     runtime_h = launchd.runtime_hours(pid) if pid else None
     interval_h = cadence_interval_hours(item.get("cadence", ""))
     _, ev_mtime = newest_evidence_mtime(item.get("health", ""))
@@ -328,6 +345,8 @@ def _run_probe(command: str, warnings: list):
 
 
 def _judge_evidence_only_item(item: dict, heal_cooldown_active: bool) -> dict:
+    if _invokes_doctor(item.get("entry_point")):
+        return _own_row(item)
     job_id = item.get("id", "unknown")
     interval_h = cadence_interval_hours(item.get("cadence", ""))
     _, ev_mtime = newest_evidence_mtime(item.get("health", ""))

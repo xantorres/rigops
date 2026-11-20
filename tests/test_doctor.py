@@ -195,7 +195,7 @@ class ReportOnlyDefaultTests(EnvIsolatedTestCase):
         self.assertEqual(payload["jobs"][0]["status"], "hung")
         self.assertEqual(payload["jobs"][0]["action"], "kill")
         self.assertGreaterEqual(payload["fail_count"], 1)
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
 
     def test_failing_job_not_kickstarted_without_heal_flag(self):
         registry_path = _write_registry(self.tmp, FAILING_ITEM)
@@ -209,7 +209,7 @@ class ReportOnlyDefaultTests(EnvIsolatedTestCase):
         payload = json.loads(out)
         self.assertEqual(payload["jobs"][0]["status"], "failing")
         self.assertGreaterEqual(payload["fail_count"], 1)
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
 
 
 class HealFlagTests(EnvIsolatedTestCase):
@@ -227,7 +227,7 @@ class HealFlagTests(EnvIsolatedTestCase):
         payload = json.loads(out)
         self.assertIn("terminated hung job job-hung", " ".join(payload["healed"]))
         self.assertGreaterEqual(payload["fail_count"], 1)
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
 
     def test_heal_kickstarts_failing_job(self):
         registry_path = _write_registry(self.tmp, FAILING_ITEM)
@@ -241,7 +241,7 @@ class HealFlagTests(EnvIsolatedTestCase):
         payload = json.loads(out)
         self.assertEqual(payload["jobs"][0]["action"], "kickstart")
         self.assertGreaterEqual(payload["fail_count"], 1)
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
 
 
 class SupervisorNoneTests(EnvIsolatedTestCase):
@@ -710,7 +710,7 @@ class NotifyCommandTests(EnvIsolatedTestCase):
             mock.patch.object(launchd, "job_snapshot", return_value=(True, None, 1)),
         ):
             code, _ = _run_doctor(["--json", "--registry", str(registry_path)])
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
         events_path = Path(self.tmp) / "state" / "doctor" / "events.jsonl"
         events = [json.loads(line) for line in events_path.read_text().splitlines()]
         self.assertEqual(
@@ -739,7 +739,7 @@ class NotifyDedupeTests(EnvIsolatedTestCase):
         self, *items: str, exit_code: int = 1, heal: bool = False, kick_ok: bool = True,
     ) -> dict:
         registry_path = _write_registry(self.tmp, *items)
-        flags = ["--heal"] if heal else []
+        flags = ["--exit-zero", *(["--heal"] if heal else [])]
         with (
             mock.patch.object(launchd, "is_loaded", return_value=True),
             mock.patch.object(launchd, "job_snapshot", return_value=(True, None, exit_code)),
@@ -1170,7 +1170,7 @@ class HealCooldownTests(EnvIsolatedTestCase):
         payload = json.loads(out)
         self.assertEqual(payload["jobs"][0]["action"], "notify")
         self.assertGreaterEqual(payload["fail_count"], 1)
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
 
     def test_expired_heal_stamp_allows_kickstart(self):
         self._seed_heal_stamp("job-failing", 13 * 3600)  # past the 12h default cooldown
@@ -1185,7 +1185,7 @@ class HealCooldownTests(EnvIsolatedTestCase):
         payload = json.loads(out)
         self.assertEqual(payload["jobs"][0]["action"], "kickstart")
         self.assertGreaterEqual(payload["fail_count"], 1)
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
 
 
 class ListFlagTests(EnvIsolatedTestCase):
@@ -1254,7 +1254,7 @@ class PidChangedRaceTests(EnvIsolatedTestCase):
         payload = json.loads(out)
         self.assertIn("pid changed", " ".join(payload["healed"]))
         self.assertGreaterEqual(payload["fail_count"], 1)
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
 
 
 class CheckFailReportingTests(EnvIsolatedTestCase):
@@ -1478,7 +1478,7 @@ class CorruptHealStateTests(EnvIsolatedTestCase):
         (self.dir / "heal-stamps.json").write_bytes(b"{not json")
         code, payload, m_kick, _ = self._run(["--heal"])
         m_kick.assert_not_called()
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
         self.assertFalse((self.dir / "heal-stamps.json").exists())
         (aside,) = self._asides("heal-stamps.json")
         self.assertEqual(aside.read_bytes(), b"{not json")
@@ -1538,7 +1538,7 @@ class CorruptHealStateTests(EnvIsolatedTestCase):
         (self.dir / "heal-stamps.json").write_bytes(b'{"job-failing": 1' + b"0" * 400 + b"}")
         code, payload, m_kick, _ = self._run(["--heal"])
         m_kick.assert_not_called()
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
         self.assertFalse((self.dir / "heal-stamps.json").exists())
         self._finding_for(payload, "heal-stamps.json")
 

@@ -15,7 +15,8 @@
 #
 # doctor: every 30 minutes. No --heal: kill/kickstart is launchd-only, so
 # under --supervisor none a doctor run judges and reports, never heals.
-*/30 * * * * $HOME/.local/bin/rigops doctor --supervisor none >> $HOME/.local/state/rigops/doctor.cron.log 2>&1
+# --exit-zero keeps a failing verdict from reading as a crashed job.
+*/30 * * * * $HOME/.local/bin/rigops doctor --supervisor none --exit-zero >> $HOME/.local/state/rigops/doctor.cron.log 2>&1
 
 # ledger: weekly, Monday 09:05
 5 9 * * 1 $HOME/.local/bin/rigops ledger write >> $HOME/.local/state/rigops/ledger.cron.log 2>&1

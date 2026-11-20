@@ -47,6 +47,8 @@ Staleness only applies when the cadence is interval-checkable. `cadence` strings
 
 **`--heal`** (default off): `rigops doctor` alone only judges and reports - nothing is killed or kickstarted. `--heal` applies every `kill`/`kickstart` action from that same run. Custom checks (`doctor.checks.custom`) run their configured commands on every judging run, report-only included, but not under `--list`; `doctor.notify_command` runs only when a job failed, a check failed, or something was healed this run - only the registry-driven kill/kickstart path is gated by `--heal`.
 
+**Exit code**: `0` when no job is `failing` or `hung` and no finding fails; `1` when one is (`stale` and `unknown` never count); `2` when the config or registry cannot be loaded. `--heal` does not change it. `--exit-zero` turns `1` into `0` and leaves `2` alone; scheduled runs pass it. The doctor never judges, kills or kickstarts its own registry row, which is any item whose `entry_point` runs `rigops-doctor` or `rigops doctor`.
+
 **`--supervisor none`**: skips `launchctl` entirely. Every job is judged from evidence-file age alone (no runtime, no exit code - so `hung`/`failing` can never be reached, only `stale`/`unknown`/`ok`). Use this off macOS, or under cron; see [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md).
 
 ## Examples

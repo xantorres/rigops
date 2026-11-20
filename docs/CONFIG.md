@@ -14,9 +14,9 @@ A missing config file is not an error: every command runs on built-in defaults a
 
 Commands:
 
-- `rigops config get <dotted.key>` - prints the value at that dotted path in the merged config. Dicts/lists print as compact JSON; scalars print bare. Exits `3` if the key isn't present anywhere in the merged config (including defaults).
+- `rigops config get <dotted.key>` - prints the value at that dotted path in the merged config. Dicts/lists print as compact JSON; scalars print bare. Exits `1` if the key isn't present anywhere in the merged config (including defaults).
 - `rigops config path` - prints the resolved config file path (the file need not exist).
-- `rigops config check` - loads the config (prints the load error to stderr and exits `1` on failure), warns on stderr about any top-level key not recognized by the schema, then prints `config: OK (<path>)`.
+- `rigops config check` - loads the config (prints the load error to stderr and exits `2` on failure), warns on stderr about any top-level key not recognized by the schema, then prints `config: OK (<path>)`.
 
 All paths anywhere in config accept `~` and `$VAR` expansion.
 

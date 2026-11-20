@@ -30,7 +30,7 @@ rigops is not:
 
 Read this before the loop docs below. Several of these commands change or delete things on disk, or send signals to running processes.
 
-- `rigops doctor --heal` can `SIGTERM`/`SIGKILL` an entire hung-job process group. Without `--heal`, `doctor` only reports.
+- `rigops doctor --heal` can `SIGTERM`/`SIGKILL` an entire hung-job process group. Without `--heal`, `doctor` only reports. Plain `doctor` exits `1` when a job is failing or hung or a check fails, `2` when it cannot run, and `0` otherwise; `--exit-zero` turns `1` into `0`.
 - `rigops reap --apply` removes git worktrees. Without `--apply`, `reap` only lists what it would remove.
 - `rigops janitor --apply` deletes files that match your retention rules. Without `--apply`, `janitor` is a dry run.
 - `install.sh` changes nothing on your machine unless you pass `--apply`.
