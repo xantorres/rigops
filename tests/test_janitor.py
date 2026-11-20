@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -14,6 +16,10 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import backlog, janitor, watermarks  # noqa: E402
+
+
+def _settle(path: Path, now: float) -> None:
+    os.utime(path, (now - 3600, now - 3600))
 
 
 def _age(path: Path, days_old: float, now: float) -> None:
@@ -221,9 +227,11 @@ class TruncateTests(unittest.TestCase):
             f = Path(tmp) / "run.log"
             f.write_text("".join(f"line {i}\n" for i in range(1, 601)))
             os.chmod(f, 0o600)
+            now = time.time()
+            _settle(f, now)
 
             rule = {"name": "r", "path": str(f), "action": "truncate", "keep_lines": 500}
-            result = janitor.run_rules([rule], apply=True, max_delete=200, now=time.time())
+            result = janitor.run_rules([rule], apply=True, max_delete=200, now=now)
 
             lines = f.read_text().splitlines()
             self.assertEqual(len(lines), 500)
@@ -256,6 +264,7 @@ class TruncateArchiveTests(unittest.TestCase):
             f = Path(tmp) / "run.jsonl"
             f.write_text("".join(f"line {i}\n" for i in range(1, 8)))
             now = time.mktime((2026, 11, 3, 12, 0, 0, 0, 0, -1))
+            _settle(f, now)
 
             result = janitor.run_rules([self._rule(f)], apply=True, max_delete=200, now=now)
 
@@ -270,8 +279,10 @@ class TruncateArchiveTests(unittest.TestCase):
             f = Path(tmp) / "run.jsonl"
             now = time.mktime((2026, 11, 3, 12, 0, 0, 0, 0, -1))
             f.write_text("".join(f"a{i}\n" for i in range(5)))
+            _settle(f, now)
             janitor.run_rules([self._rule(f)], apply=True, max_delete=200, now=now)
             f.write_text(f.read_text() + "".join(f"b{i}\n" for i in range(3)))
+            _settle(f, now)
             janitor.run_rules([self._rule(f)], apply=True, max_delete=200, now=now)
 
             kept = (Path(tmp) / "run.jsonl.2026-11-03").read_text().splitlines()
@@ -283,9 +294,11 @@ class TruncateArchiveTests(unittest.TestCase):
             f = Path(tmp) / "run.jsonl"
             content = "".join(f"line {i}\n" for i in range(1, 8))
             f.write_text(content)
+            now = time.time()
+            _settle(f, now)
 
             rules = [self._rule(f)]
-            result = janitor.run_rules(rules, apply=False, max_delete=200, now=time.time())
+            result = janitor.run_rules(rules, apply=False, max_delete=200, now=now)
 
             self.assertEqual(f.read_text(), content)
             self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["run.jsonl"])
@@ -297,6 +310,7 @@ class TruncateArchiveTests(unittest.TestCase):
             content = "".join(f"line {i}\n" for i in range(1, 8))
             f.write_text(content)
             now = time.mktime((2026, 11, 3, 12, 0, 0, 0, 0, -1))
+            _settle(f, now)
             (Path(tmp) / "run.jsonl.2026-11-03").mkdir()
 
             result = janitor.run_rules([self._rule(f)], apply=True, max_delete=200, now=now)
@@ -311,8 +325,84 @@ class TruncateArchiveTests(unittest.TestCase):
             f.write_text("".join(f"line {i}\n" for i in range(1, 8)))
             rule = self._rule(f)
             del rule["archive"]
-            janitor.run_rules([rule], apply=True, max_delete=200, now=time.time())
+            now = time.time()
+            _settle(f, now)
+            janitor.run_rules([rule], apply=True, max_delete=200, now=now)
             self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["run.jsonl"])
+
+
+class TruncateRecentWriteTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+        self.now = time.time()
+        self.content = "".join(f"line {i}\n" for i in range(1, 11))
+
+    def _log(self, name: str, age_s: float) -> Path:
+        path = self.dir / name
+        path.write_text(self.content)
+        os.utime(path, (self.now - age_s, self.now - age_s))
+        return path
+
+    def _rule(self, path: Path) -> dict:
+        return {"name": "r", "path": str(path), "action": "truncate", "keep_lines": 3}
+
+    def test_a_file_modified_in_the_last_minute_is_kept_intact_under_apply(self):
+        fresh = self._log("fresh.log", janitor.RECENT_WRITE_S - 10)
+        result = janitor.run_rules([self._rule(fresh)], apply=True, max_delete=200, now=self.now)
+        rule = result["rules"][0]
+        self.assertEqual(fresh.read_text(), self.content)
+        self.assertEqual((rule["acted"], rule["matched"]), (0, []))
+        self.assertEqual(rule["skipped"], "modified in the last 60s")
+
+    def test_the_dry_run_reports_it_as_would_skip(self):
+        fresh = self._log("fresh.log", 5)
+        result = janitor.run_rules([self._rule(fresh)], apply=False, max_delete=200, now=self.now)
+        rule = result["rules"][0]
+        self.assertEqual(rule["skipped"], "would skip: modified in the last 60s")
+        self.assertEqual(rule["matched"], [])
+
+    def test_a_file_older_than_the_window_is_truncated(self):
+        older = self._log("older.log", janitor.RECENT_WRITE_S + 10)
+        result = janitor.run_rules([self._rule(older)], apply=True, max_delete=200, now=self.now)
+        self.assertEqual(older.read_text().splitlines(), ["line 8", "line 9", "line 10"])
+        self.assertEqual(result["rules"][0]["acted"], 1)
+        self.assertIsNone(result["rules"][0]["skipped"])
+
+    def test_a_short_fresh_file_is_not_reported_as_skipped(self):
+        short = self.dir / "short.log"
+        short.write_text("one\n")
+        rule = self._rule(short)
+        result = janitor.run_rules([rule], apply=True, max_delete=200, now=self.now)
+        self.assertIsNone(result["rules"][0]["skipped"])
+
+
+class TruncateSkipOutputTests(unittest.TestCase):
+    def _run(self, *flags: str) -> subprocess.CompletedProcess:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        log = root / "run.log"
+        log.write_text("line\n" * 10)
+        config = root / "config.json"
+        config.write_text(json.dumps({"janitor": {"rules": [
+            {"name": "r", "path": str(log), "action": "truncate", "keep_lines": 3},
+        ]}}))
+        env = {**os.environ, "HOME": str(root), "RIGOPS_CONFIG": str(config),
+               "RIGOPS_STATE_DIR": str(root / "state")}
+        return subprocess.run(
+            [str(Path(__file__).resolve().parent.parent / "bin" / "rigops"), "janitor", *flags],
+            capture_output=True, text=True, check=False, timeout=60, env=env,
+        )
+
+    def test_text_output_names_the_skip_and_its_reason(self):
+        proc = self._run("--apply")
+        self.assertIn("skipped: modified in the last 60s", proc.stdout)
+
+    def test_json_carries_the_reason_on_the_rule(self):
+        payload = json.loads(self._run("--json").stdout)
+        self.assertEqual(payload["rules"][0]["skipped"], "would skip: modified in the last 60s")
 
 
 class KeepNewestNTests(unittest.TestCase):

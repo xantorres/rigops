@@ -13,6 +13,7 @@ from rigops import procgroup
 from rigops.watermarks import check_watermarks  # noqa: F401
 
 DELETE_ACTIONS = ("delete", "keep_newest_n")
+RECENT_WRITE_S = 60
 
 
 def _unsafe_bases() -> set:
@@ -242,6 +243,14 @@ def _run_keep_newest_n_rule(rule, base, matches, apply, running_delete_total, ma
     )
 
 
+def _truncate_result(name: str, base: Path, matched=None, skipped=None, errors=None) -> dict:
+    return {
+        "name": name, "action": "truncate", "path": str(base), "matched": matched or [],
+        "acted": 0, "overflow": False, "skipped": skipped, "errors": errors or [],
+        "output": None,
+    }
+
+
 def _run_truncate_rule(rule, base, apply, now) -> dict:
     keep_lines = rule.get("keep_lines", 500)
     name = rule.get("name", "")
@@ -264,12 +273,16 @@ def _run_truncate_rule(rule, base, apply, now) -> dict:
             "name": name, "action": "truncate", "path": str(base), "matched": [], "acted": 0,
             "overflow": False, "skipped": None, "errors": [], "output": None,
         }
+    try:
+        age_s = now - os.stat(base).st_mtime
+    except OSError as exc:
+        return _truncate_result(name, base, errors=[str(exc)])
+    if age_s < RECENT_WRITE_S:
+        reason = f"modified in the last {RECENT_WRITE_S}s"
+        return _truncate_result(name, base, skipped=reason if apply else f"would skip: {reason}")
     matched = [str(base)]
     if not apply:
-        return {
-            "name": name, "action": "truncate", "path": str(base), "matched": matched, "acted": 0,
-            "overflow": False, "skipped": None, "errors": [], "output": None,
-        }
+        return _truncate_result(name, base, matched=matched)
     kept = lines[-keep_lines:]
     acted = 0
     errors = []
