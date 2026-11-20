@@ -270,6 +270,21 @@ class CliContractTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn("registry file not found", proc.stderr)
 
+    def test_stable_commands_without_a_config_file_never_traceback(self):
+        forms = [
+            ("authprobe",), ("backlog", "lint"), ("config", "check"),
+            ("doctor", "--supervisor", "none"), ("eit",), ("eval", "list"), ("janitor",),
+            ("ledger", "diff"), ("ledger", "write", "--dry-run"), ("ledger", "note", "a note"),
+            ("mine", "--dry-run"), ("reap",), ("tax",), ("version",), ("hook", "session-start"),
+        ]
+        for cmd, *args in forms:
+            with self.subTest(cmd=" ".join((cmd, *args))):
+                proc = self.run_cmd(cmd, *args)
+
+                self.assertNotIn("Traceback", proc.stdout + proc.stderr)
+                lines = [ln for ln in proc.stderr.splitlines() if ln.strip()]
+                self.assertLessEqual(len(lines), 1, proc.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
