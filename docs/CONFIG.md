@@ -20,7 +20,7 @@ Commands:
 
 All paths anywhere in config accept `~` and `$VAR` expansion.
 
-State directory (where `ledger.jsonl`, `ledger.md`, `interventions.jsonl`, `eval.jsonl`, and the `doctor`/`reap` logs live): `${RIGOPS_STATE_DIR:-${XDG_STATE_HOME:-~/.local/state}/rigops}`.
+State directory (where `ledger.jsonl`, `ledger.md`, `interventions.jsonl`, `eval.jsonl`, and the `doctor`/`reap` logs live): `${RIGOPS_STATE_DIR:-${XDG_STATE_HOME:-~/.local/state}/rigops}`. rigops creates it `0700` and tightens a wider existing directory to `0700`. It must sit on a local disk: state is locked with `flock` and appended with `O_APPEND`, and neither is reliable on a network or synced filesystem. See [SAFETY.md](SAFETY.md#state-files).
 
 ### Env vars
 

@@ -8,6 +8,8 @@ Tracks whether a change to a Claude Code rig actually moved the numbers, one app
 - **Window** = the 7 full days before the row's date (local midnight to local midnight, converted to UTC internally).
 - `ledger.jsonl` (in the [state directory](CONFIG.md#resolution)) is the source of truth. `ledger.md` is fully regenerated from `ledger.jsonl` on every write - never hand-edit it, column additions would desync a hand-edited table from the jsonl anyway.
 - `interventions.jsonl` is a side file: free-text notes, each with a date and a UTC timestamp, written by `rigops ledger note`.
+- Every row in both files carries an integer `version`; a row without one reads as 0, and a row newer than this rigops is skipped by reports and refused by writers. A row over 1 MiB is refused. Writes take a lock, so concurrent `ledger write` and `ledger note` runs never interleave. See [SAFETY.md](SAFETY.md#state-files).
+- Every `--json` payload is one object with `"version": 1`. Lists sit under `rows`, `items` or `findings`, and report payloads carry `"skipped"`, the count of unreadable rows left out. `ledger write --show --json` is `{"version", "rows", "skipped"}`, `ledger write --json` is `{"version", "row"}`, and `ledger diff --json` gains `version`, `skipped` and `incomplete`.
 
 ## EIT
 

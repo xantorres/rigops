@@ -15,3 +15,5 @@ description: Show the rigops fixed context tax (always-loaded config bytes) and 
 5. `rigops tax --starts` breaks down what session starts load before the first prompt: per surface the median tool count, tool-schema size and system-prompt size, then the tool groups (`builtin`, one `mcp__<server>` row per server) ranked by size times how many starts loaded them. `--session ID` shows one session's start with its largest tools. Use it when the doctor flags a turn-1 or `start_tool_chars` rise: the group that grew is the cause.
 
 6. `rigops tax --dead` lists tools and tool groups that session starts load but the sessions almost never call (default: at most 1 call per 100 loading starts over 30 days), ranked by characters carried. A server group in that list is the cheapest cut: disable it, or load it on demand, then watch `start_tool_chars` drop on the next ledger row.
+
+`--json` payloads are one object with `version`; `--history` carries `rows` and `skipped`, and `--starts --session` carries `rows`.

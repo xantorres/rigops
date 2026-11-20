@@ -16,6 +16,16 @@ What each rigops command can destroy, what's opt-in, and the caps that bound it.
 
 `doctor --heal` fails closed on its own state: if `heal-stamps.json` (or `holds.json`, when `cause_policy` reads it) is unreadable, not a JSON object, or holds a non-numeric stamp, the run kickstarts nothing and releases no hold, moves the file aside as `<name>.corrupt-<timestamp>`, and raises a failing finding. A run that cannot heal reports the finding and leaves the file where it is.
 
+## State files
+
+- The state directory is `0700`; a wider one is tightened on first use. Keep it on a local disk, because locking is `flock` and appends are `O_APPEND`.
+- JSON state (`heal-stamps.json`, `holds.json`, `kicked.json`, `notified.json`, the nudge file, `report-latest.txt`) is written to a temp file and renamed, so a reader never sees half a file.
+- A JSONL row is appended with one write, and a row over 1 MiB (`MAX_ROW_BYTES`, 1048576 bytes) is refused with exit `2` instead of being truncated or interleaved.
+- Every JSONL row and every JSON state file carries an integer `version` (currently `1`). A row without one reads as version 0. The stamp files are `{"version": 1, "entries": {...}}`; the older flat object, and for `kicked.json` the older list, still read.
+- Two writers never interleave: `rigops doctor` runs that write state (`--heal` or a fleet run) and `rigops reap --apply` hold a lock, and a second run waits for the first.
+- Readers split by what they decide. Gates and writers are strict: a malformed or newer-version row, or an unreadable file, exits `2`. Reports (`ledger diff`, `ledger --show`, `tax --history`, `doctor` lever checks) skip rows they cannot read, print `skipped N ...` on stderr and exit `0`; `ledger diff` marks the comparison `incomplete`. An unreadable file is exit `2` everywhere.
+- Guard state fails closed: a newer-version stamp file, like a corrupt one, makes `doctor --heal` act on nothing and exit `2`, even with `--exit-zero`. `rigops reap --apply` refuses to remove anything when a live-session file is unreadable.
+
 ## Kill-path design
 
 Two independent kill paths, same shape, different scope.

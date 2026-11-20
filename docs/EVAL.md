@@ -87,7 +87,7 @@ A case that got no usable reply (refused connection, timeout, HTTP error, a redi
 - `--temperature T` - default `0`.
 - `--label TEXT` - tag for the run, e.g. `main` or `proposal`; `diff` selects runs by it.
 - `--dry-run` - run and print, record nothing.
-- `--json` - print the row instead of the report.
+- `--json` - print the row instead of the report; it is one object and carries `version`.
 
 Progress goes to stderr, one line per case. The exit status is `0` once the run is recorded, whatever the cases scored; judging the scores is `diff`'s job. Exit `2` on a missing or invalid setting (endpoint, key variable, temperature, config file), an unreadable system prompt, or an invalid case file.
 
@@ -99,7 +99,7 @@ Progress goes to stderr, one line per case. The exit status is `0` once the run 
 
 ### `rigops eval list`
 
-Every recorded run, oldest first. `--json` prints the rows.
+Every recorded run, oldest first. `--json` prints `{"version": 1, "rows": [...]}`. Each `eval.jsonl` row carries `version`; `diff` is strict and exits `2` on an unreadable file or row.
 
 ## Gating a change
 

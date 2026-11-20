@@ -207,7 +207,7 @@ def main() -> int:
         summary = rebuilds.summarize(found, main_eit)
         if args.json:
             worst = sorted(found, key=lambda h: -h["eit"])[:args.top]
-            print(json.dumps({**summary, "largest": worst}, indent=2, default=str))
+            print(json.dumps({"version": 1, **summary, "largest": worst}, indent=2, default=str))
         else:
             print_rebuilds(summary, found, since, args.top)
         return 0
@@ -221,7 +221,7 @@ def main() -> int:
     }
 
     if args.json:
-        print(json.dumps(report, indent=2, default=str))
+        print(json.dumps({"version": 1, **report}, indent=2, default=str))
     else:
         print_human(report)
 

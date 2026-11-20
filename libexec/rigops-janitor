@@ -47,8 +47,8 @@ def main() -> int:
     watermarks = rigops_config.get(cfg, "janitor.watermarks", []) or []
     if not rules and not watermarks:
         if args.json:
-            print(json.dumps({"rules": [], "total_deleted": 0, "watermarks": [],
-                              "apply": args.apply}, indent=2))
+            print(json.dumps({"version": 1, "rules": [], "total_deleted": 0,
+                              "watermarks": [], "apply": args.apply}, indent=2))
         else:
             print("janitor not configured (janitor.rules and janitor.watermarks empty)")
         return 0
@@ -71,7 +71,7 @@ def main() -> int:
     )
 
     if args.json:
-        payload = dict(report)
+        payload = {"version": 1, **report}
         payload["watermarks"] = wm_results
         payload["apply"] = args.apply
         print(json.dumps(payload, indent=2))

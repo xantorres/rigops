@@ -30,6 +30,7 @@ def main() -> int:
     if not enabled and not args.force:
         if args.json:
             print(json.dumps({
+                "version": 1,
                 "ok": None,
                 "detail": "disabled (set authprobe.enabled true or pass --force)",
                 "enabled": False,
@@ -41,7 +42,7 @@ def main() -> int:
     ok, detail = authprobe.probe(cfg)
 
     if args.json:
-        print(json.dumps({"ok": ok, "detail": detail, "enabled": enabled}))
+        print(json.dumps({"version": 1, "ok": ok, "detail": detail, "enabled": enabled}))
     elif ok:
         print("authprobe: ok")
     else:

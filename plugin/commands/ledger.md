@@ -13,3 +13,5 @@ description: Write, show, note, or diff the rigops weekly effectiveness ledger. 
 4. To record an intervention (a config change, a habit change, anything meant to move the numbers): `rigops ledger note "<text>"`. Optional `--at YYYY-MM-DD` to backdate it. Interventions are what `ledger diff` surfaces between two rows - note them as they happen, not in bulk after the fact.
 
 5. To see week-over-week deltas: `rigops ledger diff`. Defaults to the last two rows; `--since YYYY-MM-DD` picks an older baseline instead. Add `--json` for structured output. The diff table includes every intervention noted between the baseline and latest row, so read it before writing new notes - it tells you whether the last round of changes actually moved anything.
+
+`--json` payloads are one object with `version`; rows are under `rows` (`write --show`) or `row` (`write`), and `skipped` counts unreadable rows left out.

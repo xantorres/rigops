@@ -53,6 +53,8 @@ Staleness only applies when the cadence is interval-checkable. `cadence` strings
 
 ## Examples
 
+`rigops doctor --list --json` prints `{"version": 1, "items": [...]}`, and `--config-only --json` prints `{"version": 1, "findings": [...]}`. Heal state (`heal-stamps.json`, `holds.json`, `kicked.json`, `notified.json`) is versioned and written atomically, and a run that writes it holds a lock; see [SAFETY.md](SAFETY.md#state-files).
+
 `rigops doctor --list` against the shipped example registry:
 
 ```text

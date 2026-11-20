@@ -24,7 +24,7 @@ def cmd_lint(args, cfg) -> int:
     path = _backlog_path(cfg, args.file)
     if not path.exists():
         if args.json:
-            print(json.dumps({"open": 0, "done": 0, "malformed": [], "unknown_area": [],
+            print(json.dumps({"version": 1, "open": 0, "done": 0, "malformed": [], "unknown_area": [],
                               "ok": True}, indent=2))
         else:
             print(f"no backlog file at {path}")
@@ -34,7 +34,7 @@ def cmd_lint(args, cfg) -> int:
     result = rigops_backlog.lint(text, areas)
 
     if args.json:
-        print(json.dumps(result, indent=2))
+        print(json.dumps({"version": 1, **result}, indent=2))
         return 0 if result["ok"] else 1
 
     print(f"open={result['open']} done={result['done']}")

@@ -136,14 +136,14 @@ class CliContractTests(unittest.TestCase):
         payload = self.json_out(self.run_cmd("backlog", "lint", "--json", "--file", missing))
 
         self.assertEqual(payload, {
-            "open": 0, "done": 0, "malformed": [], "unknown_area": [], "ok": True,
+            "version": 1, "open": 0, "done": 0, "malformed": [], "unknown_area": [], "ok": True,
         })
 
     def test_janitor_json_is_valid_when_nothing_is_configured(self):
         payload = self.json_out(self.run_cmd("janitor", "--json"))
 
         self.assertEqual(payload, {
-            "rules": [], "total_deleted": 0, "watermarks": [], "apply": False,
+            "version": 1, "rules": [], "total_deleted": 0, "watermarks": [], "apply": False,
         })
 
     def test_reap_dry_run_without_apply_is_a_usage_error(self):

@@ -15,3 +15,5 @@ description: Run the rigops job-fleet health check and interpret the report. Use
 5. If jobs need healing (kill a hung process, kickstart a stalled one) and the user confirms, re-run with `--heal` added: `rigops doctor --report --heal`. This is the only flag that allows kill/kickstart side effects - the default is always report-only. Custom checks and the notify command run either way.
 
 6. For the registry itself (job cadence, evidence paths, `id`/`plist` fields), point the user at `config/registry.example.md` in the rigops repo, or their configured `doctor.registry` path (`rigops config get doctor.registry`).
+
+`--json` is one object with `version`; `--list` puts the items under `items` and `--config-only` puts them under `findings`. Exit 2 also means guard state was unreadable or newer than this rigops.

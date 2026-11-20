@@ -20,8 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rigops config check` reports unknown keys at every depth, not only the top level, and reports the keys 0.11 dropped as `removed in 0.11` with a note. The exit code does not change.
 - `rigops doctor` prints one `info:` line naming unknown config keys, and `--json` carries them in `unknown_config_keys`. It is not a finding.
 - The config defaults now cover keys the code already read with an inline fallback; each default equals that fallback.
+- State files are locked, versioned and written atomically. Doctor runs that write state and `reap --apply` take a lock and a second run waits; JSON state goes through a temp-file rename; a JSONL row is one append and a row over 1 MiB is refused with exit `2`. The state directory is created `0700` and a wider one is tightened.
+- Every JSONL row and JSON state file carries an integer `version`. A row without one reads as 0.
+- Reports skip rows they cannot read, say `skipped N` on stderr and exit `0`; gates and writers stay strict. `ledger diff` marks the comparison `incomplete` and the doctor lever check warns with the count. An unreadable file exits `2` everywhere.
+- Guard state fails closed: a stamp file written by a newer rigops, like a corrupt one, stops `doctor --heal` from acting and exits `2`. `reap --apply` refuses when a session file is unreadable.
+- Every `--json` payload is one object with `"version": 1`, and a list is wrapped under a name. Existing keys are kept. `rigops config get` still prints a bare JSON value.
 
 ### Upgrading from 0.11.x
+
+- `--json` shape changes (existing keys unchanged): `ledger write --show --json` was a list of rows, now `{"version", "rows", "skipped"}`; `ledger write --json` was the row, now `{"version", "row"}`; `ledger diff --json` gains `version`, `skipped`, `incomplete`; `tax --history --json` was a list of `{date, fixed_tax_b}`, now `{"version", "skipped", "rows"}`; `tax --starts --session --json` was a list, now `{"version", "rows"}`; `eval list --json` was a list, now `{"version", "rows"}`; `doctor --list --json` was a list, now `{"version", "items"}`; `doctor --config-only --json` was a list, now `{"version", "findings"}`. `doctor`, `reap`, `eit`, `eit --rebuilds`, `tax`, `tax --dead`, `eval run`, `eval diff`, `janitor`, `authprobe` and `backlog lint` gain `version`.
+- State file shapes: `interventions.jsonl`, `eval.jsonl` and `doctor/events.jsonl` rows gain `version`. `heal-stamps.json`, `holds.json`, `kicked.json` and `notified.json` change from a flat object (`kicked.json` possibly a list) to `{"version": 1, "entries": {...}}`; the old shape still reads. 0.11 reads neither new shape, so do not run an older rigops against a state directory a newer one has written. `doctor/gates.json`, the context nudge file and `ledger.jsonl` rows are unchanged in content.
+- `rigops doctor` exits `2` whenever guard state is unreadable, malformed or newer, and `--exit-zero` no longer turns that into `0`.
+- A ledger or eval row over 1 MiB, or a state directory on a filesystem without `flock`, now fails; keep state on a local disk.
+- A wider state directory is tightened to `0700` on first use.
 
 - `rigops config get` on a missing key exited 3 and now exits 1. Treat 1 as "not found".
 - A config that cannot be read, is not valid JSON or is not an object exited 1 and now exits 2, for every command including `rigops config check`. Treat 2 as "cannot run".
