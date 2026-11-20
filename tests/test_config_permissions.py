@@ -144,6 +144,11 @@ class CommandPathsRefuseTests(unittest.TestCase):
         self.assertRefused(self.run_cmd(["ledger", "write", "--dry-run"], cfg))
         self.assertFalse(self.marker.exists())
 
+    def test_ledger_write_refuses_before_a_configured_source_argv_runs(self):
+        cfg = {"sources": {"ccusage": {"argv": ["/bin/sh", "-c", self._touch()]}}}
+        self.assertRefused(self.run_cmd(["ledger", "write", "--dry-run"], cfg))
+        self.assertFalse(self.marker.exists())
+
     def _trees(self) -> str:
         trees = self.home / "trees"
         trees.mkdir(exist_ok=True)

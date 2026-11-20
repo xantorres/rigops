@@ -26,6 +26,12 @@ def _rewrite_jsonl(path: Path, rows: list) -> None:
     state.atomic_write(path, text)
 
 
+def _config_supplies_a_command(cfg) -> bool:
+    shipped = rigops_config.get(rigops_config.DEFAULTS, "sources.ccusage.argv")
+    return bool(rigops_config.get(cfg, "sources.custom")) or (
+        rigops_config.get(cfg, "sources.ccusage.argv", shipped) != shipped)
+
+
 def _load_ledger_rows(path: Path) -> list:
     rows = state.read_jsonl(path)
     for row in rows:
@@ -88,7 +94,7 @@ def cmd_write(args) -> int:
     if existing and not args.force and not args.dry_run:
         return _refuse_existing(at)
 
-    if rigops_config.get(cfg, "sources.custom"):
+    if _config_supplies_a_command(cfg):
         rigops_config.require_private(rigops_config.config_path())
     row = levers.build_row(at, args.label, cfg=cfg)
     _warn_on_row_health(row, at)
