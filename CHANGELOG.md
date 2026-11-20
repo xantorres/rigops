@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-20
+
 ### Upgrading from 0.10.0
 
 - The scheduled doctor job only reports once the installer runs again. To
