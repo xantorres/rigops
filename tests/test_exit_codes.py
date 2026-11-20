@@ -162,19 +162,24 @@ class SubprocessExitCodes(unittest.TestCase):
             ("tax --dead unreadable --until", ["tax", "--dead", "--until", "garbage"], {}, 2),
             ("eit unreadable --since", ["eit", "--since", "garbage"], {}, 2),
         ]
-        if os.geteuid() != 0:
-            self._unreadable_rule()
-            rows += [
-                ("doctor unreadable always-on file", ["doctor", "--config-only"], {}, 2),
-                ("doctor unreadable always-on file under --exit-zero",
-                 ["doctor", "--config-only", "--exit-zero"], {}, 2),
-            ]
         broken = {"extra_env": self._import_failure_env()}
         rows += [
             ("doctor check import failure", ["doctor", "--config-only"], {}, 2, broken),
             ("doctor check import failure under --exit-zero",
              ["doctor", "--config-only", "--exit-zero"], {}, 2, broken),
         ]
+        self._check(rows)
+
+    @unittest.skipIf(os.geteuid() == 0, "root reads every file")
+    def test_an_unreadable_always_on_file_exits_2_with_and_without_exit_zero(self):
+        self._unreadable_rule()
+        self._check([
+            ("doctor unreadable always-on file", ["doctor", "--config-only"], {}, 2),
+            ("doctor unreadable always-on file under --exit-zero",
+             ["doctor", "--config-only", "--exit-zero"], {}, 2),
+        ])
+
+    def _check(self, rows) -> None:
         for name, args, config, want, *extra in rows:
             mode = [x for x in extra if isinstance(x, int)]
             env = next((x["extra_env"] for x in extra if isinstance(x, dict)), None)
