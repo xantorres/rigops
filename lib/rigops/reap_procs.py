@@ -313,8 +313,8 @@ def kill_pids(label: str, pids: dict[int, str], snap: dict[int, dict], apply: bo
         log(f"KILL pid={pid} comm={comm(pid)} match={tag} tree={label}")
         survivors.append(pid)
 
-    deadline = time.time() + grace_s
-    while survivors and time.time() < deadline:
+    deadline = time.monotonic() + grace_s
+    while survivors and time.monotonic() < deadline:
         time.sleep(0.5)
         survivors = [p for p in survivors if process_alive(p)]
 

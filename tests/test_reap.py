@@ -98,13 +98,13 @@ class RemainingAfterTests(EnvIsolatedTestCase):
 
     def test_budget_shrinks_by_the_time_already_spent(self):
         self.addCleanup(setattr, reap, "time", reap.time)
-        reap.time = types.SimpleNamespace(time=lambda: 1030.0)
+        reap.time = types.SimpleNamespace(monotonic=lambda: 1030.0)
 
         self.assertEqual(reap.remaining_after(90.0, 1000.0), 60.0)
 
     def test_overspent_budget_goes_negative_rather_than_clamping(self):
         self.addCleanup(setattr, reap, "time", reap.time)
-        reap.time = types.SimpleNamespace(time=lambda: 1200.0)
+        reap.time = types.SimpleNamespace(monotonic=lambda: 1200.0)
 
         self.assertEqual(reap.remaining_after(90.0, 1000.0), -110.0)
 
@@ -930,7 +930,7 @@ class ScanRepoDeadlineTests(GitFixtureTestCase):
 
         self.addCleanup(setattr, reap, "time", reap.time)
         self.addCleanup(setattr, reap, "age_days", reap.age_days)
-        reap.time = types.SimpleNamespace(time=lambda: clock["now"])
+        reap.time = types.SimpleNamespace(monotonic=lambda: clock["now"])
         reap.age_days = burn_the_budget
 
         result = reap.scan_repo(
@@ -974,7 +974,7 @@ class ScanRepoDeadlineTests(GitFixtureTestCase):
         self.addCleanup(setattr, reap, "parse_worktrees", reap.parse_worktrees)
         self.addCleanup(setattr, reap, "resolve_target", reap.resolve_target)
         self.addCleanup(setattr, reap, "default_branch", reap.default_branch)
-        reap.time = types.SimpleNamespace(time=lambda: clock["now"])
+        reap.time = types.SimpleNamespace(monotonic=lambda: clock["now"])
         reap.parse_worktrees = burn_the_budget
         reap.resolve_target = fail_if_called
         reap.default_branch = fail_if_called
@@ -1000,7 +1000,7 @@ class ResolveTargetBudgetTests(EnvIsolatedTestCase):
 
         self.addCleanup(setattr, reap, "time", reap.time)
         self.addCleanup(setattr, reap, "git_ok", reap.git_ok)
-        reap.time = types.SimpleNamespace(time=lambda: clock["now"])
+        reap.time = types.SimpleNamespace(monotonic=lambda: clock["now"])
         reap.git_ok = probe
         return probes
 
@@ -1048,6 +1048,25 @@ class ScanRepoTargetBudgetTests(GitFixtureTestCase):
 
         self.assertIsNotNone(seen["remaining_s"])
         self.assertLessEqual(seen["remaining_s"], 90)
+
+    def test_wall_clock_jump_does_not_spend_the_budget(self):
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        _run_git(["worktree", "add", "-b", "feature-one", str(self.tmp / "wt-one")], repo)
+        # A machine that sleeps mid-scan steps the wall clock by the time asleep.
+        wall = {"now": 1000.0}
+
+        def jump():
+            wall["now"] += 900.0
+            return wall["now"]
+
+        self.addCleanup(setattr, reap, "time", reap.time)
+        reap.time = types.SimpleNamespace(time=jump, monotonic=time.monotonic)
+
+        result = reap.scan_repo(repo, [], self.tmp / "outside", False, 14, set(), (), remaining_s=60)
+
+        self.assertEqual(result["target"], "main")
+        self.assertEqual([w["verdict"] for w in result["worktrees"]], [reap.REAP])
 
 
 class DirSizeBudgetTests(EnvIsolatedTestCase):
@@ -1108,7 +1127,7 @@ class ScanRepoDirSizeBudgetTests(GitFixtureTestCase):
         self.addCleanup(setattr, reap, "time", reap.time)
         self.addCleanup(setattr, reap, "classify", reap.classify)
         self.addCleanup(setattr, reap, "dir_size", reap.dir_size)
-        reap.time = types.SimpleNamespace(time=lambda: clock["now"])
+        reap.time = types.SimpleNamespace(monotonic=lambda: clock["now"])
         reap.classify = burn_then_reap
         reap.dir_size = fail_if_called
 

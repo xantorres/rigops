@@ -100,7 +100,7 @@ def remaining_after(remaining_s: float | None, started: float) -> float | None:
     """
     if remaining_s is None:
         return None
-    return remaining_s - (time.time() - started)
+    return remaining_s - (time.monotonic() - started)
 
 
 def clamp_timeout(base_s: int, remaining_s: float | None, floor_s: int = 5) -> int | None:
@@ -357,7 +357,7 @@ def resolve_target(repo: Path, timeout: int = 120,
     per candidate. A budget too thin for the next probe returns None, which
     the caller already reads as "no target, skip the repository".
     """
-    started = time.time()
+    started = time.monotonic()
     for ref in MERGE_TARGETS:
         probe_timeout = clamp_timeout(timeout, remaining_after(remaining_s, started))
         if probe_timeout is None:
@@ -475,7 +475,7 @@ def classify(wt: dict, repo: Path, target: str, live: list[Path], self_cwd: Path
     # Every step below shells out to git. Each call is capped at what is left
     # of the run deadline, so a repository full of slow worktrees cannot carry
     # the run hours past it.
-    started = time.time()
+    started = time.monotonic()
 
     def budget() -> int | None:
         return clamp_timeout(120, remaining_after(remaining_s, started))
@@ -538,7 +538,7 @@ def classify(wt: dict, repo: Path, target: str, live: list[Path], self_cwd: Path
 def scan_repo(repo: Path, live: list[Path], self_cwd: Path, fetch: bool, grace_days: int,
               ignored_dirs: set[str], ignored_prefixes: tuple[str, ...],
               remaining_s: float | None = None) -> dict:
-    scan_start = time.time()
+    scan_start = time.monotonic()
     result = {"repo": str(repo), "target": None, "default_branch": None, "worktrees": [],
               "note": None, "timed_out": False, "listing_ok": True, "listing_skipped": False}
 
@@ -735,7 +735,7 @@ def refresh_verdict(wt: dict, res: dict, opts: Any, self_cwd: Path,
                     remaining_s: float | None) -> str:
     """Re-judge one scanned tree from its current registry record and sessions,
     within the run deadline. Updates wt to that record."""
-    started = time.time()
+    started = time.monotonic()
     timeout = clamp_timeout(120, remaining_s)
     if timeout is None:
         return DEADLINE_SKIP
@@ -782,14 +782,14 @@ def run(opts: Any) -> int:
 
     live = live_worktree_cwds(opts.sessions_dir)
     self_cwd = Path.cwd().resolve()
-    run_start = time.time()
+    run_start = time.monotonic()
     results = []
     deadline_hit = False
     for r in repos:
-        if time.time() - run_start > opts.deadline_s:
+        if time.monotonic() - run_start > opts.deadline_s:
             deadline_hit = True
             skipped = len(repos) - len(results)
-            log(f"ABORT deadline elapsed={int(time.time() - run_start)}s "
+            log(f"ABORT deadline elapsed={int(time.monotonic() - run_start)}s "
                 f"scanned={len(results)} skipped={skipped}")
             break
         results.append(scan_repo(
@@ -940,7 +940,7 @@ def run(opts: Any) -> int:
         f"deadline_skipped={deadline_skipped} listing_skipped={listing_skipped} "
         f"over_cap={over_cap} "
         f"killed={killed_total} kill_failed={kill_failed_total} "
-        f"elapsed={int(time.time() - run_start)}s deadline_hit={int(deadline_hit)}")
+        f"elapsed={int(time.monotonic() - run_start)}s deadline_hit={int(deadline_hit)}")
 
     if opts.json:
         print(json.dumps({"generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
