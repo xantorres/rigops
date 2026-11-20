@@ -1,4 +1,4 @@
-"""Source adapters mined for ledger annotations (rtk, ccusage, custom).
+"""Source adapters mined for ledger annotations (ccusage, custom).
 
 Every adapter exposes two functions:
 

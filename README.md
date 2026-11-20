@@ -291,7 +291,7 @@ These patterns ran daily in a private agent rig for months before this repositor
 | Tool | Role |
 |---|---|
 | [ccusage](https://github.com/ryoppippi/ccusage) | Spend accounting. rigops never re-counts spend; it can annotate ledger rows with ccusage's numbers when ccusage is present. |
-| [rtk](https://github.com/rtk-ai/rtk) | Token-reduction proxy. Optional source for a ledger column, not a dependency. |
+| [rtk](https://github.com/rtk-ai/rtk) | Token-reduction proxy. Can feed a ledger row as a `sources.custom` entry, not a dependency. |
 | [engram](https://github.com/xantorres/engram) | Agent memory. |
 | [repokernel](https://github.com/xantorres/repokernel) | Worktree orchestration. |
 

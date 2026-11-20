@@ -12,9 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import config as rigops_config  # noqa: E402
 from rigops.detector import Detector  # noqa: E402
-from rigops.sources import caveman, ccusage, rtk  # noqa: E402
+from rigops.sources import ccusage  # noqa: E402
 
-_ADAPTERS = (rtk, ccusage, caveman)
+_ADAPTERS = (ccusage,)
 _stub_dir = None
 
 

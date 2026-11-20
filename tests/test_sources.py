@@ -8,7 +8,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from rigops.sources import caveman, ccusage, command, rtk  # noqa: E402
+from rigops.sources import ccusage, command  # noqa: E402
 
 
 class RunJsonTests(unittest.TestCase):
@@ -51,35 +51,6 @@ class RunJsonTests(unittest.TestCase):
         self.assertIsNone(command.run_json(["echo", 1]))
 
 
-# (name, payload as run_json would return it, expected window() result)
-RTK_CASES = [
-    (
-        "real_shape",
-        {"summary": {
-            "total_commands": 10, "total_input": 1000, "total_output": 200,
-            "total_saved": 500, "avg_savings_pct": 33.333, "total_time_ms": 10, "avg_time_ms": 1,
-        }},
-        {"commands": 10, "saved_tokens": 500, "saved_pct": 33.3, "snapshot": True},
-    ),
-    (
-        "flat_legacy_shape",
-        {"total_commands": 5, "total_saved": 20, "avg_savings_pct": 10},
-        {"commands": 5, "saved_tokens": 20, "saved_pct": 10, "snapshot": True},
-    ),
-    ("missing_total_saved", {"summary": {"total_commands": 1, "avg_savings_pct": 1}}, None),
-    ("payload_list", [1, 2, 3], None),
-    ("payload_none", None, None),
-]
-
-
-class RtkWindowTests(unittest.TestCase):
-    def test_extraction_table(self):
-        for name, payload, expected in RTK_CASES:
-            with self.subTest(name):
-                with mock.patch.object(rtk, "run_json", return_value=payload):
-                    self.assertEqual(rtk.window(), expected)
-
-
 CCUSAGE_CASES = [
     (
         "camelcase_totals",
@@ -113,35 +84,6 @@ class CcusageWindowTests(unittest.TestCase):
         with mock.patch.object(ccusage, "run_json", side_effect=fake_run_json):
             ccusage.window(dt.datetime(2026, 8, 1), dt.datetime(2026, 8, 8))
         self.assertEqual(captured["argv"][-4:], ["--since", "20260801", "--until", "20260808"])
-
-
-CAVEMAN_CASES = [
-    (
-        "real_shape",
-        {"schema": "caveman.stats.v1", "totals": {
-            "requests": 40, "before_tokens": 1000, "after_tokens": 750, "saved_tokens": 250,
-        }},
-        {"requests": 40, "saved_tokens": 250, "saved_pct": 25.0, "estimate": True,
-         "snapshot": True},
-    ),
-    (
-        "no_traffic",
-        {"totals": {"requests": 0, "before_tokens": 0, "saved_tokens": 0}},
-        {"requests": 0, "saved_tokens": 0, "saved_pct": None, "estimate": True,
-         "snapshot": True},
-    ),
-    ("saved_missing", {"totals": {"requests": 3}}, None),
-    ("totals_not_dict", {"totals": []}, None),
-    ("payload_none", None, None),
-]
-
-
-class CavemanWindowTests(unittest.TestCase):
-    def test_extraction_table(self):
-        for name, payload, expected in CAVEMAN_CASES:
-            with self.subTest(name):
-                with mock.patch.object(caveman, "run_json", return_value=payload):
-                    self.assertEqual(caveman.window(), expected)
 
 
 class CustomAnnotationsTests(unittest.TestCase):

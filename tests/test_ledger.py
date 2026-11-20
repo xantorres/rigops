@@ -478,7 +478,7 @@ class CostBySurfaceTests(unittest.TestCase):
         capped = cost.split([over])
         self.assertEqual(capped["cache_write"], 20.0)
 
-    def test_summary_line_shows_surfaces_and_caveman(self):
+    def test_summary_line_shows_surfaces(self):
         row = {
             "date": "2026-08-15", "turns": 1, "sessions": 1,
             "cost_by_surface": {
@@ -488,12 +488,10 @@ class CostBySurfaceTests(unittest.TestCase):
                 "cli": {"pct": 0.5, "cache_read_pct": 0.0, "cache_write_pct": 0.0,
                         "output_pct": 100.0, "input_pct": 0.0},
             },
-            "sources": {"caveman": {"requests": 12, "saved_tokens": 3400}},
         }
         line = levers.summary_line(row, None, None, {})
         self.assertIn("| desktop 99.5% cost (read 60.0% write 25.0% out 15.0%)", line)
         self.assertNotIn("| cli ", line)
-        self.assertIn("| caveman proxy 12 req saved 3400 tok (est)", line)
 
 
 class Tier3BreachSessionsTests(unittest.TestCase):

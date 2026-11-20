@@ -191,42 +191,59 @@ class LeversSourceAnnotationsTests(unittest.TestCase):
     def setUp(self):
         no_external_sources(self)
 
-    def test_custom_entry_present_and_builtin_keys_always_present(self):
+    def test_default_config_returns_only_ccusage(self):
+        out = levers.source_annotations({}, dt.datetime.now(), dt.datetime.now())
+        self.assertEqual(out, {"ccusage": None})
+
+    def test_custom_entry_added_beside_ccusage(self):
         cfg = {
             "sources": {
                 "custom": [{"name": "probe1", "argv": ["sh", "-c", 'echo \'{"y": 2}\'']}],
             },
         }
         out = levers.source_annotations(cfg, dt.datetime.now(), dt.datetime.now())
-        self.assertIn("rtk", out)
         self.assertIn("ccusage", out)
         self.assertEqual(out["probe1"], {"y": 2})
 
-    def test_non_dict_rtk_cfg_no_raise(self):
-        cfg = {"sources": {"rtk": "yes"}}
-        out = levers.source_annotations(cfg, dt.datetime.now(), dt.datetime.now())
-        self.assertIn("rtk", out)
-        self.assertTrue(out["rtk"] is None or isinstance(out["rtk"], dict))
-
-    def test_custom_entry_named_rtk_ignored(self):
+    def test_custom_entry_named_rtk_kept(self):
         cfg = {
             "sources": {
                 "custom": [{"name": "rtk", "argv": ["sh", "-c", 'echo \'{"bogus": true}\'']}],
             },
         }
         out = levers.source_annotations(cfg, dt.datetime.now(), dt.datetime.now())
-        self.assertNotEqual(out.get("rtk"), {"bogus": True})
+        self.assertEqual(out["rtk"], {"bogus": True})
+
+    def test_custom_entry_named_ccusage_dropped(self):
+        cfg = {
+            "sources": {
+                "custom": [{"name": "ccusage", "argv": ["sh", "-c", 'echo \'{"bogus": true}\'']}],
+            },
+        }
+        out = levers.source_annotations(cfg, dt.datetime.now(), dt.datetime.now())
+        self.assertEqual(out, {"ccusage": None})
 
 
 class LeversSummaryLineTests(unittest.TestCase):
     def test_non_dict_source_segments_omitted(self):
         row = {
             "date": "2026-08-23",
-            "sources": {"rtk": [1, 2], "ccusage": "x"},
+            "sources": {"ccusage": "x"},
         }
         line = levers.summary_line(row, None, None, {})
-        self.assertNotIn("rtk saved", line)
         self.assertNotIn("spend $", line)
+
+    def test_rtk_and_caveman_sources_not_printed(self):
+        row = {
+            "date": "2026-08-23",
+            "sources": {
+                "rtk": {"saved_pct": 41.0},
+                "caveman": {"requests": 12, "saved_tokens": 3400},
+            },
+        }
+        line = levers.summary_line(row, None, None, {})
+        self.assertNotIn("rtk", line)
+        self.assertNotIn("caveman", line)
 
 
 if __name__ == "__main__":

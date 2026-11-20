@@ -12,7 +12,7 @@ from pathlib import Path
 from rigops import config as rigops_config
 from rigops import core, cost, fmt, ledger_row, modelmix, rebuilds, starts, transcripts
 from rigops.detector import Detector
-from rigops.sources import caveman, ccusage, command, rtk
+from rigops.sources import ccusage, command
 
 WINDOW_DAYS = 7
 SMOOTH_DAYS = 30
@@ -110,7 +110,7 @@ def fixed_tax_entries(cfg=None) -> list[tuple[Path, int]]:
     return entries
 
 
-BUILTIN_SOURCES = {"rtk": (rtk, 20), "ccusage": (ccusage, 60), "caveman": (caveman, 20)}
+BUILTIN_SOURCES = {"ccusage": (ccusage, 60)}
 
 
 def source_annotations(cfg, since: dt.datetime, until: dt.datetime) -> dict:
@@ -127,7 +127,7 @@ def source_annotations(cfg, since: dt.datetime, until: dt.datetime) -> dict:
         )
     custom_specs = rigops_config.get(cfg, "sources.custom", []) or []
     # A custom entry reusing a built-in name would replace its shape and crash
-    # summary_line's saved_pct/cost_usd reads.
+    # summary_line's cost_usd read.
     custom_specs = [
         spec for spec in custom_specs
         if not (isinstance(spec, dict) and spec.get("name") in BUILTIN_SOURCES)
@@ -375,9 +375,6 @@ def summary_line(row: dict, prev: dict | None, base: dict | None, watch_projects
     parts.append(f"| cheap-model EIT {cheap_pct}%")
     parts.append(f"| fixed tax {format_cell('fixed_tax_b', row.get('fixed_tax_b'))}")
     sources = row.get("sources") or {}
-    rtk_src = sources.get("rtk")
-    if isinstance(rtk_src, dict):
-        parts.append(f"| rtk saved {rtk_src.get('saved_pct')}%")
     ccusage_src = sources.get("ccusage")
     if isinstance(ccusage_src, dict) and ccusage_src.get("cost_usd") is not None:
         parts.append(f"| spend ${ccusage_src.get('cost_usd')} (ccusage)")
@@ -385,10 +382,6 @@ def summary_line(row: dict, prev: dict | None, base: dict | None, watch_projects
         if (c.get("pct") or 0) >= 1:
             parts.append(f"| {surface} {c['pct']}% cost (read {c.get('cache_read_pct')}%"
                          f" write {c.get('cache_write_pct')}% out {c.get('output_pct')}%)")
-    cav = sources.get("caveman")
-    if isinstance(cav, dict):
-        parts.append(f"| caveman proxy {cav.get('requests')} req"
-                     f" saved {cav.get('saved_tokens')} tok (est)")
     parts.append(f"| turns {row.get('turns')} sessions {row.get('sessions')}")
     parts.append(
         f"| denials {format_cell('denials', row.get('denials'))}"

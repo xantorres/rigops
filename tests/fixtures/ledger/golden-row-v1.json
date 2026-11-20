@@ -58,8 +58,6 @@
   "default_model": null,
   "main_default_model_pct": null,
   "sources": {
-    "rtk": null,
-    "ccusage": null,
-    "caveman": null
+    "ccusage": null
   }
 }

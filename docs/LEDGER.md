@@ -111,9 +111,9 @@ Each ledger row also records `start_tools` and `start_tool_chars`: medians over 
 
 ## `sources` annotations
 
-A row's `sources` object (`rtk`, `ccusage`, `caveman`, and any `sources.custom` entries) is written to `ledger.jsonl` only - it never becomes a column in `ledger.md`. See [CONFIG.md](CONFIG.md#sources) for how each adapter is gated and what it contains. `ccusage`'s contribution is a context annotation; spend accounting stays `ccusage`'s own job.
+A row's `sources` object (`ccusage` and any `sources.custom` entries) is written to `ledger.jsonl` only - it never becomes a column in `ledger.md`. See [CONFIG.md](CONFIG.md#sources) for how `ccusage` is gated and how to add a custom source. `ccusage`'s contribution is a context annotation; spend accounting stays `ccusage`'s own job.
 
-A row's `cost_by_surface` object holds each surface's share of the window's input-equivalent cost and its split by usage class; the summary line prints every surface at 1% or more, then `caveman proxy N req saved M tok (est)` when `caveman` is on PATH. Only traffic routed through the caveman proxy lands in its stats, and its saved count is its own o200k estimate.
+A row's `cost_by_surface` object holds each surface's share of the window's input-equivalent cost and its split by usage class; the summary line prints every surface at 1% or more.
 
 ## Examples
 

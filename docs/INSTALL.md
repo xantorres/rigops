@@ -74,7 +74,6 @@ rigops install: plan for ~ (dry run; re-run with --apply to act)
      installed ~/.local/share/rigops/lib/rigops/sources/__init__.py
      installed ~/.local/share/rigops/lib/rigops/sources/ccusage.py
      installed ~/.local/share/rigops/lib/rigops/sources/command.py
-     installed ~/.local/share/rigops/lib/rigops/sources/rtk.py
      installed ~/.local/share/rigops/lib/rigops/state.py
      installed ~/.local/share/rigops/lib/rigops/transcripts.py
      installed ~/.local/share/rigops/templates/cron/crontab.example

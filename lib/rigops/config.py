@@ -49,7 +49,6 @@ DEFAULTS = {
         "areas": ["hooks", "skills", "memory", "permissions", "metrics", "repos", "docs", "jobs"],
     },
     "sources": {
-        "rtk": {"argv": ["rtk", "gain", "--format", "json"], "timeout_s": 20},
         "ccusage": {"argv": ["ccusage", "daily", "--json"], "timeout_s": 60},
         "custom": [],
     },

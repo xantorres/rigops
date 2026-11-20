@@ -259,15 +259,27 @@ Config for `rigops backlog`.
 
 External CLIs mined for ledger row annotations, stored under `row.sources` in `ledger.jsonl` only - never as columns in `ledger.md` (see [LEDGER.md](LEDGER.md)).
 
-- `rtk` (default `{"argv": ["rtk", "gain", "--format", "json"], "timeout_s": 20}`) - probe-gated: `rtk.probe()` is just `shutil.which("rtk")`; if the binary isn't on PATH, the annotation is `null` and no subprocess is ever spawned.
-- `ccusage` (default `{"argv": ["ccusage", "daily", "--json"], "timeout_s": 60}`) - same probe-gating. Context annotation only; spend accounting stays `ccusage`'s job, rigops never re-counts it.
-- `caveman` (default `{"argv": ["caveman", "stats", "--json", "--days", "7"], "timeout_s": 20}`) - same probe-gating. A snapshot of the trailing 7 UTC days ending now, so a backdated `--at` row still reads the current week.
-- `custom` (`array`, default `[]`) - each `{name, argv, timeout_s}` runs an arbitrary JSON-emitting CLI, stored under its own `name`. `timeout_s` defaults to `30` if omitted. The names `rtk`, `ccusage` and `caveman` are reserved for the built-in adapters above; a custom entry reusing one is dropped before it runs. **Every entry here runs on every `rigops ledger write`, including `--dry-run`** (though not on `--show`, which never computes a row) - give them read-only commands.
+- `ccusage` (default `{"argv": ["ccusage", "daily", "--json"], "timeout_s": 60}`) - probe-gated: `ccusage.probe()` is just `shutil.which("ccusage")`; if the binary isn't on PATH, the annotation is `null` and no subprocess is ever spawned. Context annotation only; spend accounting stays `ccusage`'s job, rigops never re-counts it.
+- `custom` (`array`, default `[]`) - each `{name, argv, timeout_s}` runs an arbitrary JSON-emitting CLI, stored under its own `name`. `timeout_s` defaults to `30` if omitted. The name `ccusage` is reserved for the built-in adapter above; a custom entry reusing it is dropped before it runs. **Every entry here runs on every `rigops ledger write`, including `--dry-run`** (though not on `--show`, which never computes a row) - give them read-only commands.
+
+A custom source stores the command's whole JSON output for the run, unparsed and not windowed to the row's week, and the summary line does not print its figures. Two examples, a token-reduction proxy's totals and a compression proxy's trailing 7 days:
 
 ```json
 {
   "sources": {
-    "rtk": {"argv": ["rtk", "gain", "--format", "json"], "timeout_s": 20},
+    "custom": [
+      {"name": "rtk", "argv": ["rtk", "gain", "--format", "json"], "timeout_s": 20},
+      {"name": "caveman", "argv": ["caveman", "stats", "--json", "--days", "7"], "timeout_s": 20}
+    ]
+  }
+}
+```
+
+Both tools report totals for their own span (all time, and the 7 days ending now), so a backdated `--at` row reads the current figures. An absent binary makes the entry `null`.
+
+```json
+{
+  "sources": {
     "ccusage": {"argv": ["ccusage", "daily", "--json"], "timeout_s": 60},
     "custom": [{"name": "myprobe", "argv": ["mytool", "stats", "--json"], "timeout_s": 10}]
   }
