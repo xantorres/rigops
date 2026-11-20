@@ -20,6 +20,7 @@ from rigops import config as _config
 from rigops import frontmatter as _frontmatter
 from rigops import state as _state
 from rigops import transcripts as _transcripts
+from rigops.errors import RigopsError  # noqa: F401
 
 HOME = Path(os.path.expanduser("~"))
 CLAUDE_DIR = HOME / ".claude"
@@ -64,6 +65,10 @@ def cfg_get(cfg: dict, dotted: str, default=None):
 
 def state_dir() -> Path:
     return _state.state_dir()
+
+
+def read_rows(path, valid=None):
+    return _state.read_rows(path, valid)
 
 
 def local_state_path(name: str) -> Path:

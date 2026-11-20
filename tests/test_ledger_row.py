@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from rigops import ledger_row, levers, state  # noqa: E402
+from rigops import ledger_row, levers  # noqa: E402
 
 from tests.test_ledger import (  # noqa: E402
     FIXTURE_FIXED_TAX,
@@ -126,8 +126,9 @@ class DiffOutputTests(EnvIsolatedTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = {**os.environ, "RIGOPS_CONFIG": str(Path(tmp) / "c.json"),
                    "RIGOPS_STATE_DIR": str(Path(tmp) / "state")}
-            for row in rows:
-                state.append_jsonl(Path(tmp) / "state" / "ledger.jsonl", row)
+            ledger = Path(tmp) / "state" / "ledger.jsonl"
+            ledger.parent.mkdir(parents=True)
+            ledger.write_text("".join(json.dumps(row) + "\n" for row in rows))
             return _run_ledger(["diff", *args], env)
 
     def test_text_reports_changed_files_and_not_comparable(self):

@@ -17,7 +17,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from rigops import core, launchd  # noqa: E402
+from rigops import core, guard_state, launchd  # noqa: E402
 from rigops import notify as rigops_notify  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -668,7 +668,8 @@ class EventsJsonlTests(EnvIsolatedTestCase):
         event = json.loads(lines[0])
         self.assertEqual(
             set(event),
-            {"ts", "jobs_checked", "fail_count", "stale_count", "healed", "failing", "notified"},
+            {"version", "ts", "jobs_checked", "fail_count", "stale_count", "healed", "failing",
+         "notified"},
         )
         self.assertEqual(event["jobs_checked"], 1)
         self.assertEqual(event["fail_count"], 0)
@@ -750,7 +751,7 @@ class NotifyDedupeTests(EnvIsolatedTestCase):
         return json.loads(out)
 
     def _age_stamps(self, hours: float) -> None:
-        stamps = json.loads(self.notified_path.read_text())
+        stamps = guard_state.unwrap(json.loads(self.notified_path.read_text()))[0]
         aged = {
             k: {f: v - hours * 3600 for f, v in e.items()}
             for k, e in stamps.items() if k != rigops_notify.PAGES_KEY
@@ -882,7 +883,8 @@ class SharedLabelKickTests(EnvIsolatedTestCase):
             _, out = _run_doctor(["--heal", "--json", "--registry", str(registry_path)])
         m_kick.assert_called_once_with("local.shared")
         self.assertEqual(len(json.loads(out)["healed"]), 1)
-        stamps = json.loads((Path(self.tmp) / "state" / "doctor" / "heal-stamps.json").read_text())
+        stamps = guard_state.unwrap(json.loads(
+            (Path(self.tmp) / "state" / "doctor" / "heal-stamps.json").read_text()))[0]
         self.assertEqual(set(stamps), {"job-a", "job-b"})
 
 
@@ -915,7 +917,7 @@ class CausePolicyTests(EnvIsolatedTestCase):
         self.log.write_text((REPO_ROOT / "tests" / "fixtures" / "cause" / name).read_text())
 
     def _holds(self):
-        return json.loads((self.state / "holds.json").read_text())
+        return guard_state.unwrap(json.loads((self.state / "holds.json").read_text()))[0]
 
     def _events(self):
         return [json.loads(x) for x in (self.state / "events.jsonl").read_text().splitlines()]
@@ -1198,7 +1200,7 @@ class ListFlagTests(EnvIsolatedTestCase):
         with mock.patch.object(launchd, "job_pid", side_effect=_fail):
             code, out = _run_doctor(["--list", "--json", "--registry", str(registry_path)])
         self.assertEqual(code, 0)
-        items = json.loads(out)
+        items = json.loads(out)["items"]
         self.assertEqual([it["id"] for it in items], ["job-hung", "job-failing", "job-ok"])
 
 
@@ -1321,7 +1323,7 @@ class WarningSeverityTests(unittest.TestCase):
     def test_json_carries_the_severity(self):
         code, out = self._run([self._finding("warn")], ["--config-only", "--json"])
         self.assertEqual(code, 0)
-        self.assertEqual([f["severity"] for f in json.loads(out)], ["warn"])
+        self.assertEqual([f["severity"] for f in json.loads(out)["findings"]], ["warn"])
 
 
 class ConfigOnlyStagedTests(unittest.TestCase):
@@ -1478,7 +1480,7 @@ class CorruptHealStateTests(EnvIsolatedTestCase):
         (self.dir / "heal-stamps.json").write_bytes(b"{not json")
         code, payload, m_kick, _ = self._run(["--heal"])
         m_kick.assert_not_called()
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)
         self.assertFalse((self.dir / "heal-stamps.json").exists())
         (aside,) = self._asides("heal-stamps.json")
         self.assertEqual(aside.read_bytes(), b"{not json")
@@ -1504,7 +1506,7 @@ class CorruptHealStateTests(EnvIsolatedTestCase):
     def test_plain_run_with_corrupt_stamps_reports_and_leaves_the_file(self):
         (self.dir / "heal-stamps.json").write_bytes(b"\xff\xfe")
         code, payload, m_kick, _ = self._run([])
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)
         m_kick.assert_not_called()
         self.assertEqual((self.dir / "heal-stamps.json").read_bytes(), b"\xff\xfe")
         self.assertEqual(self._asides("heal-stamps.json"), [])
@@ -1519,11 +1521,11 @@ class CorruptHealStateTests(EnvIsolatedTestCase):
         m_kick.assert_not_called()
         self.assertIn("terminated hung job job-hung", " ".join(payload["healed"]))
 
-    def test_exit_zero_on_a_full_run_returns_zero_and_prints_the_same(self):
+    def test_exit_zero_does_not_soften_a_guard_state_exit_and_prints_the_same(self):
         (self.dir / "heal-stamps.json").write_bytes(b"{not json")
         plain_code, plain, _, _ = self._run([])
         code, flagged, _, _ = self._run(["--exit-zero"])
-        self.assertEqual((plain_code, code), (1, 0))
+        self.assertEqual((plain_code, code), (2, 2))
         for payload in (plain, flagged):
             payload.pop("ts", None)
         self.assertEqual(flagged, plain)
@@ -1531,14 +1533,14 @@ class CorruptHealStateTests(EnvIsolatedTestCase):
     def test_string_stamp_does_not_crash_a_plain_run(self):
         (self.dir / "heal-stamps.json").write_text(json.dumps({"job-failing": "yesterday"}))
         code, payload, _, _ = self._run([])
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)
         self._finding_for(payload, "heal-stamps.json")
 
     def test_out_of_range_stamp_is_corrupt_state_not_a_crash(self):
         (self.dir / "heal-stamps.json").write_bytes(b'{"job-failing": 1' + b"0" * 400 + b"}")
         code, payload, m_kick, _ = self._run(["--heal"])
         m_kick.assert_not_called()
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)
         self.assertFalse((self.dir / "heal-stamps.json").exists())
         self._finding_for(payload, "heal-stamps.json")
 

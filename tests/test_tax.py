@@ -107,7 +107,7 @@ class HistoryModeTests(EnvIsolatedTestCase):
             result = _run_tax(["--history", "--json"], env)
             self.assertEqual(result.returncode, 0)
             payload = json.loads(result.stdout)
-            self.assertEqual([row["fixed_tax_b"] for row in payload], [1000, 1500, 2000])
+            self.assertEqual([row["fixed_tax_b"] for row in payload["rows"]], [1000, 1500, 2000])
 
     def test_missing_ledger_no_crash(self):
         with tempfile.TemporaryDirectory() as tmp:

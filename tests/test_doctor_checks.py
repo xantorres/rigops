@@ -694,7 +694,14 @@ class CheckLeversTests(unittest.TestCase):
         for text in ('{"date": "2026-09-14"}\n{"date": "2026-09-1', '[1, 2]\n', '{"turns": 3}\n'):
             with self.subTest(text=text), tempfile.TemporaryDirectory() as tmp:
                 findings = self._run(tmp, ledger_text=text)
-                self.assertEqual([f.key for f in findings], ["unreadable"])
+                self.assertEqual(findings[0].key, "skipped")
+                self.assertIn("ledger row", findings[0].symptom)
+
+    def test_an_unreadable_ledger_is_a_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "ledger.jsonl").mkdir()
+            findings = self._run(tmp)
+        self.assertEqual([f.key for f in findings], ["unreadable"])
 
     def test_run_reads_acceptance_from_the_intervention_notes(self):
         row = json.dumps({"date": "2026-09-14", "denials_headless": 10,
@@ -709,7 +716,7 @@ class CheckLeversTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             findings = self._run(tmp, row + "\n", "not json\n",
                                  rules={"denials_headless": {"max": 0}})
-        self.assertEqual(sorted(f.key for f in findings), ["denials_headless:max", "notes"])
+        self.assertEqual(sorted(f.key for f in findings), ["denials_headless:max", "notes-skipped"])
 
     def test_built_ins_apply_without_config_and_expand_groups(self):
         cfg = {"ledger": {"watch_projects": {"app": "-Users-alice-app", "web": "-Users-alice-web"}}}

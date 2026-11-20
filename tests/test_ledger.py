@@ -233,7 +233,7 @@ class LedgerCliTests(EnvIsolatedTestCase):
             env = self._env_for(tmp)
             result = _run_ledger(["--at", ROW_DATE.isoformat(), "--dry-run", "--json"], env)
             self.assertEqual(result.returncode, 0)
-            self.assertEqual(json.loads(result.stdout)["text_per_prompt"], 20)
+            self.assertEqual(json.loads(result.stdout)["row"]["text_per_prompt"], 20)
             self.assertFalse((Path(tmp) / "state" / "ledger.jsonl").exists())
 
     def test_rerun_noop_then_force_replace_and_md_matches_jsonl(self):
@@ -299,7 +299,7 @@ class LedgerCliTests(EnvIsolatedTestCase):
             _run_ledger(["--at", ROW_DATE.isoformat()], env)
             shown = _run_ledger(["--show", "--json"], env)
             self.assertEqual(shown.returncode, 0)
-            rows = json.loads(shown.stdout)
+            rows = json.loads(shown.stdout)["rows"]
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["date"], ROW_DATE.isoformat())
 
@@ -758,7 +758,8 @@ class LedgerDiffTests(EnvIsolatedTestCase):
             payload = json.loads(result.stdout)
             self.assertEqual(
                 set(payload),
-                {"baseline", "latest", "deltas", "interventions", "derived", "fingerprints"},
+                {"version", "skipped", "incomplete", "baseline", "latest", "deltas",
+                 "interventions", "derived", "fingerprints"},
             )
             for delta in payload["deltas"].values():
                 self.assertEqual(set(delta), {"old", "new", "delta", "pct", "comparable"})

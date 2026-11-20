@@ -10,6 +10,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import state  # noqa: E402
+from rigops.errors import RigopsError  # noqa: E402
 
 
 class StateDirTests(unittest.TestCase):
@@ -97,7 +98,7 @@ class JsonlTests(unittest.TestCase):
             state.append_jsonl(path, {"a": 1})
             state.append_jsonl(path, {"b": 2})
             rows = state.read_jsonl(path)
-            self.assertEqual(rows, [{"a": 1}, {"b": 2}])
+            self.assertEqual(rows, [{"version": 1, "a": 1}, {"version": 1, "b": 2}])
 
     def test_missing_file_returns_empty_list(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -118,6 +119,137 @@ class JsonlTests(unittest.TestCase):
                 state.read_jsonl(path)
             message = str(ctx.exception)
             self.assertIn(f"malformed JSON line in {path}:2", message)
+
+
+class VersionedRowTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.path = Path(tmp.name) / "rows.jsonl"
+
+    def test_append_stamps_a_version_and_keeps_an_explicit_one(self):
+        state.append_jsonl(self.path, {"a": 1})
+        state.append_jsonl(self.path, {"a": 2, "version": 1})
+        self.assertEqual([r["version"] for r in state.read_jsonl(self.path)], [1, 1])
+
+    def test_a_row_without_a_version_reads_as_the_old_shape(self):
+        self.path.write_text('{"a": 1}\n')
+        self.assertEqual(state.read_jsonl(self.path), [{"a": 1}])
+
+    def test_strict_read_raises_on_a_newer_version(self):
+        self.path.write_text('{"a": 1}\n{"version": 99, "a": 2}\n')
+        with self.assertRaises(state.MalformedJsonl) as ctx:
+            state.read_jsonl(self.path)
+        self.assertIn(f"{self.path}:2", str(ctx.exception))
+        self.assertIn("newer", str(ctx.exception))
+
+    def test_read_rows_skips_and_counts_torn_and_newer_rows_and_sorts(self):
+        self.path.write_text(
+            '{"date": "2026-02-01"}\n{torn\n{"version": 99, "date": "2026-03-01"}\n'
+            '{"date": "2026-01-01"}\n')
+        rows, skipped = state.read_rows(self.path)
+        self.assertEqual([r["date"] for r in rows], ["2026-01-01", "2026-02-01"])
+        self.assertEqual(skipped, 2)
+
+    def test_read_rows_counts_rows_the_caller_rejects(self):
+        self.path.write_text('{"date": "x"}\n{"date": "2026-01-01"}\n')
+        rows, skipped = state.read_rows(self.path, valid=lambda r: r["date"] != "x")
+        self.assertEqual((len(rows), skipped), (1, 1))
+
+    def test_read_rows_on_a_missing_file_is_empty(self):
+        self.assertEqual(state.read_rows(self.path), ([], 0))
+
+    def test_an_unreadable_path_raises_in_both_readers(self):
+        self.path.mkdir()
+        for reader in (state.read_jsonl, state.read_rows):
+            with self.subTest(reader.__name__), self.assertRaises(RigopsError):
+                reader(self.path)
+
+
+class AppendTests(unittest.TestCase):
+    def test_a_row_over_the_cap_raises_and_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rows.jsonl"
+            with self.assertRaises(RigopsError):
+                state.append_jsonl(path, {"blob": "x" * state.MAX_ROW_BYTES})
+            self.assertFalse(path.exists() and path.read_text())
+
+    def test_a_row_is_one_write_on_an_append_descriptor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rows.jsonl"
+            real_write = os.write
+            calls = []
+
+            def spy(fd, data):
+                calls.append(data)
+                return real_write(fd, data)
+
+            with mock.patch("os.write", side_effect=spy):
+                state.append_jsonl(path, {"a": 1})
+            self.assertEqual(len(calls), 1)
+            self.assertTrue(calls[0].endswith(b"\n"))
+
+
+class LockTests(unittest.TestCase):
+    def test_locked_serialises_two_holders(self):
+        import threading
+        import time
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "x.jsonl"
+            order = []
+
+            def hold():
+                with state.locked(target):
+                    order.append("first-in")
+                    time.sleep(0.3)
+                    order.append("first-out")
+
+            thread = threading.Thread(target=hold)
+            thread.start()
+            time.sleep(0.1)
+            with state.locked(target):
+                order.append("second-in")
+            thread.join()
+            self.assertEqual(order, ["first-in", "first-out", "second-in"])
+
+
+class PrivateDirTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        patch = mock.patch.dict(os.environ, {"RIGOPS_STATE_DIR": str(self.root / "state")})
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def mode(self, path) -> int:
+        return path.stat().st_mode & 0o777
+
+    def test_a_new_state_dir_is_0700(self):
+        previous = os.umask(0o022)
+        self.addCleanup(os.umask, previous)
+        self.assertEqual(self.mode(state.state_dir()), 0o700)
+
+    def test_writing_into_a_wider_state_dir_tightens_it(self):
+        target = self.root / "state"
+        target.mkdir(mode=0o755)
+        os.chmod(target, 0o755)
+        state.append_jsonl(target / "rows.jsonl", {"a": 1})
+        self.assertEqual(self.mode(target), 0o700)
+
+    def test_a_subdir_made_by_a_write_is_0700(self):
+        previous = os.umask(0o022)
+        self.addCleanup(os.umask, previous)
+        state.atomic_write(state.state_dir() / "doctor" / "x.json", "{}")
+        self.assertEqual(self.mode(self.root / "state" / "doctor"), 0o700)
+
+    def test_a_directory_outside_the_state_dir_keeps_its_mode(self):
+        outside = self.root / "elsewhere"
+        outside.mkdir()
+        os.chmod(outside, 0o755)
+        state.atomic_write(outside / "x.txt", "x")
+        self.assertEqual(self.mode(outside), 0o755)
 
 
 if __name__ == "__main__":

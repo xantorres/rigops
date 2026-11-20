@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from rigops import core
+from rigops import state as rigops_state
 from rigops.errors import RigopsError
 
 MAX_OUTPUT_BYTES = 1000
@@ -190,7 +191,7 @@ def _user_prompt_submit() -> str:
     if ctx is None or ctx < tiers[0]:
         return ""
     if prev is None or ctx >= prev + rearm:
-        state.write_text(f"{ctx}\n")
+        rigops_state.atomic_write(state, f"{ctx}\n")
         return _message(ctx, tiers)
     return ""
 

@@ -47,6 +47,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from rigops.errors import RigopsError
 from rigops.reap_guards import human, is_ignored_untracked, orphan_sweep, precious_path
 from rigops.reap_procs import (  # noqa: F401
     ETIME_RE,
@@ -281,7 +282,7 @@ def parse_worktrees(porcelain: str) -> list[dict]:
     return entries
 
 
-def live_worktree_cwds(sessions_dir: Path) -> list[Path]:
+def live_worktree_cwds(sessions_dir: Path, strict: bool = False) -> list[Path]:
     """Directories currently occupied by a live process.
 
     Session files are named for their PID and record the directory the session
@@ -292,7 +293,9 @@ def live_worktree_cwds(sessions_dir: Path) -> list[Path]:
         try:
             data = json.loads(entry.read_text())
             pid, cwd = int(data["pid"]), data.get("cwd")
-        except (OSError, ValueError, KeyError, TypeError):
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            if strict and isinstance(exc, (OSError, ValueError)):
+                raise RigopsError(f"unreadable session file {entry}") from exc
             continue
         if not cwd:
             continue
@@ -780,7 +783,7 @@ def run(opts: Any) -> int:
                 return 2
             repos.extend(discover_repos(root))
 
-    live = live_worktree_cwds(opts.sessions_dir)
+    live = live_worktree_cwds(opts.sessions_dir, strict=opts.apply and not opts.dry_run)
     self_cwd = Path.cwd().resolve()
     run_start = time.monotonic()
     results = []
@@ -944,8 +947,7 @@ def run(opts: Any) -> int:
 
     if opts.json:
         print(json.dumps({"generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                          "repos": results,
-                          "orphan_daemons": orphan_json,
+                          "version": 1, "repos": results, "orphan_daemons": orphan_json,
                           "process_observation_ok": observed}, indent=2))
     else:
         print(render(results, apply_mode=opts.apply and not opts.dry_run, cap=cap))

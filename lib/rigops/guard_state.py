@@ -5,6 +5,20 @@ import math
 import os
 from pathlib import Path
 
+from rigops import state
+
+
+def unwrap(data):
+    """(entries, version): the versioned wrapper is exactly {"version": int, "entries": ...}."""
+    if (isinstance(data, dict) and set(data) == {"version", "entries"}
+            and isinstance(data["version"], int) and not isinstance(data["version"], bool)):
+        return data["entries"], data["version"]
+    return data, 0
+
+
+def wrap(entries) -> dict:
+    return {"version": state.VERSION, "entries": entries}
+
 
 def load_guard_state(path, numeric_values: bool = False) -> tuple:
     """(data, reason) for a state file that guards an action; reason is "" when usable.
@@ -21,6 +35,9 @@ def load_guard_state(path, numeric_values: bool = False) -> tuple:
         return {}, f"unreadable ({type(exc).__name__})"
     except ValueError:
         return {}, "not valid JSON"
+    data, version = unwrap(data)
+    if version > state.VERSION:
+        return {}, f"written by a newer rigops (version {version})"
     if not isinstance(data, dict):
         return {}, "top level is not an object"
     if numeric_values and not all(_finite_number(v) for v in data.values()):

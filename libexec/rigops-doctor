@@ -43,13 +43,22 @@ def _load_json(path: Path, default):
         return default
 
 
+def _load_entries(path: Path, default):
+    data, version = guard_state.unwrap(_load_json(path, default))
+    return default if version > state.VERSION else data
+
+
 def _load_dict(path: Path) -> dict:
-    data = _load_json(path, {})
+    data = _load_entries(path, {})
     return data if isinstance(data, dict) else {}
 
 
 def _save_json(path: Path, data) -> None:
     state.atomic_write(path, json.dumps(data, indent=2, sort_keys=True))
+
+
+def _save_entries(path: Path, entries) -> None:
+    _save_json(path, guard_state.wrap(entries))
 
 
 KILL_PREFIX = "kill:"
@@ -256,8 +265,9 @@ def report_config_checks(cfg: dict, args) -> int:
         findings = [f for f in findings if _finding_paths(f) & staged]
     if args.json:
         print(json.dumps(
-            [{"id": f.id, "check": f.check, "area": f.area, "severity": f.severity,
-              "symptom": f.symptom, "evidence": f.evidence, "fix": f.fix} for f in findings],
+            {"version": 1, "findings": [
+                {"id": f.id, "check": f.check, "area": f.area, "severity": f.severity,
+                 "symptom": f.symptom, "evidence": f.evidence, "fix": f.fix} for f in findings]},
             indent=2,
         ))
     else:
@@ -378,7 +388,7 @@ def main(argv=None) -> int:
 
     if args.list:
         if args.json:
-            print(json.dumps(items, indent=2, default=str))
+            print(json.dumps({"version": 1, "items": items}, indent=2, default=str))
         else:
             rows = [
                 [it.get("id", ""), it.get("domain", ""), it.get("trigger", ""),
@@ -388,6 +398,12 @@ def main(argv=None) -> int:
             print(fmt.table(rows, ["id", "domain", "trigger", "cadence"]))
         return 0
 
+    doctor_state_dir = state.state_dir() / "doctor"
+    with state.locked(doctor_state_dir / "doctor"):
+        return _fleet_run(args, cfg, items)
+
+
+def _fleet_run(args, cfg: dict, items: list) -> int:
     doctor_state_dir = state.state_dir() / "doctor"
     heal_stamps_path = doctor_state_dir / "heal-stamps.json"
     events_path = doctor_state_dir / "events.jsonl"
@@ -477,13 +493,13 @@ def main(argv=None) -> int:
                     heal_stamps[job["id"]] = heal_stamps[KILL_PREFIX + job["id"]] = now
                     heal_log.append(f"terminated hung job {job['id']} (pid {job['pid']})")
                     if not stamps_pinned:
-                        _save_json(heal_stamps_path, heal_stamps)
+                        _save_entries(heal_stamps_path, heal_stamps)
             elif job["action"] == "kickstart" and job["label"] and not fail_closed:
                 if job["label"] in kicked_labels:
                     # One launchd label runs every job sharing it: a second kick is a double run.
                     heal_stamps[job["id"]] = now
                     kicked_ids.add(job["id"])
-                    _save_json(heal_stamps_path, heal_stamps)
+                    _save_entries(heal_stamps_path, heal_stamps)
                 elif launchd.kickstart(job["label"]):
                     kicked_labels.add(job["label"])
                     sharing = [j["id"] for j in jobs if j["label"] == job["label"]]
@@ -494,7 +510,7 @@ def main(argv=None) -> int:
                             hold["releases"].append(now)
                     heal_stamps[job["id"]] = now
                     heal_log.append(f"kickstarted {job['id']} ({job['label']})")
-                    _save_json(heal_stamps_path, heal_stamps)
+                    _save_entries(heal_stamps_path, heal_stamps)
 
     if cause_ctx and args.heal and not fail_closed:
         for job_id, previous in cause_ctx["undo"].items():
@@ -511,7 +527,7 @@ def main(argv=None) -> int:
             k: v for k, v in cause_ctx["holds"].items()
             if k in keep and (keep[k] is None or keep[k] == v["cause"])
         }
-        _save_json(holds_path, cause_ctx["holds"])
+        _save_entries(holds_path, cause_ctx["holds"])
 
     checks = []
     for check_cfg in rigops_config.get(cfg, "doctor.checks.custom", []) or []:
@@ -537,7 +553,7 @@ def main(argv=None) -> int:
     notify_command = rigops_config.get(cfg, "doctor.notify_command", "")
     notify_stamps_path = doctor_state_dir / "notified.json"
     kicked_path = doctor_state_dir / "kicked.json"
-    marked = _load_json(kicked_path, {})
+    marked = _load_entries(kicked_path, {})
     if isinstance(marked, list):  # the shape before kicks were timed
         marked = dict.fromkeys([m for m in marked if isinstance(m, str)], now)
     silenced, marked = rigops_notify.kick_suppressed(
@@ -573,18 +589,18 @@ def main(argv=None) -> int:
 
     # Saved before the send: a failed send must not hand the next kick a free silence.
     if notify_command:
-        _save_json(kicked_path, marked)
+        _save_entries(kicked_path, marked)
 
     notify_error = ""
     if due:
         report_path = doctor_state_dir / "report-latest.txt"
-        report_path.write_text(report_text)
+        state.atomic_write(report_path, report_text)
         notify_error = _notify(notify_command, report_path)
         if notify_error:
             state.append_jsonl(events_path, {"ts": ts, "event": notify_error})
     # A failed send leaves the keys unstamped so the next tick tries again.
     if notify_command and not notify_error:
-        _save_json(notify_stamps_path, stamps)
+        _save_entries(notify_stamps_path, stamps)
 
     # Written every run, gates or none: an empty list still proves the doctor ran,
     # which is what the session-start hook reading it needs to tell "clean" from "never checked".
@@ -596,7 +612,7 @@ def main(argv=None) -> int:
     unknown_keys = [key for key, note in rigops_config.unknown_keys(cfg) if note is None]
     if args.json:
         payload = {
-            "ts": ts, "supervisor": args.supervisor, "jobs": jobs, "checks": checks,
+            "version": 1, "ts": ts, "supervisor": args.supervisor, "jobs": jobs, "checks": checks,
             "healed": heal_log, "fail_count": fail_count, "stale_count": stale_count,
             "gates": gates,
             "unknown_config_keys": unknown_keys,
@@ -619,6 +635,8 @@ def main(argv=None) -> int:
     # Scheduled runs pass --exit-zero so the supervisor does not read a verdict as a crash.
     failed_checks = any(c["status"] == "fail" for c in checks)
     verdict = bool(fail_count or failed_checks or _failing(findings))
+    if guard_findings:
+        return 2
     return 1 if verdict and not args.exit_zero else 0
 
 

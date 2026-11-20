@@ -23,7 +23,7 @@ def cmd_current(cfg, as_json: bool) -> int:
     globs_cfg = rigops_config.get(cfg, "fixed_tax.globs", []) or []
     if not paths_cfg and not globs_cfg:
         if as_json:
-            print(json.dumps({"files": [], "total_bytes": 0}, indent=2))
+            print(json.dumps({"version": 1, "files": [], "total_bytes": 0}, indent=2))
         else:
             print("fixed_tax not configured (fixed_tax.paths and fixed_tax.globs both empty)")
         return 0
@@ -31,7 +31,7 @@ def cmd_current(cfg, as_json: bool) -> int:
     entries = levers.fixed_tax_entries(cfg)
     if not entries:
         if as_json:
-            print(json.dumps({"files": [], "total_bytes": 0}, indent=2))
+            print(json.dumps({"version": 1, "files": [], "total_bytes": 0}, indent=2))
         else:
             print("fixed_tax configured but no matching files found")
         return 0
@@ -41,6 +41,7 @@ def cmd_current(cfg, as_json: bool) -> int:
 
     if as_json:
         payload = {
+            "version": 1,
             "files": [{"path": str(p), "bytes": size} for p, size in entries],
             "total_bytes": total,
         }
@@ -55,15 +56,21 @@ def cmd_current(cfg, as_json: bool) -> int:
 
 def cmd_history(as_json: bool) -> int:
     jsonl_path = state.state_dir() / "ledger.jsonl"
-    rows = state.read_jsonl(jsonl_path)
+    rows, skipped = state.read_rows(jsonl_path, lambda r: isinstance(r.get("date"), str))
+    if skipped:
+        print(f"warning: skipped {skipped} unreadable ledger row(s)", file=sys.stderr)
     if not rows:
-        print("[]" if as_json else "no ledger rows yet")
+        if as_json:
+            print(json.dumps({"version": 1, "rows": [], "skipped": skipped}, indent=2))
+        else:
+            print("no ledger rows yet")
         return 0
 
     series = [(r.get("date"), r.get("fixed_tax_b")) for r in rows]
 
     if as_json:
-        print(json.dumps([{"date": d, "fixed_tax_b": v} for d, v in series], indent=2))
+        print(json.dumps({"version": 1, "skipped": skipped,
+                          "rows": [{"date": d, "fixed_tax_b": v} for d, v in series]}, indent=2))
         return 0
 
     print(fmt.sparkline(v for _, v in series))
@@ -123,7 +130,7 @@ def cmd_starts(args) -> int:
             print(f"no session start matching {args.session} in the window", file=sys.stderr)
             return 1
         if args.json:
-            print(json.dumps([_jsonable(s) for s in found], indent=2))
+            print(json.dumps({"version": 1, "rows": [_jsonable(s) for s in found]}, indent=2))
             return 0
         for i, start in enumerate(found):
             if i:
@@ -132,7 +139,7 @@ def cmd_starts(args) -> int:
         return 0
     summary = starts.summarize(found)
     if args.json:
-        print(json.dumps(summary, indent=2))
+        print(json.dumps({"version": 1, **summary}, indent=2))
         return 0
     if not found:
         print("no session starts with a recorded request shape in the window")
@@ -163,7 +170,7 @@ def cmd_dead(args) -> int:
     calls = starts.count_calls(since, until, transcripts_dir=tdir)
     report = starts.dead_weight(found, calls, args.max_per_100)
     if args.json:
-        print(json.dumps(report, indent=2))
+        print(json.dumps({"version": 1, **report}, indent=2))
         return 0
     if not found:
         print("no session starts with a recorded request shape in the window")

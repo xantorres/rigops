@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import cause as rigops_cause  # noqa: E402
+from rigops import guard_state  # noqa: E402
 from rigops.errors import RigopsError  # noqa: E402
 
 from tests.test_doctor import FAILING_ITEM, REPO_ROOT, _write_registry  # noqa: E402
@@ -74,7 +75,8 @@ class KickMarkSurvivesFailedSendTests(PagingBase):
         )
         registry = _write_registry(self.tmp, FAILING_ITEM)
         self.run_doctor(registry)
-        self.assertIn("job-failing", json.loads((self.state / "kicked.json").read_text()))
+        kicked = json.loads((self.state / "kicked.json").read_text())
+        self.assertIn("job-failing", guard_state.unwrap(kicked)[0])
         self._write_config(notify_command=f"sh -c 'echo x >> {self.sink}' notify")
         self.run_doctor(registry)
         self.assertIn("job:job-failing:failing", self.events()[-1]["notified"])
@@ -85,13 +87,13 @@ class KillCooldownTests(LabelBase):
         self._write_config(cause_policy="on", cause_probe_command="true")
         registry = self.registry("job-failing", extra="    max_runtime_h: 1\n")
         self.run_doctor(registry, snapshot=(True, 4242, 0), runtime=5.0)
-        self.assertIn("kill:job-failing", json.loads(
-            (self.state / "heal-stamps.json").read_text()))
+        self.assertIn("kill:job-failing", guard_state.unwrap(json.loads(
+            (self.state / "heal-stamps.json").read_text()))[0])
         self.seed_json("holds.json", {"job-failing": self.hold()})
         payload, kick = self.run_doctor(registry)
         kick.assert_not_called()
         self.assertEqual(payload["jobs"][0]["action"], "hold")
-        self.assertEqual(json.loads((self.state / "holds.json").read_text())[
+        self.assertEqual(guard_state.unwrap(json.loads((self.state / "holds.json").read_text()))[0][
             "job-failing"]["releases"], [])
 
     def test_a_kill_stamp_alone_blocks_a_release_the_label_pacing_would_allow(self):
@@ -143,7 +145,7 @@ class LabelPacingTests(LabelBase):
         self.seed_json("holds.json", {"job-a": self.hold(), "job-b": self.hold(try_h=0.5)})
         payload, kick = self.run_doctor(self.registry_ab)
         kick.assert_called_once()
-        holds = json.loads((self.state / "holds.json").read_text())
+        holds = guard_state.unwrap(json.loads((self.state / "holds.json").read_text()))[0]
         self.assertEqual(len(holds["job-a"]["releases"]), 1)
         self.assertEqual(holds["job-b"]["releases"], holds["job-a"]["releases"])
 

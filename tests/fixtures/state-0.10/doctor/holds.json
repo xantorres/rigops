@@ -1,0 +1,10 @@
+{
+  "acme-sync": {
+    "cause": "network",
+    "last_try": 1768730000.0,
+    "releases": [
+      1768730000.0
+    ],
+    "since": 1768730000.0
+  }
+}

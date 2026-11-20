@@ -108,21 +108,25 @@ class CliContractTests(unittest.TestCase):
     def test_tax_json_is_valid_when_fixed_tax_is_not_configured(self):
         payload = self.json_out(self.run_cmd("tax", "--json"))
 
-        self.assertEqual(payload, {"files": [], "total_bytes": 0})
+        self.assertEqual(payload, {"version": 1, "files": [], "total_bytes": 0})
 
     def test_tax_json_is_valid_when_no_file_matches(self):
         config = {"fixed_tax": {"paths": [str(self.home / "missing.md")]}}
         payload = self.json_out(self.run_cmd("tax", "--json", config=config))
 
-        self.assertEqual(payload, {"files": [], "total_bytes": 0})
+        self.assertEqual(payload, {"version": 1, "files": [], "total_bytes": 0})
 
     def test_tax_history_json_is_an_empty_list_without_ledger_rows(self):
-        self.assertEqual(self.json_out(self.run_cmd("tax", "--history", "--json")), [])
+        self.assertEqual(
+            self.json_out(self.run_cmd("tax", "--history", "--json")),
+            {"version": 1, "rows": [], "skipped": 0},
+        )
 
     def test_ledger_diff_json_is_valid_with_fewer_than_two_rows(self):
         payload = self.json_out(self.run_cmd("ledger", "diff", "--json"))
 
         self.assertEqual(payload, {
+            "version": 1, "skipped": 0, "incomplete": False,
             "baseline": None, "latest": None, "deltas": {}, "interventions": [], "derived": [],
             "fingerprints": {"always_loaded_files": "unknown", "measurement_config": "unknown"},
         })
@@ -166,24 +170,27 @@ class CliContractTests(unittest.TestCase):
         )
         self.assertNotIn("Traceback", proc.stderr)
 
-    def test_tax_history_reports_a_malformed_ledger_line_and_exits_2(self):
+    def assert_skipped_report(self, proc):
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("skipped 1", proc.stderr)
+        self.assertNotIn("Traceback", proc.stderr)
+
+    def test_tax_history_skips_a_malformed_ledger_line_and_exits_0(self):
         self.state.mkdir()
         (self.state / "ledger.jsonl").write_text('{"date":"2026-01-01"}\nnot json\n')
 
-        proc = self.run_cmd("tax", "--history")
+        self.assert_skipped_report(self.run_cmd("tax", "--history"))
 
-        self.assert_malformed_state_exit(proc, self.state / "ledger.jsonl")
-
-    def test_ledger_reports_a_malformed_line_and_exits_2(self):
+    def test_ledger_reports_skip_a_malformed_line_and_the_writer_exits_2(self):
         self.state.mkdir()
         (self.state / "ledger.jsonl").write_text('{"date":"2026-01-01"}\nnot json\n')
-        for args in (["diff"], ["write", "--show", "--json"], ["write", "--dry-run"]):
+        for args in (["diff"], ["write", "--show", "--json"]):
             with self.subTest(args=args):
-                proc = self.run_cmd("ledger", *args)
+                self.assert_skipped_report(self.run_cmd("ledger", *args))
+        self.assert_malformed_state_exit(
+            self.run_cmd("ledger", "write", "--dry-run"), self.state / "ledger.jsonl")
 
-                self.assert_malformed_state_exit(proc, self.state / "ledger.jsonl")
-
-    def test_ledger_diff_reports_a_malformed_interventions_line_and_exits_2(self):
+    def test_ledger_diff_skips_a_malformed_interventions_line_and_marks_it_incomplete(self):
         self.state.mkdir()
         (self.state / "ledger.jsonl").write_text(
             '{"date":"2026-01-01"}\n{"date":"2026-01-08"}\n'
@@ -192,7 +199,8 @@ class CliContractTests(unittest.TestCase):
 
         proc = self.run_cmd("ledger", "diff")
 
-        self.assert_malformed_state_exit(proc, self.state / "interventions.jsonl")
+        self.assert_skipped_report(proc)
+        self.assertIn("incomplete", proc.stdout)
 
     def test_eval_list_reports_a_malformed_results_line_and_exits_2(self):
         self.state.mkdir()
@@ -253,7 +261,7 @@ class CliContractTests(unittest.TestCase):
         proc = self.run_cmd("doctor", "--list", "--json")
 
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(json.loads(proc.stdout), [])
+        self.assertEqual(json.loads(proc.stdout), {"version": 1, "items": []})
 
     def test_doctor_with_a_missing_explicit_registry_still_exits_2(self):
         proc = self.run_cmd("doctor", "--registry", str(self.home / "none.md"))

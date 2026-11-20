@@ -42,11 +42,11 @@ def main() -> int:
         cfg = {**cfg, "doctor": {"levers": {"rules": {}}}}
     rules, builtin = check_levers.effective_rules(cfg)
     ledger = args.ledger or state.state_dir() / "ledger.jsonl"
-    rows, problem = check_levers.read_rows(ledger)
+    rows, _, problem = check_levers.read_rows(ledger)
     if problem:
         print(f"error: {ledger} {problem}", file=sys.stderr)
         return 2
-    notes, _ = check_levers.read_rows(args.notes or ledger.parent / "interventions.jsonl")
+    notes, _, _ = check_levers.read_rows(args.notes or ledger.parent / "interventions.jsonl")
     groups = sorted(rigops_config.get(cfg, "ledger.watch_projects", {}) or {})
     rows.sort(key=lambda r: r["date"])
     for i, row in enumerate(rows):

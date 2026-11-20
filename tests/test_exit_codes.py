@@ -71,6 +71,7 @@ class SubprocessExitCodes(unittest.TestCase):
     def _malformed_ledger(self) -> None:
         self.state.mkdir(parents=True, exist_ok=True)
         (self.state / "ledger.jsonl").write_text("{not json\n")
+        (self.state / "eval.jsonl").write_text("{not json\n")
 
     def _janitor_error_config(self) -> dict:
         watched = self.home / "watched"
@@ -94,8 +95,13 @@ class SubprocessExitCodes(unittest.TestCase):
             ("config check bad type", ["config", "check"], {"reaper": {"grace_days": "14"}}, 2),
             ("config get bad type", ["config", "get", "x"], {"janitor": {"max_delete": True}}, 2),
             ("doctor invalid config", ["doctor", "--no-config", "--supervisor", "none"], "{bad", 2),
-            ("ledger diff malformed state", ["ledger", "diff"], {}, 2),
-            ("tax history malformed state", ["tax", "--history"], {}, 2),
+            ("ledger diff report skips a malformed row", ["ledger", "diff"], {}, 0),
+            ("ledger show report skips a malformed row", ["ledger", "write", "--show", "--json"],
+             {}, 0),
+            ("tax history report skips a malformed row", ["tax", "--history"], {}, 0),
+            ("ledger write gate on malformed state", ["ledger", "write", "--dry-run"], {}, 2),
+            ("eval diff gate on malformed state", ["eval", "diff"], {}, 2),
+            ("eval list on malformed state", ["eval", "list"], {}, 2),
             ("janitor runtime error", ["janitor", "--apply"], self._janitor_error_config(), 2),
             ("janitor bad config", ["janitor"], "{bad", 2),
             ("eval run empty cases dir",
@@ -121,6 +127,25 @@ class SubprocessExitCodes(unittest.TestCase):
                     args = [str(reg) if a == "REG" else a for a in args]
                 proc = self.run_cmd(args, config)
                 self.assertEqual(proc.returncode, want, proc.stderr)
+                self.assertNotIn("Traceback", proc.stderr)
+
+    def test_a_report_over_a_malformed_row_says_how_many_it_skipped(self):
+        self._malformed_ledger()
+        for args in (["ledger", "diff"], ["tax", "--history"]):
+            with self.subTest(args):
+                proc = self.run_cmd(args, {})
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertIn("skipped 1", proc.stderr)
+
+    def test_an_unreadable_state_file_exits_2_everywhere(self):
+        self.state.mkdir(parents=True, exist_ok=True)
+        for name in ("ledger.jsonl", "eval.jsonl"):
+            (self.state / name).mkdir()
+        for args in (["ledger", "diff"], ["tax", "--history"], ["ledger", "write", "--dry-run"],
+                     ["eval", "diff"], ["eval", "list"]):
+            with self.subTest(args):
+                proc = self.run_cmd(args, {})
+                self.assertEqual(proc.returncode, 2, proc.stderr)
                 self.assertNotIn("Traceback", proc.stderr)
 
     def test_load_failure_prints_one_error_line_without_a_doubled_prefix(self):

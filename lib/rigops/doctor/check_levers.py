@@ -87,25 +87,23 @@ def _warning(key, symptom, evidence, fix, ledger) -> core.Finding:
     )
 
 
-def read_rows(path):
-    """(rows, problem): rows that each carry an ISO date, or a reason there are none."""
+def _dated(row) -> bool:
     try:
-        text = core.read_text(path)
-    except FileNotFoundError:
-        return None, "does not exist"
-    except OSError as exc:
-        return None, f"cannot be read ({exc.strerror or type(exc).__name__})"
-    rows = []
-    for lineno, line in enumerate(text.splitlines(), start=1):
-        if not line.strip():
-            continue
-        try:
-            row = json.loads(line)
-            date.fromisoformat(row["date"])
-        except (ValueError, TypeError, KeyError):
-            return None, f"line {lineno} is not a JSON object with an ISO date"
-        rows.append(row)
-    return rows, None
+        date.fromisoformat(row["date"])
+    except (ValueError, TypeError, KeyError):
+        return False
+    return True
+
+
+def read_rows(path):
+    """(rows, skipped, problem): dated rows, how many were skipped, or why there are none."""
+    if not path.exists():
+        return None, 0, "does not exist"
+    try:
+        rows, skipped = core.read_rows(path, _dated)
+    except core.RigopsError as exc:
+        return None, 0, f"cannot be read ({exc})"
+    return rows, skipped, None
 
 
 def weekly(rows) -> list:
@@ -271,7 +269,7 @@ def run(cfg, today=None):
     rules, builtin = effective_rules(cfg)
     if not rules:
         return []
-    rows, problem = read_rows(ledger)
+    rows, skipped, problem = read_rows(ledger)
     if problem == "does not exist" and not set(rules) - builtin:
         return []
     if problem:
@@ -280,11 +278,21 @@ def run(cfg, today=None):
             "run `rigops ledger`, or repair the named line", ledger,
         )]
     found = []
-    notes, notes_problem = read_rows(state / "interventions.jsonl")
+    if skipped:
+        found.append(_warning(
+            "skipped", f"{skipped} ledger row(s) skipped as unreadable or newer than this rigops",
+            core.short(ledger), "repair the rows or upgrade rigops", ledger,
+        ))
+    notes, notes_skipped, notes_problem = read_rows(state / "interventions.jsonl")
     if notes_problem and notes_problem != "does not exist":
         found.append(_warning(
             "notes", f"the intervention notes {notes_problem}, so no acceptance is honoured",
             core.short(state / "interventions.jsonl"), "repair the named line", ledger,
+        ))
+    if notes_skipped:
+        found.append(_warning(
+            "notes-skipped", f"{notes_skipped} intervention note(s) skipped as unreadable",
+            core.short(state / "interventions.jsonl"), "repair the rows", ledger,
         ))
     max_age = core.cfg_get(cfg, "doctor.levers.max_age_days", DEFAULT_MAX_AGE_DAYS)
     if not _number(max_age):

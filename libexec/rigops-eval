@@ -190,6 +190,7 @@ def cmd_run(args) -> int:
         model=settings["model"], temperature=args.temperature, suite=suite.hash,
         system=system_hash, git_sha=git_sha or None, cases=results,
     )
+    row = {"version": state.VERSION, **row}
     if not args.dry_run:
         state.append_jsonl(_results_path(), row)
     print(json.dumps(row, indent=2) if args.json else _run_report(row, args.dry_run))
@@ -291,7 +292,7 @@ def cmd_diff(args) -> int:
     report = rigops_eval.compare(base, head, tolerance)
     if not report["shared"]:
         return _fail("the two runs share no unchanged cases, so there is nothing to compare")
-    print(json.dumps(report, indent=2) if args.json else _diff_report(report))
+    print(json.dumps({"version": 1, **report}, indent=2) if args.json else _diff_report(report))
     if report["regressions"]:
         return 1
     return 2 if report["unverified"] or report["dropped"] else 0
@@ -300,7 +301,7 @@ def cmd_diff(args) -> int:
 def cmd_list(args) -> int:
     rows = _load_rows()
     if args.json:
-        print(json.dumps(rows, indent=2))
+        print(json.dumps({"version": 1, "rows": rows}, indent=2))
         return 0
     if not rows:
         print("no eval runs recorded yet")

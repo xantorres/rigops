@@ -1,0 +1,13 @@
+{
+  "gates": [
+    {
+      "detail": "",
+      "kind": "job",
+      "name": "acme-sync",
+      "since": "2026-01-18T10:00:00Z",
+      "status": "failing"
+    }
+  ],
+  "ts": "2026-01-18T10:00:00Z",
+  "version": 1
+}

@@ -1238,7 +1238,7 @@ class EvalListTests(_EnvIsolationMixin, unittest.TestCase):
             )
             result = _run_eval(["list", "--json"], env)
             self.assertEqual(result.returncode, 0)
-            rows = json.loads(result.stdout)
+            rows = json.loads(result.stdout)["rows"]
             self.assertEqual(rows[0]["run_id"], "r1")
 
     def test_empty_prints_message(self):

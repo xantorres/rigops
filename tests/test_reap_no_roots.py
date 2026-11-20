@@ -58,8 +58,9 @@ class ReapNoRootsTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
         self.assertEqual(proc.stderr.count("\n"), 1)
         payload = json.loads(proc.stdout)
-        self.assertEqual(sorted(payload),
-                         ["generated", "orphan_daemons", "process_observation_ok", "repos"])
+        self.assertEqual(
+            sorted(payload),
+            ["generated", "orphan_daemons", "process_observation_ok", "repos", "version"])
         self.assertEqual(payload["repos"], [])
         self.assertEqual(payload["orphan_daemons"], [])
 

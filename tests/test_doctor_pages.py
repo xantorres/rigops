@@ -12,7 +12,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from rigops import launchd  # noqa: E402
+from rigops import guard_state, launchd  # noqa: E402
 from rigops import notify as rigops_notify  # noqa: E402
 
 from tests.test_doctor import (
@@ -66,14 +66,14 @@ class PagingBase(EnvIsolatedTestCase):
             path = self.state / name
             if not path.exists():
                 continue
-            data = json.loads(path.read_text())
+            data = guard_state.unwrap(json.loads(path.read_text()))[0]
             shift = hours * H
             data = {
                 k: (v if k == rigops_notify.PAGES_KEY else
                     {f: t - shift for f, t in v.items()} if isinstance(v, dict) else v - shift)
                 for k, v in data.items()
             }
-            path.write_text(json.dumps(data))
+            path.write_text(json.dumps(guard_state.wrap(data)))
 
 
 class KickPagingTests(PagingBase):
@@ -342,7 +342,8 @@ class HoldReleaseTests(PagingBase):
             )
 
     def holds(self):
-        return json.loads((self.state / "holds.json").read_text())["job-failing"]
+        raw = json.loads((self.state / "holds.json").read_text())
+        return guard_state.unwrap(raw)[0]["job-failing"]
 
     def test_release_kicks_while_the_heal_cooldown_is_active(self):
         self._write_config(cause_policy="on", cause_probe_command="true")

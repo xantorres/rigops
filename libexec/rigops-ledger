@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import datetime as dt
-import fcntl
 import json
 import os
 import subprocess
@@ -36,12 +34,13 @@ def _load_ledger_rows(path: Path) -> list:
     return rows
 
 
-@contextlib.contextmanager
-def _locked(path: Path):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.with_name(path.name + ".lock").open("a") as fh:
-        fcntl.flock(fh, fcntl.LOCK_EX)
-        yield
+def _has_date(row: dict) -> bool:
+    return isinstance(row.get("date"), str)
+
+
+def _report_skipped(skipped: int, what: str) -> None:
+    if skipped:
+        print(f"warning: skipped {skipped} unreadable {what} row(s)", file=sys.stderr)
 
 
 def _refuse_existing(at: dt.date) -> int:
@@ -57,7 +56,10 @@ def cmd_write(args) -> int:
 
     if args.show:
         if args.json:
-            print(json.dumps(state.read_jsonl(jsonl_path), indent=2, default=str))
+            shown, skipped = state.read_rows(jsonl_path, _has_date)
+            _report_skipped(skipped, "ledger")
+            print(json.dumps({"version": 1, "rows": shown, "skipped": skipped},
+                             indent=2, default=str))
         else:
             sys.stdout.write(md_path.read_text() if md_path.exists() else "no ledger yet\n")
         return 0
@@ -81,7 +83,7 @@ def cmd_write(args) -> int:
     base = rows[0] if rows else None
 
     if not args.dry_run:
-        with _locked(jsonl_path):
+        with state.locked(jsonl_path):
             # The scan takes minutes, so another writer may have landed this date meanwhile.
             rows = _load_ledger_rows(jsonl_path)
             if any(r.get("date") == at.isoformat() for r in rows):
@@ -98,7 +100,7 @@ def cmd_write(args) -> int:
             state.atomic_write(md_path, levers.render_markdown(rows, watch_projects))
 
     if args.json:
-        print(json.dumps(row, indent=2, default=str))
+        print(json.dumps({"version": 1, "row": row}, indent=2, default=str))
     else:
         suffix = "  (dry-run)" if args.dry_run else ""
         print(levers.summary_line(row, prev, base, watch_projects) + suffix)
@@ -134,7 +136,9 @@ def cmd_note(args) -> int:
             )
             return 2
         entry["accept"] = sorted(set(args.accept))
-    state.append_jsonl(state.state_dir() / "interventions.jsonl", entry)
+    path = state.state_dir() / "interventions.jsonl"
+    with state.locked(path):
+        state.append_jsonl(path, entry)
     print(f"noted {at.isoformat()}: {text}{_accept_suffix(entry)}")
     return 0
 
@@ -144,11 +148,11 @@ def _accept_suffix(entry: dict) -> str:
     return f" (accepts {', '.join(accepted)})" if isinstance(accepted, list) and accepted else ""
 
 
-def _interventions_between(baseline_date: str, latest_date: str) -> list:
-    entries = state.read_jsonl(state.state_dir() / "interventions.jsonl")
+def _interventions_between(baseline_date: str, latest_date: str) -> tuple:
+    entries, skipped = state.read_rows(state.state_dir() / "interventions.jsonl", _has_date)
     window = [e for e in entries if baseline_date < e.get("date", "") <= latest_date]
     window.sort(key=lambda e: (e.get("date", ""), e.get("ts", "")))
-    return window
+    return window, skipped
 
 
 DERIVE_GLOBS = ["**/CLAUDE.md", "**/AGENTS.md", "**/settings.json", "**/settings.local.json",
@@ -190,10 +194,12 @@ def _derived_between(cfg: dict, baseline_date: str, latest_date: str) -> list:
 
 def cmd_diff(args) -> int:
     jsonl_path = state.state_dir() / "ledger.jsonl"
-    rows = sorted(_load_ledger_rows(jsonl_path), key=lambda r: r.get("date", ""))
+    rows, skipped = state.read_rows(jsonl_path, _has_date)
+    _report_skipped(skipped, "ledger")
     if len(rows) < 2:
         if args.json:
-            print(json.dumps({"baseline": None, "latest": None, "deltas": {},
+            print(json.dumps({"version": 1, "skipped": skipped, "incomplete": bool(skipped),
+                              "baseline": None, "latest": None, "deltas": {},
                               "interventions": [], "derived": [],
                               "fingerprints": {"always_loaded_files": "unknown",
                                                "measurement_config": "unknown"}}, indent=2))
@@ -224,12 +230,19 @@ def cmd_diff(args) -> int:
 
     deltas = levers.compute_deltas(baseline, latest)
     fingerprints = ledger_row.fingerprints(baseline, latest)
-    interventions = _interventions_between(baseline.get("date", ""), latest.get("date", ""))
+    interventions, iv_skipped = _interventions_between(
+        baseline.get("date", ""), latest.get("date", ""))
+    _report_skipped(iv_skipped, "intervention")
+    skipped += iv_skipped
+    incomplete = bool(skipped)
     derived = _derived_between(rigops_config.load(), baseline.get("date", ""),
                                latest.get("date", ""))
 
     if args.json:
         payload = {
+            "version": 1,
+            "skipped": skipped,
+            "incomplete": incomplete,
             "baseline": baseline["date"],
             "latest": latest["date"],
             "deltas": deltas,
@@ -240,7 +253,8 @@ def cmd_diff(args) -> int:
         print(json.dumps(payload, indent=2, default=str))
         return 0
 
-    print(f"ledger diff: {baseline['date']} -> {latest['date']}")
+    print(f"ledger diff: {baseline['date']} -> {latest['date']}"
+          + ("  (incomplete: unreadable rows skipped)" if incomplete else ""))
     table_rows = [
         [
             col,
