@@ -5,71 +5,10 @@ import json
 import os
 from pathlib import Path
 
+from rigops import config_spec
 from rigops.errors import RigopsError
 
-DEFAULTS = {
-    "transcripts_dir": "~/.claude/projects",
-    "ledger": {
-        "watch_projects": {},
-        "derive_interventions": [],
-        "extra_correction_patterns": [],
-        "correction_exclude_patterns": [],
-        "extra_denial_patterns": [],
-    },
-    "fixed_tax": {"paths": [], "globs": []},
-    "friction": {"headless_projects": []},
-    "context": {"nudge_tiers": [250000, 350000, 500000], "rearm_tokens": 50000},
-    "doctor": {
-        "registry": "~/.config/rigops/registry.md",
-        "label_prefix": ["local."],
-        "kill_grace_s": 5,
-        "heal_cooldown_h": 12,
-        "checks": {"custom": [], "disk_free": None},
-        "notify_command": "",
-        "cause_policy": "off",
-        "cause_probe_command": "",
-    },
-    "reaper": {
-        "roots": [],
-        "sessions_dir": "~/.claude/sessions",
-        "grace_days": 14,
-        "max_kills_per_tree": 20,
-        "orphan_min_age_s": 172800,
-        "orphan_sweep": False,
-        "kill_grace_s": 5,
-        "max_worktrees": 5,
-        "ignored_untracked_dirs": ["node_modules", "dist", ".turbo"],
-        "ignored_untracked_prefixes": ["coverage"],
-    },
-    "janitor": {
-        "rules": [],
-        "watermarks": [],
-        "max_delete": 200,
-    },
-    "backlog": {
-        "path": "~/.config/rigops/backlog.md",
-        "areas": ["hooks", "skills", "memory", "permissions", "metrics", "repos", "docs", "jobs"],
-    },
-    "sources": {
-        "ccusage": {"argv": ["ccusage", "daily", "--json"], "timeout_s": 60},
-        "custom": [],
-    },
-    "authprobe": {
-        "enabled": False,
-        "command": ["claude", "-p", "reply with exactly: ok", "--max-turns", "1"],
-        "expect": "ok",
-        "timeout_s": 60,
-        "path": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
-        "keychain_service": "",
-    },
-    "eval": {
-        "cases_dir": "",
-        "system_file": "",
-        "endpoint": "",
-        "model": "",
-        "api_key_env": "",
-    },
-}
+DEFAULTS = config_spec.DEFAULTS
 
 
 def config_path() -> Path:
@@ -104,7 +43,13 @@ def load(path=None) -> dict:
         raise RigopsError(f"invalid JSON in config {cfg_path}: {exc}") from exc
     if not isinstance(overlay, dict):
         raise RigopsError(f"config {cfg_path} must be a JSON object")
-    return _deep_merge(DEFAULTS, overlay)
+    merged = _deep_merge(DEFAULTS, overlay)
+    config_spec.validate(merged)
+    return merged
+
+
+def unknown_keys(cfg) -> list:
+    return config_spec.audit(cfg)
 
 
 def get(cfg, dotted, default=None):

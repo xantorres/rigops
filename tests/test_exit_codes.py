@@ -91,6 +91,8 @@ class SubprocessExitCodes(unittest.TestCase):
             ("config get non-object config", ["config", "get", "x"], "[]", 2),
             ("config check invalid JSON", ["config", "check"], "{bad", 2),
             ("config check ok", ["config", "check"], {}, 0),
+            ("config check bad type", ["config", "check"], {"reaper": {"grace_days": "14"}}, 2),
+            ("config get bad type", ["config", "get", "x"], {"janitor": {"max_delete": True}}, 2),
             ("doctor invalid config", ["doctor", "--no-config", "--supervisor", "none"], "{bad", 2),
             ("ledger diff malformed state", ["ledger", "diff"], {}, 2),
             ("tax history malformed state", ["tax", "--history"], {}, 2),

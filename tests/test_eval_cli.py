@@ -674,7 +674,7 @@ class EvalRunValidationTests(_EnvIsolationMixin, _StubServerMixin, unittest.Test
             _write_case(cases_dir, "c1")
             result = _run_eval(["run", "--cases", str(cases_dir), "--model", "m"], env)
             self.assertEqual(result.returncode, 2)
-            self.assertIn("eval.endpoint in config must be a string", result.stderr)
+            self.assertIn("config key eval.endpoint: expected string, got array", result.stderr)
 
     def test_system_prompt_symlink_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

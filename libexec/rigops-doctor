@@ -210,6 +210,13 @@ def _failing(findings: list) -> list:
     return [f for f in findings if f.severity != "warn"]
 
 
+def render_unknown_keys(keys: list) -> str:
+    if not keys:
+        return ""
+    noun = "key" if len(keys) == 1 else "keys"
+    return f"info: {len(keys)} unknown config {noun}: {', '.join(keys)} (rigops config check)\n"
+
+
 def render_findings(findings: list) -> str:
     failing = _failing(findings)
     warnings = [f for f in findings if f.severity == "warn"]
@@ -586,11 +593,13 @@ def main(argv=None) -> int:
     except OSError as exc:
         print(f"warning: gates record not written: {exc}", file=sys.stderr)
 
+    unknown_keys = [key for key, note in rigops_config.unknown_keys(cfg) if note is None]
     if args.json:
         payload = {
             "ts": ts, "supervisor": args.supervisor, "jobs": jobs, "checks": checks,
             "healed": heal_log, "fail_count": fail_count, "stale_count": stale_count,
             "gates": gates,
+            "unknown_config_keys": unknown_keys,
             "findings": [
                 {"id": f.id, "check": f.check, "area": f.area, "severity": f.severity,
                  "symptom": f.symptom, "evidence": f.evidence, "fix": f.fix}
@@ -601,9 +610,11 @@ def main(argv=None) -> int:
     elif args.report:
         print(report_text, end="")
         print(render_findings(findings), end="")
+        print(render_unknown_keys(unknown_keys), end="")
     else:
         print(render_summary(jobs, checks, findings, gates, ts), end="")
         print(render_findings(findings), end="")
+        print(render_unknown_keys(unknown_keys), end="")
 
     # Scheduled runs pass --exit-zero so the supervisor does not read a verdict as a crash.
     failed_checks = any(c["status"] == "fail" for c in checks)

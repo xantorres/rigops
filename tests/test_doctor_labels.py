@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import cause as rigops_cause  # noqa: E402
+from rigops.errors import RigopsError  # noqa: E402
 
 from tests.test_doctor import FAILING_ITEM, REPO_ROOT, _write_registry  # noqa: E402
 from tests.test_doctor_pages import H, PagingBase  # noqa: E402
@@ -166,15 +167,12 @@ class WouldEvidenceTests(LabelBase):
 
 
 class ProbeCommandTypeTests(LabelBase):
-    def test_a_probe_command_that_is_not_a_string_warns(self):
+    def test_a_probe_command_that_is_not_a_string_is_rejected_at_load(self):
         for value in (5, ["true"], None):
             with self.subTest(value=value):
                 self._write_config(cause_policy="shadow", cause_probe_command=value)
-                self.run_doctor(self.registry("job-failing"))
-                self.assertTrue(any(
-                    "cause_probe_command" in e.get("event", "") for e in self.events()
-                ))
-                (self.state / "events.jsonl").unlink()
+                with self.assertRaisesRegex(RigopsError, "doctor.cause_probe_command"):
+                    self.run_doctor(self.registry("job-failing"))
 
 
 if __name__ == "__main__":
