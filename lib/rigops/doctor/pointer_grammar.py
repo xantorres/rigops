@@ -43,7 +43,7 @@ TRANSCRIPT_RE = re.compile(
 
 # A memory note gets the path rule alone, under these roots; check_pointers says why.
 MEMORY_NOTE_RE = re.compile(r"/\.claude/projects/[^/]+/memory/")
-DEFAULT_MEMORY_ROOTS = ["~/.claude", "~/rig", "~/bin", "~/.local/bin"]
+DEFAULT_MEMORY_ROOTS = ["~/.claude", "~/bin", "~/.local/bin"]
 
 # Segments that mark a documentation placeholder rather than a real location.
 DEFAULT_IGNORE_SEGMENTS = [

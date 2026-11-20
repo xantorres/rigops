@@ -1,7 +1,7 @@
 """Shared primitives for the modular rigops packages.
 
 Every module inside a package such as ``rigops.doctor`` imports this package and
-nothing else from ``rigops``; ``check_imports`` enforces that. ``core`` itself is
+nothing else from ``rigops``; ``tests/test_module_rules.py`` enforces that. ``core`` itself is
 the one place allowed to wrap the flat legacy modules, so the rule stays a single
 hop rather than a web.
 """

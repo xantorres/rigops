@@ -17,13 +17,11 @@ from rigops import core, doctor  # noqa: E402
 from rigops.doctor import (  # noqa: E402
     check_agents,
     check_budget,
-    check_imports,
     check_levers,
     check_mcp,
     check_plans,
     check_pointers,
     check_render,
-    check_rtk,
     pointer_grammar,
 )
 
@@ -75,7 +73,8 @@ class FindingLineTests(unittest.TestCase):
 class DiscoverNamesTests(unittest.TestCase):
     def test_names_contains_expected_checks(self):
         found = set(doctor.names())
-        self.assertTrue({"budget", "imports", "plans", "pointers"}.issubset(found))
+        self.assertTrue({"budget", "plans", "pointers"}.issubset(found))
+        self.assertTrue({"imports", "rtk"}.isdisjoint(found))
 
     def test_discover_modules_expose_run_and_area(self):
         for name, module in doctor.discover():
@@ -162,79 +161,6 @@ class CheckPlansTests(unittest.TestCase):
             (root / "backlog.md").write_text("junk, no frontmatter\n")
             findings = check_plans.run(self._cfg(root))
             self.assertEqual(findings, [])
-
-
-class CheckImportsTests(unittest.TestCase):
-    def _pkg(self, root, name):
-        pkg = root / name
-        pkg.mkdir()
-        (pkg / "__init__.py").write_text("")
-        return pkg
-
-    def test_core_import_produces_no_finding(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            pkg = self._pkg(root, "pkg_a")
-            (pkg / "mod.py").write_text("from rigops import core\n")
-            with mock.patch.object(check_imports, "_package_root", return_value=root):
-                findings = check_imports.run({})
-            self.assertEqual(findings, [])
-
-    def test_sibling_import_is_flagged(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            pkg = self._pkg(root, "pkg_b")
-            (pkg / "mod.py").write_text("from rigops import janitor\n")
-            with mock.patch.object(check_imports, "_package_root", return_value=root):
-                findings = check_imports.run({})
-            keys = [f.key for f in findings]
-            self.assertIn("import:rigops/pkg_b/mod.py:janitor", keys)
-
-    def test_sibling_reached_by_a_dotted_or_relative_import_is_flagged(self):
-        forms = {
-            "dotted": "from rigops.judge import judge_job\n",
-            "plain": "import rigops.janitor\n",
-            "climbing": "from ..judge import judge_job\n",
-            "parenthesised": "from rigops import (\n    reap,\n)\n",
-        }
-        for name, source in forms.items():
-            with self.subTest(form=name):
-                with tempfile.TemporaryDirectory() as tmp:
-                    root = Path(tmp)
-                    pkg = self._pkg(root, "pkg_d")
-                    (pkg / "mod.py").write_text(source)
-                    with mock.patch.object(check_imports, "_package_root", return_value=root):
-                        findings = check_imports.run({})
-                self.assertTrue(
-                    any(f.key.startswith("import:rigops/pkg_d/mod.py:") for f in findings),
-                    findings,
-                )
-
-    def test_import_inside_the_module_own_package_is_allowed(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            pkg = self._pkg(root, "pkg_e")
-            (pkg / "mod.py").write_text(
-                "from . import check_budget\nfrom rigops.pkg_e import other\n"
-            )
-            with mock.patch.object(check_imports, "_package_root", return_value=root):
-                findings = check_imports.run({})
-        self.assertEqual([f for f in findings if f.key.startswith("import:")], [])
-
-    def test_module_over_cap_is_flagged_and_clears_when_cap_raised(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            pkg = self._pkg(root, "pkg_c")
-            (pkg / "big.py").write_text("x = 1\n" * 410)
-            with mock.patch.object(check_imports, "_package_root", return_value=root):
-                findings = check_imports.run({})
-                self.assertTrue(any(f.key == "size:rigops/pkg_c/big.py" for f in findings))
-
-                raised_cfg = {"doctor": {"imports": {"max_lines": 500}}}
-                findings_raised = check_imports.run(raised_cfg)
-                self.assertFalse(
-                    any(f.key == "size:rigops/pkg_c/big.py" for f in findings_raised)
-                )
 
 
 class CheckBudgetTests(unittest.TestCase):
@@ -517,47 +443,6 @@ class CheckPointersTests(unittest.TestCase):
         self.assertTrue(all(f.evidence == label for f in findings))
 
 
-class CheckRtkTests(unittest.TestCase):
-    PINNED = {"doctor": {"rtk": {"version": "0.42.4"}}}
-
-    def test_unpinned_host_is_not_checked(self):
-        with mock.patch.object(core, "run") as run:
-            findings = check_rtk.run({})
-        self.assertEqual(findings, [])
-        run.assert_not_called()
-
-    def test_missing_binary_yields_missing_finding(self):
-        with mock.patch.object(core, "run", return_value=""):
-            findings = check_rtk.run(self.PINNED)
-        self.assertEqual([f.key for f in findings], ["missing"])
-
-    def test_matching_version_yields_no_finding(self):
-        with mock.patch.object(core, "run", return_value="rtk 0.42.4\n"):
-            findings = check_rtk.run(self.PINNED)
-        self.assertEqual(findings, [])
-
-    def test_mismatched_version_yields_version_finding(self):
-        with mock.patch.object(core, "run", return_value="rtk 0.41.0\n"):
-            findings = check_rtk.run(self.PINNED)
-        self.assertEqual([f.key for f in findings], ["version"])
-
-    def test_configured_expected_version_is_honoured(self):
-        cfg = {"doctor": {"rtk": {"version": "0.41.0"}}}
-        with mock.patch.object(core, "run", return_value="rtk 0.41.0\n"):
-            findings = check_rtk.run(cfg)
-        self.assertEqual(findings, [])
-
-    def test_configured_path_finds_rtk_missing_from_launchd_path(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            rtk = Path(tmp) / "rtk"
-            rtk.write_text("#!/bin/sh\necho 'rtk 0.42.4'\n")
-            os.chmod(rtk, 0o755)
-            cfg = {"doctor": {"rtk": {"version": "0.42.4", "path": str(rtk)}}}
-            with mock.patch.dict(os.environ, {"PATH": "/usr/bin:/bin:/usr/sbin:/sbin"}):
-                findings = check_rtk.run(cfg)
-        self.assertEqual(findings, [])
-
-
 class CheckRenderTests(unittest.TestCase):
     def test_missing_source_dir_yields_no_findings(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -744,38 +629,6 @@ class CheckPointersPluginIdTests(unittest.TestCase):
             "git@github-host:acme/repo.git, write to dev@example.com\n"
         )
         self.assertEqual(self._plugin_findings(text), [])
-
-
-class CheckImportsPolicyTests(unittest.TestCase):
-    """The line cap is a repository rule; the sibling rule stays a package rule."""
-
-    def test_flat_module_over_the_cap_is_flagged(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "flat.py").write_text("x = 1\n" * 410)
-            with mock.patch.object(check_imports, "_package_root", return_value=root):
-                findings = check_imports.run({})
-        self.assertEqual([f.key for f in findings], ["size:rigops/flat.py"])
-
-    def test_flat_module_may_import_a_sibling(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "flat.py").write_text("from rigops import janitor\n")
-            with mock.patch.object(check_imports, "_package_root", return_value=root):
-                findings = check_imports.run({})
-        self.assertEqual(findings, [])
-
-    def test_module_with_a_recorded_allowance_is_flagged_only_when_it_grows(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            module = root / "legacy.py"
-            with mock.patch.object(check_imports, "_package_root", return_value=root), \
-                 mock.patch.object(check_imports, "LINE_ALLOWANCES", {"rigops/legacy.py": 500}):
-                module.write_text("x = 1\n" * 500)
-                self.assertEqual(check_imports.run({}), [])
-                module.write_text("x = 1\n" * 501)
-                findings = check_imports.run({})
-        self.assertEqual([f.key for f in findings], ["size:rigops/legacy.py"])
 
 
 class CheckBudgetMembersTests(unittest.TestCase):

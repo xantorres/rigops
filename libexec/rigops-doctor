@@ -327,7 +327,7 @@ def main(argv=None) -> int:
     ap.add_argument(
         "--config-only", action="store_true",
         help=(
-            "run only the config checks (pointers, budget, plans, imports, render, rtk, "
+            "run only the config checks (pointers, budget, plans, render, "
             "levers) and skip the fleet"
         ),
     )
