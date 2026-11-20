@@ -30,12 +30,6 @@ far argues for or against building it.
 - [ ] No chain-step evidence checks (a job that only proves itself via another
   job's output file); such items read `unknown`.
 
-## Plugin
-
-- [ ] `ctx-probe.sh` lives inside the version-rotating plugin cache; a local
-  statusline that wants to call it needs its own stable copy. Consider installing
-  it under the prefix (as the statusline already is).
-
 ## Config
 
 - [ ] `config check` warns on unknown top-level keys only, so a nested shape mistake

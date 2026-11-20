@@ -4,7 +4,7 @@ description: Run the rigops job-fleet health check and interpret the report. Use
 
 # rigops doctor
 
-1. Check the CLI is reachable: `command -v rigops` or `$HOME/.local/bin/rigops`. If neither exists, tell the user to run `install.sh` (or use the plugin-only features - skills and hooks still work without the CLI) and stop.
+1. Check the CLI is reachable: `command -v rigops` or `$HOME/.local/bin/rigops`. If neither exists, tell the user to run `install.sh` (the skills work without the CLI; the hooks print nothing without it) and stop.
 
 2. Run `rigops doctor --report`. This is report-only: no kill/kickstart side effects. Add `--json` when you need structured output to reason over instead of the text table. On Linux (or anywhere launchd isn't the supervisor), add `--supervisor=none` - this skips launchctl entirely and judges each job from evidence-file age only.
 

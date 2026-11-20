@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 import unittest
 from pathlib import Path
 
@@ -32,6 +33,12 @@ HEADING = re.compile(r"^#{1,6} +(.+?)[ #]*$", re.M)
 # A blank line, a list item or a table row starts a new paragraph-sized unit.
 UNIT_START = re.compile(r"^(?:[ \t]*\n|[ \t]*(?:[-*+]|\d+\.)[ \t]|\|)", re.M)
 SKIP_DIRS = {".git", ".claude", "fixtures"}
+PLUGIN_ROOT = REPO_ROOT / "plugin"
+ADD_PARSER = re.compile(r"""add_parser\(\s*["']([a-z][a-z0-9-]*)["']""")
+FENCE_LINE = re.compile(r"^[ \t]*(?:```|~~~)")
+INLINE_OR_FENCED = re.compile(r"`([^`\n]*)`")
+PLACEHOLDER = re.compile(r"<[^>]*>?|\s|YYYY-MM-DD")
+ALWAYS_OK_FLAGS = {"--help", "-h"}
 
 
 def command_of(source: Path) -> str:
@@ -47,6 +54,57 @@ def defined_flags() -> dict[tuple[str, str], str]:
             for flag in FLAG.findall(names):
                 flags[(command_of(source), flag)] = str(source.relative_to(REPO_ROOT))
     return flags
+
+
+def shipped_commands() -> set[str]:
+    return {p.name[len("rigops-"):] for p in (REPO_ROOT / "libexec").glob("rigops-*")} | {"help"}
+
+
+def subcommands(command: str) -> set[str]:
+    sources = [REPO_ROOT / "libexec" / f"rigops-{command}",
+               REPO_ROOT / "lib" / "rigops" / f"{command}.py"]
+    return {name for source in sources if source.exists()
+            for name in ADD_PARSER.findall(source.read_text(encoding="utf-8"))}
+
+
+def rigops_spans(text: str) -> list[tuple[int, str]]:
+    found, fenced = [], False
+    for number, line in enumerate(text.splitlines(), 1):
+        if FENCE_LINE.match(line):
+            fenced = not fenced
+            continue
+        candidates = [line] if fenced else INLINE_OR_FENCED.findall(line)
+        for candidate in candidates:
+            candidate = candidate.strip()
+            if candidate.startswith("$ "):
+                candidate = candidate[2:].strip()
+            if candidate.startswith("rigops "):
+                found.append((number, candidate))
+    return found
+
+
+def check_span(span: str) -> list[str]:
+    try:
+        tokens = shlex.split(span)
+    except ValueError as error:
+        return [f"does not split ({error})"]
+    if len(tokens) < 2:
+        return []
+    command, rest = tokens[1], tokens[2:]
+    if command not in shipped_commands():
+        return [f"`{command}` is not a shipped command"]
+    errors = []
+    subs = subcommands(command)
+    if subs and rest and not rest[0].startswith(("-", "<")) and not PLACEHOLDER.search(rest[0]):
+        if rest[0] not in subs:
+            known = ", ".join(sorted(subs))
+            errors.append(f"`{rest[0]}` is not a `{command}` subcommand ({known})")
+    flags = defined_flags()
+    for token in tokens[2:]:
+        flag = token.split("=", 1)[0]
+        if token.startswith("--") and flag not in ALWAYS_OK_FLAGS and (command, flag) not in flags:
+            errors.append(f"`{flag}` is not a `{command}` flag")
+    return errors
 
 
 def split_at(text: str, boundary: re.Pattern) -> list[str]:
@@ -157,6 +215,23 @@ class DocsContractTests(unittest.TestCase):
                     broken.append(f"{page.relative_to(REPO_ROOT)}: {target} (no such heading)")
 
         self.assertEqual(broken, [])
+
+    def test_plugin_rigops_spans_name_shipped_commands_and_flags(self):
+        problems = []
+        for page in sorted(PLUGIN_ROOT.rglob("*.md")):
+            for number, span in rigops_spans(page.read_text(encoding="utf-8")):
+                problems += [f"{page.relative_to(REPO_ROOT)}:{number}: `{span}`: {error}"
+                             for error in check_span(span)]
+
+        self.assertEqual(problems, [])
+
+    def test_span_checker_reports_unknown_commands_flags_and_subcommands(self):
+        self.assertTrue(check_span("rigops nosuch --x"))
+        self.assertTrue(check_span("rigops ledger --nosuch"))
+        self.assertTrue(check_span("rigops backlog nosuch"))
+        self.assertEqual(check_span('rigops ledger note "<text>" --at YYYY-MM-DD'), [])
+        text = "see `rigops tax --dead` and `rigops`\n```\n$ rigops doctor\n```"
+        self.assertEqual(rigops_spans(text), [(1, "rigops tax --dead"), (3, "rigops doctor")])
 
 
 if __name__ == "__main__":

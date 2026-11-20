@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `imports` and `rtk` doctor checks are removed. The module rules now run as `tests/test_module_rules.py`; `doctor.imports.max_lines` is gone, and a config that still sets `doctor.rtk` is ignored. `docs/CONFIG.md` shows the rtk pin as a `checks.custom` example.
 - The prompt-scoped nudge left the plugin hook and `context.prompt_nudge` is ignored; only the context-size nudge remains.
 - The plugin hooks no longer need `jq`.
+- The plugin `week` command no longer names an exit code for an unset `ledger.week_reports`, and the `doctor` command says the skills work without the CLI while the hooks print nothing.
 - The always-on budget no longer counts a registered repo's instruction file.
 - `check_agents` reads the installed agents dir and the `description` field, not the render source and `purpose`.
 - The built-in correction rule no longer has Spanish handling, and the denial set drops `checkout behind origin` and `stale backend checkout`. Add them back with `ledger.extra_correction_patterns`, `ledger.correction_exclude_patterns` and `ledger.extra_denial_patterns`.
