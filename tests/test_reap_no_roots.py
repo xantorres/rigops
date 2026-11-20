@@ -63,6 +63,18 @@ class ReapNoRootsTests(unittest.TestCase):
         self.assertEqual(payload["repos"], [])
         self.assertEqual(payload["orphan_daemons"], [])
 
+    def test_invalid_max_worktrees_exits_two_even_with_no_roots(self):
+        self.config.write_text(json.dumps({"reaper": {"max_worktrees": -1}}))
+        proc = self._run()
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertIn("reaper.max_worktrees", proc.stderr)
+
+    def test_invalid_orphan_sweep_exits_two_even_with_no_roots(self):
+        self.config.write_text(json.dumps({"reaper": {"orphan_sweep": "yes"}}))
+        proc = self._run()
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertIn("reaper.orphan_sweep", proc.stderr)
+
     def test_explicit_root_still_scans(self):
         root = self.tmp / "tree"
         root.mkdir()

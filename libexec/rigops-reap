@@ -69,15 +69,6 @@ def main() -> int:
     else:
         roots = [rigops_config.expand(r) for r in rigops_config.get(cfg, "reaper.roots", [])]
 
-    if not roots and not args.repo and (args.apply or not args.dry_run):
-        print(f"rigops reap: no roots configured; set reaper.roots in "
-              f"{rigops_config.config_path()} or pass --root <dir>", file=sys.stderr)
-        if args.json:
-            print(json.dumps({"generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                              "repos": [], "orphan_daemons": [],
-                              "process_observation_ok": True}, indent=2))
-        return 0
-
     args.roots = roots
     args.sessions_dir = rigops_config.expand(rigops_config.get(cfg, "reaper.sessions_dir"))
     args.deadline_s = deadline_s
@@ -94,6 +85,15 @@ def main() -> int:
     if problem:
         print(f"error: {problem}", file=sys.stderr)
         return 2
+    if not roots and not args.repo and (args.apply or not args.dry_run):
+        print(f"rigops reap: no roots configured; set reaper.roots in "
+              f"{rigops_config.config_path()} or pass --root <dir>", file=sys.stderr)
+        if args.json:
+            print(json.dumps({"generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                              "repos": [], "orphan_daemons": [],
+                              "process_observation_ok": True}, indent=2))
+        return 0
+
     args.ignored_untracked_dirs = set(rigops_config.get(cfg, "reaper.ignored_untracked_dirs", []))
     args.ignored_untracked_prefixes = tuple(
         rigops_config.get(cfg, "reaper.ignored_untracked_prefixes", [])
