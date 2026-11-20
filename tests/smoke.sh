@@ -280,7 +280,11 @@ case "$OUT" in
 esac
 
 echo "smoke: ledger dry-run row carries sources"
-run "$RIGOPS_LINK" ledger --dry-run --json
+# stdout only: the empty-window warning goes to stderr and would break the JSON.
+set +e
+OUT="$("$RIGOPS_LINK" ledger --dry-run --json 2>/dev/null)"
+RC=$?
+set -e
 [ "$RC" -eq 0 ] || fail "rigops ledger --dry-run --json exit $RC: $OUT"
 assert_json "$OUT" "rigops ledger --dry-run --json"
 case "$OUT" in
