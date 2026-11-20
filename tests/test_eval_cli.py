@@ -958,7 +958,7 @@ class EvalDiffTests(_EnvIsolationMixin, _StubServerMixin, unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertIn("UNVERIFIED", result.stdout)
 
-    def test_diff_regression_plus_unverified_exits_one(self):
+    def test_diff_regression_plus_unverified_exits_two(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = self._env_for(tmp)
             cases_dir = Path(tmp) / "cases"
@@ -997,7 +997,7 @@ class EvalDiffTests(_EnvIsolationMixin, _StubServerMixin, unittest.TestCase):
             self.assertEqual(head_result.returncode, 0)
 
             result = _run_eval(["diff"], env)
-            self.assertEqual(result.returncode, 1)
+            self.assertEqual(result.returncode, 2)
             self.assertIn("REGRESSION", result.stdout)
             self.assertIn("UNVERIFIED", result.stdout)
 

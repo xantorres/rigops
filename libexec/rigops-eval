@@ -293,9 +293,9 @@ def cmd_diff(args) -> int:
     if not report["shared"]:
         return _fail("the two runs share no unchanged cases, so there is nothing to compare")
     print(json.dumps({"version": 1, **report}, indent=2) if args.json else _diff_report(report))
-    if report["regressions"]:
-        return 1
-    return 2 if report["unverified"] or report["dropped"] else 0
+    if report["unverified"] or report["dropped"]:
+        return 2
+    return 1 if report["regressions"] else 0
 
 
 def cmd_list(args) -> int:
