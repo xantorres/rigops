@@ -778,50 +778,43 @@ class CheckImportsPolicyTests(unittest.TestCase):
         self.assertEqual([f.key for f in findings], ["size:rigops/legacy.py"])
 
 
-class CheckBudgetProjectFileTests(unittest.TestCase):
-    """The per-project instruction file a session also pays counts toward the ceiling."""
-
-    def _rig(self, tmp, repos):
-        source = Path(tmp) / "rig"
-        (source / "registry").mkdir(parents=True)
-        (source / "registry" / "roots.json").write_text(
-            json.dumps({"pointer_repos": [str(r) for r in repos]})
-        )
-        return source
-
-    def _repo(self, tmp, name, size):
-        repo = Path(tmp) / name
-        repo.mkdir()
-        (repo / "CLAUDE.md").write_text("x" * size)
-        return repo
-
-    def test_largest_registered_repo_instruction_file_is_measured(self):
+class CheckBudgetMembersTests(unittest.TestCase):
+    def test_a_registered_repo_instruction_file_is_not_counted(self):
         with tempfile.TemporaryDirectory() as tmp:
             claude_dir = Path(tmp) / "claude"
             (claude_dir / "rules").mkdir(parents=True)
-            small = self._repo(tmp, "repo-small", 40)
-            big = self._repo(tmp, "repo-big", 400)
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            (repo / "CLAUDE.md").write_text("x" * 400)
+            source = Path(tmp) / "rig"
+            (source / "registry").mkdir(parents=True)
+            (source / "registry" / "roots.json").write_text(
+                json.dumps({"pointer_repos": [str(repo)]})
+            )
             cfg = {
-                "render": {"source": str(self._rig(tmp, [small, big]))},
+                "render": {"source": str(source)},
                 "doctor": {"budget": {"always_on_tokens": 10}},
             }
             with mock.patch.object(core, "CLAUDE_DIR", claude_dir):
                 members = check_budget.members(cfg)
                 findings = check_budget.run(cfg)
-        self.assertIn(core.expand(big / "CLAUDE.md"), members)
-        self.assertNotIn(core.expand(small / "CLAUDE.md"), members)
-        self.assertEqual([f.key for f in findings], ["always_on"])
-        self.assertIn(str(core.expand(big / "CLAUDE.md")), findings[0].extra["paths"])
+        self.assertEqual(members, [])
+        self.assertEqual(findings, [])
 
-    def test_without_a_root_registry_only_this_tree_is_measured(self):
+    def test_law_always_on_rule_and_memory_index_are_counted(self):
         with tempfile.TemporaryDirectory() as tmp:
             claude_dir = Path(tmp) / "claude"
             (claude_dir / "rules").mkdir(parents=True)
-            (claude_dir / "rules" / "rule.md").write_text("x" * 40)
-            cfg = {"render": {"source": str(Path(tmp) / "absent-rig")}}
+            law = claude_dir / "CLAUDE.md"
+            law.write_text("law\n")
+            rule = claude_dir / "rules" / "rule.md"
+            rule.write_text("rule\n")
+            index = claude_dir / "projects" / "p" / "memory" / "MEMORY.md"
+            index.parent.mkdir(parents=True)
+            index.write_text("index\n")
             with mock.patch.object(core, "CLAUDE_DIR", claude_dir):
-                members = check_budget.members(cfg)
-        self.assertEqual(members, [claude_dir / "rules" / "rule.md"])
+                members = check_budget.members({})
+        self.assertEqual(members, [law, rule, index])
 
 
 class CheckLeversTests(unittest.TestCase):
@@ -1163,38 +1156,39 @@ class CheckAgentsTests(unittest.TestCase):
             agents_dir.mkdir()
             for name, text in agents.items():
                 (agents_dir / f"{name}.md").write_text(text)
-            return check_agents.run({"render": {"source": tmp}})
+            with mock.patch.object(core, "CLAUDE_DIR", Path(tmp)):
+                return check_agents.run({})
 
     def test_read_only_claim_with_edit_tool_yields_one_finding(self):
         findings = self._run(liar=(
-            "---\nname: liar\npurpose: Triage.\ntools: [read, edit]\n---\n"
+            "---\nname: liar\ndescription: Triage.\ntools: [read, edit]\n---\n"
             "Read-only. Never edit, never propose fixes.\n"
         ))
         self.assertEqual([f.symptom for f in findings], ["liar: claims read-only but grants edit"])
 
     def test_read_only_agent_without_edit_yields_no_finding(self):
         findings = self._run(reader=(
-            "---\nname: reader\npurpose: Read-only digester.\ntools: [read, search]\n---\n"
+            "---\nname: reader\ndescription: Read-only digester.\ntools: [read, search]\n---\n"
             "Never edits files.\n"
         ))
         self.assertEqual(findings, [])
 
     def test_editing_agent_without_claim_yields_no_finding(self):
         findings = self._run(worker=(
-            "---\nname: worker\npurpose: Mechanical edits.\ntools: [read, edit, shell]\n---\n"
+            "---\nname: worker\ndescription: Mechanical edits.\ntools: [read, edit, shell]\n---\n"
             "Apply the pattern uniformly.\n"
         ))
         self.assertEqual(findings, [])
 
     def test_absent_tools_line_grants_edit(self):
         findings = self._run(open_=(
-            "---\nname: open_\npurpose: Anything.\n---\nMust not edit.\n"
+            "---\nname: open_\ndescription: Anything.\n---\nMust not edit.\n"
         ))
         self.assertEqual(len(findings), 1)
 
     def test_claim_about_another_agent_or_a_tool_is_not_a_claim(self):
         findings = self._run(worker=(
-            "---\nname: worker\npurpose: Edits (read-only triage goes to haiku-reader).\n"
+            "---\nname: worker\ndescription: Edits (read-only triage goes to haiku-reader).\n"
             "tools: [read, edit, shell]\n---\n"
             "Shell is read-only: git show only. The mode is not read-only.\n"
         ))
@@ -1202,13 +1196,13 @@ class CheckAgentsTests(unittest.TestCase):
 
     def test_tools_classes_are_matched_case_insensitively(self):
         findings = self._run(liar=(
-            "---\nname: liar\npurpose: Triage.\ntools: [Read, EDIT]\n---\nRead-only.\n"
+            "---\nname: liar\ndescription: Triage.\ntools: [Read, EDIT]\n---\nRead-only.\n"
         ))
         self.assertEqual(len(findings), 1)
 
     def test_scope_word_must_sit_directly_before_read_only(self):
         findings = self._run(liar=(
-            "---\nname: liar\npurpose: Triage.\ntools: [read, edit]\n---\n"
+            "---\nname: liar\ndescription: Triage.\ntools: [read, edit]\n---\n"
             "Uses git, shell and is read-only.\n"
         ))
         self.assertEqual(len(findings), 1)
@@ -1217,7 +1211,7 @@ class CheckAgentsTests(unittest.TestCase):
         for prose in ("Do not edit anything.", "Do not write files.", "Never write/edit."):
             with self.subTest(prose=prose):
                 findings = self._run(liar=(
-                    f"---\nname: liar\npurpose: Triage.\ntools: [read, edit]\n---\n{prose}\n"
+                    f"---\nname: liar\ndescription: Triage.\ntools: [read, edit]\n---\n{prose}\n"
                 ))
                 self.assertEqual(len(findings), 1)
 
@@ -1225,20 +1219,39 @@ class CheckAgentsTests(unittest.TestCase):
         for prose in ("Never edit files outside src/.", "Do not edit anything except docs."):
             with self.subTest(prose=prose):
                 findings = self._run(worker=(
-                    f"---\nname: worker\npurpose: Edits.\ntools: [read, edit]\n---\n{prose}\n"
+                    f"---\nname: worker\ndescription: Edits.\ntools: [read, edit]\n---\n{prose}\n"
                 ))
                 self.assertEqual(findings, [])
 
     def test_nested_parentheses_are_fully_stripped(self):
         findings = self._run(worker=(
-            "---\nname: worker\npurpose: Edits.\ntools: [read, edit]\n---\n"
+            "---\nname: worker\ndescription: Edits.\ntools: [read, edit]\n---\n"
             "Edits files (the triage agent (which is read-only) never edits).\n"
         ))
         self.assertEqual(findings, [])
 
     def test_missing_agents_dir_yields_no_findings(self):
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(check_agents.run({"render": {"source": tmp}}), [])
+            with mock.patch.object(core, "CLAUDE_DIR", Path(tmp)):
+                self.assertEqual(check_agents.run({}), [])
+
+    def test_agents_under_a_render_source_are_not_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "rig"
+            (source / "agents").mkdir(parents=True)
+            (source / "agents" / "liar.md").write_text(
+                "---\nname: liar\ndescription: Triage.\ntools: [read, edit]\n---\nRead-only.\n"
+            )
+            claude_dir = Path(tmp) / "claude"
+            claude_dir.mkdir()
+            with mock.patch.object(core, "CLAUDE_DIR", claude_dir):
+                self.assertEqual(check_agents.run({"render": {"source": str(source)}}), [])
+
+    def test_a_purpose_field_is_not_consulted(self):
+        findings = self._run(liar=(
+            "---\nname: liar\npurpose: Read-only triage.\ntools: [read, edit]\n---\nTriage.\n"
+        ))
+        self.assertEqual(findings, [])
 
 
 class RunChecksTests(unittest.TestCase):

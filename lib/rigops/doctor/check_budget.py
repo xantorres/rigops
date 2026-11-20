@@ -1,20 +1,18 @@
 """The always-on instruction surface has a token ceiling.
 
 Measured: the global law file, the rules that carry no ``paths:`` frontmatter
-(path-scoped rules load only when a matching file is touched), the memory index,
-and the instruction file of the largest registered repository. Tokens are bytes
-over four, the same arithmetic used to size the surface in the audit.
+(path-scoped rules load only when a matching file is touched), and the largest
+memory index. Tokens are bytes over four, the same arithmetic used to size the
+surface in the audit.
 
-A session loads one memory index and one project file, the ones belonging to the
-repository it opens in, so the largest of each is the worst case rather than an
-approximation of it. Still not measured, because the runtime assembles it rather
-than this tree: the skill and agent listings. The ceiling is therefore a floor
+A session loads one memory index, the one belonging to the repository it opens
+in, so the largest is the worst case rather than an approximation of it. Still
+not measured, because the runtime assembles it rather than this tree: the skill
+and agent listings. The ceiling is therefore a floor
 under the true session cost, not the whole of it.
 """
 
 from __future__ import annotations
-
-import json
 
 from rigops import core
 
@@ -45,22 +43,6 @@ def _memory_index():
     return indexes[:1]
 
 
-def _registered_repos(cfg):
-    """The repositories the control plane knows about, from its own root list."""
-    source = core.expand(core.cfg_get(cfg, "render.source", str(core.HOME / "rig")))
-    try:
-        data = json.loads(core.read_text(source / "registry" / "roots.json"))
-    except (OSError, ValueError):
-        return []
-    return [core.expand(raw) for raw in data.get("pointer_repos", [])]
-
-
-def _project_instructions(cfg):
-    """The largest registered repository's own instruction file."""
-    files = [repo / "CLAUDE.md" for repo in _registered_repos(cfg)]
-    return sorted((f for f in files if f.is_file()), key=_size, reverse=True)[:1]
-
-
 def members(cfg):
     files = []
     law = core.CLAUDE_DIR / "CLAUDE.md"
@@ -70,7 +52,6 @@ def members(cfg):
         if core.is_always_on(rule):
             files.append(rule)
     files.extend(_memory_index())
-    files.extend(_project_instructions(cfg))
     return files
 
 

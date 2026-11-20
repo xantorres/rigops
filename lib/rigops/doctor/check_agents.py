@@ -67,14 +67,13 @@ def _grants_edit(fields: dict) -> bool:
 
 
 def run(cfg):
-    source = core.expand(core.cfg_get(cfg, "render.source", str(core.HOME / "rig")))
     findings = []
-    for agent_file in sorted((source / "agents").glob("*.md")):
+    for agent_file in sorted((core.CLAUDE_DIR / "agents").glob("*.md")):
         try:
             fields, body = core.parse_frontmatter(core.read_text(agent_file))
         except OSError:
             continue
-        prose = f"{fields.get('purpose', '')}\n{body}"
+        prose = f"{fields.get('description', '')}\n{body}"
         if _grants_edit(fields) and _claims_read_only(prose):
             name = fields.get("name", agent_file.stem)
             findings.append(core.Finding(

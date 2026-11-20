@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The always-on budget no longer counts a registered repo's instruction file.
+- `check_agents` reads the installed agents dir and the `description` field, not the render source and `purpose`.
 - The built-in correction rule no longer has Spanish handling, and the denial set drops `checkout behind origin` and `stale backend checkout`. Add them back with `ledger.extra_correction_patterns`, `ledger.correction_exclude_patterns` and `ledger.extra_denial_patterns`.
 - `rigops mine` reports "extra correction patterns" and "correction exclude patterns" counts instead of the Spanish ones.
 - Watermarks no longer route to realm backlogs: every tripped watermark appends to `backlog.path`, and the `unrouted` status is gone.
