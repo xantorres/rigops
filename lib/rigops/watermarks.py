@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import glob
-import json
 import math
 import os
 import sys
@@ -12,8 +11,6 @@ from pathlib import Path
 
 from rigops import backlog as rigops_backlog
 from rigops import config as rigops_config
-from rigops import realm as rigops_realm
-from rigops.retrieval import roots as rigops_roots
 
 
 def _dir_files_at_depth1(d: Path) -> int:
@@ -44,93 +41,9 @@ def _file_watermark(f: Path, max_kb) -> tuple:
     return math.ceil(size / 1024), max_kb is not None and size / 1024 > max_kb
 
 
-CWD_SCAN_LINES = 50
-
-
-def _session_cwd(project_dir: Path):
-    """The cwd recorded in a project's newest transcript, or None."""
-    try:
-        newest = max(project_dir.glob("*.jsonl"), key=lambda f: f.stat().st_mtime, default=None)
-        if newest is None:
-            return None
-        with newest.open(encoding="utf-8") as fh:
-            for _ in range(CWD_SCAN_LINES):
-                line = fh.readline(1 << 20)
-                if not line:
-                    break
-                try:
-                    cwd = json.loads(line).get("cwd")
-                except (ValueError, AttributeError):
-                    continue
-                if isinstance(cwd, str) and cwd:
-                    return cwd
-    except (OSError, UnicodeDecodeError):
-        pass
-    return None
-
-
-def _project(match: Path, transcripts_dir):
-    """Name of the transcripts project dir holding a match, or None."""
-    if transcripts_dir is None:
-        return None
-    try:
-        parts = match.relative_to(transcripts_dir).parts
-    except ValueError:
-        return None
-    return parts[0] if parts else None
-
-
-def _owner(match: Path, transcripts_dir):
-    """What decides a match's realm: the session cwd under the transcripts dir, else the match."""
-    project = _project(match, transcripts_dir)
-    if project:
-        cwd = _session_cwd(Path(transcripts_dir) / project)
-        if cwd:
-            return cwd
-    return match
-
-
-def _client_mount(match: Path, transcripts_dir, reg):
-    """The most specific non-personal root whose slug prefixes the match's project dir name."""
-    project = _project(match, transcripts_dir)
-    if project is None or reg is None:
-        return None
-    best = None
-    for mount in rigops_realm.mounts(reg):
-        slug = rigops_roots.encode_project(mount)
-        matches = project == slug or project.startswith(slug + "-")
-        if matches and (best is None or len(slug) > len(best[0])):
-            best = (slug, mount)
-    return best[1] if best else None
-
-
-def _backlog_for(match: Path, transcripts_dir, default: Path, reg):
-    """The backlog for a match; None when it is client-owned and no realm backlog resolves.
-
-    Also None when the registry is unreadable: ownership cannot be judged.
-    """
-    if reg is None:
-        return None
-    realm = rigops_realm.find(_owner(match, transcripts_dir), reg)
-    client = realm is not None
-    if not client:
-        mount = _client_mount(match, transcripts_dir, reg)
-        if mount is not None:
-            client = True
-            realm = rigops_realm.find(mount, reg)
-    if not client:
-        return default
-    target = realm / "plans" / "backlog.md" if realm is not None else None
-    return target if target is not None and target.exists() else None
-
-
-def check_watermarks(watermarks: list, backlog_path, areas: list, apply: bool,
-                     transcripts_dir=None) -> list:
+def check_watermarks(watermarks: list, backlog_path, areas: list, apply: bool) -> list:
     results = []
     backlog_p = Path(backlog_path)
-    if transcripts_dir is not None:
-        transcripts_dir = Path(transcripts_dir)
-    reg = rigops_realm.registry()
     for wm in watermarks:
         name = wm.get("name", "")
         pattern = str(rigops_config.expand(wm.get("path", "")))
@@ -171,25 +84,20 @@ def check_watermarks(watermarks: list, backlog_path, areas: list, apply: bool,
             if not tripped:
                 status = "ok"
             elif not apply:
-                try:
-                    target = _backlog_for(d, transcripts_dir, backlog_p, reg)
-                    status = "would-append" if target is not None else "unrouted"
-                except OSError as exc:
-                    status = f"error: {exc}"
+                target = backlog_p
+                status = "would-append"
             else:
                 # One net around the whole append path: a failure here must
                 # degrade to a reported status, never abort a run whose
                 # deletions already happened.
                 try:
-                    target = _backlog_for(d, transcripts_dir, backlog_p, reg)
-                    text = target.read_text(encoding="utf-8") if target and target.exists() else ""
+                    target = backlog_p
+                    text = target.read_text(encoding="utf-8") if target.exists() else ""
                     # Anchored on both sides: a bare path prefix would let an open
                     # line for a file inside a watched directory dedupe the
                     # directory's own line, and vice versa.
                     needle = f"watermark {d} tripped:"
-                    if target is None:
-                        status = "unrouted"
-                    elif rigops_backlog.has_open_line(text, needle):
+                    if rigops_backlog.has_open_line(text, needle):
                         status = "deduped"
                     else:
                         today = datetime.now().strftime("%Y-%m-%d")

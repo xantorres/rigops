@@ -382,18 +382,13 @@ class CustomCheckTests(unittest.TestCase):
         })
         self.assertEqual(result["status"], "ok")
 
-    def test_realm_defaults_to_none(self):
-        result = doctor.run_custom_check({
-            "name": "t", "command": f"{sys.executable} -c 'pass'", "timeout_s": 5,
-        })
-        self.assertIsNone(result["realm"])
-
-    def test_realm_passes_through_from_config(self):
+    def test_result_has_no_realm_and_a_configured_realm_is_ignored(self):
         result = doctor.run_custom_check({
             "name": "t", "command": f"{sys.executable} -c 'import sys; sys.exit(9)'",
             "fail_exit": 9, "timeout_s": 5, "realm": "client",
         })
-        self.assertEqual(result["realm"], "client")
+        self.assertEqual(result["status"], "fail")
+        self.assertNotIn("realm", result)
 
     def test_fail_detail_is_first_nonempty_stdout_line(self):
         cmd = (f"{sys.executable} -c 'import sys; print(); print(\"first line\"); "
@@ -554,7 +549,7 @@ class GatesRecordTests(EnvIsolatedTestCase):
         self.assertEqual(record["gates"], [])
         self.assertRegex(record["ts"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
-    def test_failing_job_is_recorded_with_null_realm_and_empty_detail(self):
+    def test_failing_job_is_recorded_with_empty_detail(self):
         registry_path = _write_registry(self.tmp, FAILING_ITEM)
         with (
             mock.patch.object(launchd, "is_loaded", return_value=True),
@@ -563,7 +558,7 @@ class GatesRecordTests(EnvIsolatedTestCase):
             _run_doctor(["--registry", str(registry_path)])
         self.assertEqual(self._gates_record()["gates"], [
             {"kind": "job", "name": "job-failing", "status": "failing",
-             "realm": None, "detail": ""},
+             "detail": ""},
         ])
 
     def test_stale_job_is_recorded(self):
@@ -579,10 +574,10 @@ class GatesRecordTests(EnvIsolatedTestCase):
             _run_doctor(["--registry", str(registry_path)])
         self.assertEqual(self._gates_record()["gates"], [
             {"kind": "job", "name": "job-nolabel", "status": "stale",
-             "realm": None, "detail": ""},
+             "detail": ""},
         ])
 
-    def test_custom_check_gate_carries_its_configured_realm_and_detail(self):
+    def test_custom_check_gate_ignores_a_configured_realm(self):
         registry_path = _write_registry(self.tmp, OK_ITEM)
         Path(os.environ["RIGOPS_CONFIG"]).write_text(json.dumps({"doctor": {"checks": {"custom": [
             {"name": "probe", "command": f"{sys.executable} -c 'import sys; sys.exit(1)'",
@@ -595,7 +590,7 @@ class GatesRecordTests(EnvIsolatedTestCase):
             _run_doctor(["--registry", str(registry_path)])
         self.assertEqual(self._gates_record()["gates"], [
             {"kind": "check", "name": "probe", "status": "fail",
-             "realm": "client", "detail": "exit 1"},
+             "detail": "exit 1"},
         ])
 
     def test_ok_custom_check_is_not_a_gate(self):
@@ -630,7 +625,7 @@ class GatesRecordTests(EnvIsolatedTestCase):
         self._run_with_config_findings(registry_path, findings)
         self.assertEqual(self._gates_record()["gates"], [
             {"kind": "config", "name": "pointers", "status": "fail",
-             "realm": None, "detail": "2 findings"},
+             "detail": "2 findings"},
         ])
 
     def test_config_gate_is_warn_when_every_finding_is_a_warning(self):
@@ -640,7 +635,7 @@ class GatesRecordTests(EnvIsolatedTestCase):
         self._run_with_config_findings(registry_path, findings)
         self.assertEqual(self._gates_record()["gates"], [
             {"kind": "config", "name": "levers", "status": "warn",
-             "realm": None, "detail": "1 findings"},
+             "detail": "1 findings"},
         ])
 
     def test_unwritable_state_dir_warns_instead_of_failing_the_run(self):

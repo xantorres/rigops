@@ -10,13 +10,13 @@ import os
 import re
 from pathlib import Path
 
+from . import roots
+
 GLOB_CUT = re.compile(r"/?[*?\[].*$")
 
 
 def registry():
     """The registry that decides trust, or None when it is missing or unreadable."""
-    # Lazy: roots imports core, and core imports this module.
-    from rigops.retrieval import roots
 
     try:
         path = roots._expand(os.environ.get("REALM_REGISTRY") or roots.DEFAULT_REGISTRY)

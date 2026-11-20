@@ -7,9 +7,9 @@ caller chooses is a filter the caller can forget.
 
 Modules: ``roots`` (registry and realm resolution), ``chunk`` (section
 splitter), ``index`` (walker and writer), ``search`` (query, budget, prefetch),
-``log`` (retrieval log and its statistics).
+``log`` (retrieval log and its statistics), ``realm`` (trusted realm lookup).
 """
 
 from __future__ import annotations
 
-__all__ = ["roots", "chunk", "index", "search", "log"]
+__all__ = ["roots", "chunk", "index", "search", "log", "realm"]

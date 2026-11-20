@@ -14,6 +14,7 @@ from pathlib import Path
 
 from rigops import core
 
+from . import realm as realm_mod
 from . import search as search_mod
 
 DEFAULT_SPEC = "~/rig/eval/retrieval-probes.json"
@@ -65,7 +66,7 @@ def load(path=None, registry=None) -> dict:
     if not registry.roots:
         raise SystemExit(f"error: roots registry {registry.path} lists no roots")
     spec["merged"] = []
-    for realm_dir in core.realms_from_registry(registry):
+    for realm_dir in realm_mod.from_registry(registry):
         extra = realm_dir / "eval" / "retrieval-probes.json"
         if not extra.is_file():
             continue

@@ -81,7 +81,6 @@ def run_custom_check(check_cfg: dict) -> dict:
     timeout_s = check_cfg.get("timeout_s", 10)
     warn_exit = check_cfg.get("warn_exit")
     fail_exit = check_cfg.get("fail_exit")
-    realm = check_cfg.get("realm")
     try:
         out = subprocess.run(
             command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
@@ -89,20 +88,19 @@ def run_custom_check(check_cfg: dict) -> dict:
         )
         code = out.returncode
     except subprocess.TimeoutExpired:
-        return {"name": name, "status": "warn", "detail": f"timed out after {timeout_s}s",
-                "realm": realm}
+        return {"name": name, "status": "warn", "detail": f"timed out after {timeout_s}s"}
     except OSError as exc:
-        return {"name": name, "status": "fail", "detail": str(exc), "realm": realm}
+        return {"name": name, "status": "fail", "detail": str(exc)}
     if fail_exit is not None and code == fail_exit:
         return {"name": name, "status": "fail",
-                "detail": _first_stdout_line(out.stdout) or f"exit {code}", "realm": realm}
+                "detail": _first_stdout_line(out.stdout) or f"exit {code}"}
     if warn_exit is not None and code == warn_exit:
         return {"name": name, "status": "warn",
-                "detail": _first_stdout_line(out.stdout) or f"exit {code}", "realm": realm}
+                "detail": _first_stdout_line(out.stdout) or f"exit {code}"}
     if code == 0:
-        return {"name": name, "status": "ok", "detail": "exit 0", "realm": realm}
+        return {"name": name, "status": "ok", "detail": "exit 0"}
     return {"name": name, "status": "warn",
-            "detail": _first_stdout_line(out.stdout) or f"unexpected exit {code}", "realm": realm}
+            "detail": _first_stdout_line(out.stdout) or f"unexpected exit {code}"}
 
 
 def run_disk_free_check(check_cfg: dict) -> dict:
@@ -261,7 +259,7 @@ def report_config_checks(cfg: dict, args) -> int:
 
 def _job_gate_entries(jobs: list) -> list:
     return [
-        {"kind": "job", "name": j["id"], "status": j["status"], "realm": None, "detail": ""}
+        {"kind": "job", "name": j["id"], "status": j["status"], "detail": ""}
         for j in jobs if j["status"] in ("failing", "hung", "stale")
     ]
 
@@ -269,7 +267,7 @@ def _job_gate_entries(jobs: list) -> list:
 def _check_gate_entries(checks: list) -> list:
     return [
         {"kind": "check", "name": c["name"], "status": c["status"],
-         "realm": c.get("realm"), "detail": c["detail"]}
+         "detail": c["detail"]}
         for c in checks if c["status"] != "ok"
     ]
 
@@ -279,7 +277,7 @@ def _config_gate_entries(findings: list) -> list:
     for f in findings:
         by_check.setdefault(f.check, []).append(f)
     return [
-        {"kind": "config", "name": check, "realm": None, "detail": f"{len(group)} findings",
+        {"kind": "config", "name": check, "detail": f"{len(group)} findings",
          "status": "fail" if any(f.severity != "warn" for f in group) else "warn"}
         for check, group in sorted(by_check.items())
     ]

@@ -61,13 +61,12 @@ def main() -> int:
     areas = rigops_config.get(cfg, "backlog.areas", [])
 
     report = rigops_janitor.run_rules(rules, args.apply, max_delete)
-    transcripts_dir = rigops_config.expand(rigops_config.get(cfg, "transcripts_dir"))
     wm_results = rigops_janitor.check_watermarks(
-        watermarks, backlog_path, areas, args.apply, transcripts_dir
+        watermarks, backlog_path, areas, args.apply
     )
     # A scheduled run must fail loudly on partial errors, not report success.
     had_errors = any(r["errors"] for r in report["rules"]) or any(
-        w["status"].startswith("error:") or w["status"] == "unrouted" for w in wm_results
+        w["status"].startswith("error:") for w in wm_results
     )
 
     if args.json:
