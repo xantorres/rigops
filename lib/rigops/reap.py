@@ -67,12 +67,15 @@ from rigops.reap_procs import (  # noqa: F401
     kill_pids,
     log,
     orphan_daemons,
+    owned_entries,
+    owned_pids,
     path_claims,
     process_alive,
     processes_rooted_in,
     protected_pids,
     ps_snapshot,
     removal_blockers,
+    split_owned,
     verify_pid,
 )
 
@@ -856,6 +859,14 @@ def run(opts: Any) -> int:
             return
         for w in kill_result["would"]:
             print(f"WOULD-KILL pid={w['pid']} comm={w['comm']} match={w['match']} tree={w['tree']}")
+        for o in kill_result.get("owned", []):
+            print(f"SKIP-OWNED pid={o['pid']} comm={o['comm']} parent={o['parent']} "
+                  f"tree={o['tree']}")
+
+    def note_owned(kill_result: dict, label: str, owned: set[int]) -> None:
+        kill_result["owned"] = owned_entries(label, owned, snap)
+        if owned and opts.apply:
+            log(f"SKIP-OWNED tree={label} pids={','.join(str(p) for p in sorted(owned))}")
 
     def verdict_changed(wt: dict, res: dict, tree: str) -> bool:
         fresh = refresh_verdict(wt, res, opts, self_cwd,
@@ -890,9 +901,10 @@ def run(opts: Any) -> int:
             if opts.apply and verdict_changed(wt, res, tree):
                 continue
             rooted_all = processes_rooted_in(tree, snap, cwds)
-            rooted = _filter_killable(rooted_all, snap)
+            rooted, owned = split_owned(rooted_all, snap)
             tags = _match_tags(tree, rooted, snap, cwds)
             kr = kill_pids(tree, tags, snap, real_apply, opts.max_kills_per_tree, opts.kill_grace_s)
+            note_owned(kr, tree, owned)
             res["kills"].append(kr)
             killed_total += kr["killed"]
             kill_failed_total += kr["kill_failed"]
@@ -905,8 +917,11 @@ def run(opts: Any) -> int:
                     pids = ",".join(str(b["pid"]) for b in blockers)
                     wt["blockers"] = [b["pid"] for b in blockers]
                     if not opts.json:
+                        owned_note = (" (owned by a live process outside the tree, not signalled)"
+                                      if kr.get("owned") else "")
                         print(f"skip: {Path(wt['path']).name} -- "
-                              f"{len(blockers)} live process(es) block removal (pids: {pids})")
+                              f"{len(blockers)} live process(es) block removal "
+                              f"(pids: {pids}){owned_note}")
                     log(f"SKIP-LIVE tree={tree} pids={pids}")
                     continue
                 if not opts.dry_run and verdict_changed(wt, res, tree):
@@ -931,10 +946,12 @@ def run(opts: Any) -> int:
         stale_dirs = [] if porcelain is None else stale_worktree_dirs(
             repo, registered, live_worktree_cwds(opts.sessions_dir))
         for stale_path in stale_dirs:
-            rooted = _filter_killable(processes_rooted_in(stale_path, snap, cwds), snap)
+            rooted, owned = split_owned(processes_rooted_in(stale_path, snap, cwds), snap)
             tags = _match_tags(stale_path, rooted, snap, cwds)
-            kr = kill_pids(f"stale={stale_path}", tags, snap, real_apply,
+            label = f"stale={stale_path}"
+            kr = kill_pids(label, tags, snap, real_apply,
                            opts.max_kills_per_tree, opts.kill_grace_s)
+            note_owned(kr, label, owned)
             res["kills"].append(kr)
             killed_total += kr["killed"]
             kill_failed_total += kr["kill_failed"]

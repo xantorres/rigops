@@ -10,7 +10,7 @@ What's first-class on which platform, the version floors, and exactly what CI co
 | `rigops doctor` | `--supervisor launchd` (default) - full runtime/exit-code judgment via `launchctl`. | `--supervisor none` only - evidence-file-age judgment, no runtime/exit-code signal (no `launchctl` to ask). Not auto-detected by the CLI itself: pass `--supervisor none` explicitly when running by hand. |
 | Scheduled jobs | `install.sh` installs launchd jobs: `doctor` (passes `--exit-zero`; report-only unless installed with `--heal`) every 30 min and `ledger write` weekly Monday 09:05 by default; `janitor --apply` (Sunday 10:00) and `reap --apply` (daily 08:30) only through `--jobs`. | No installer-managed scheduler. `templates/cron/crontab.example` ships as a starting point - **unverified**, read it before use. |
 | Plugin hooks | Full. | Full - pure bash, no `jq`, nothing macOS-specific. |
-| `rigops reap` | Full - process matching via `ps`/`lsof`. | Full - the same `ps`/`lsof` parsing handles both tty formats (`??` on macOS, `?` on Linux; both are stripped to detect "no controlling tty"). |
+| `rigops reap` | Full - process matching via `ps`/`lsof`. | Full - the same `ps`/`lsof` parsing handles both tty formats (`??` on macOS, `?` on Linux; both are stripped to detect "no controlling tty"). A process is killed only when reparented to pid 1; with a per-user service manager (systemd `--user`), orphans go to that manager instead, so reap leaves them alone and keeps the tree. |
 
 `install.sh` itself: when `launchctl` isn't found on PATH, it automatically behaves as `--no-jobs` and prints a note pointing at the cron template - see [INSTALL.md](INSTALL.md#linux).
 
