@@ -19,7 +19,7 @@ from rigops import cli  # noqa: E402
 from rigops import config as rigops_config  # noqa: E402
 from rigops import core as rigops_core  # noqa: E402
 from rigops import doctor as config_checks  # noqa: E402
-from rigops import fmt, guard_state, launchd, state  # noqa: E402
+from rigops import fmt, guard_state, launchd, procgroup, state  # noqa: E402
 from rigops import notify as rigops_notify  # noqa: E402
 from rigops import registry as rigops_registry  # noqa: E402
 from rigops.judge import (  # noqa: E402,F401
@@ -92,10 +92,7 @@ def run_custom_check(check_cfg: dict) -> dict:
     warn_exit = check_cfg.get("warn_exit")
     fail_exit = check_cfg.get("fail_exit")
     try:
-        out = subprocess.run(
-            command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-            timeout=timeout_s, text=True, errors="replace",
-        )
+        out = procgroup.run_group(command, shell=True, timeout=timeout_s)
         code = out.returncode
     except subprocess.TimeoutExpired:
         return {"name": name, "status": "warn", "detail": f"timed out after {timeout_s}s"}

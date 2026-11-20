@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from rigops import config as rigops_config
+from rigops import procgroup
 from rigops.watermarks import check_watermarks  # noqa: F401
 
 DELETE_ACTIONS = ("delete", "keep_newest_n")
@@ -312,9 +313,7 @@ def _run_command_rule(rule: dict, apply: bool) -> dict:
     command = rule.get("command", "")
     timeout_s = rule.get("timeout_s", 120)
     try:
-        proc = subprocess.run(
-            ["/bin/sh", "-c", command], capture_output=True, text=True, timeout=timeout_s,
-        )
+        proc = procgroup.run_group(["/bin/sh", "-c", command], timeout=timeout_s)
     except subprocess.TimeoutExpired:
         return {
             "name": name, "action": "command", "path": path, "matched": [], "acted": 0,
