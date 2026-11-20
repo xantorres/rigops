@@ -327,8 +327,8 @@ def main(argv=None) -> int:
     ap.add_argument(
         "--config-only", action="store_true",
         help=(
-            "run only the config checks (pointers, budget, plans, render, "
-            "levers) and skip the fleet"
+            "run only the config checks (agents, budget, levers, mcp, memory, "
+            "pointers) and skip the fleet"
         ),
     )
     ap.add_argument(
@@ -580,7 +580,7 @@ def main(argv=None) -> int:
         _save_json(notify_stamps_path, stamps)
 
     # Written every run, gates or none: an empty list still proves the doctor ran,
-    # which is what a card reading it needs to tell "clean" from "never checked".
+    # which is what the session-start hook reading it needs to tell "clean" from "never checked".
     try:
         _save_json(gates_path, {"version": 1, "ts": ts, "gates": gates})
     except OSError as exc:

@@ -205,16 +205,6 @@ Case format, regression rules and CI wiring: [docs/EVAL.md](docs/EVAL.md).
 
 ## Other commands
 
-### `rigops render`
-
-`rigops render` writes one source tree onto every surface that consumes it. `--check` reports drift without writing, and `doctor` turns that drift into findings. Targets and check semantics: [docs/RENDER.md](docs/RENDER.md).
-
-### `rigops retrieval`
-
-`rigops retrieval` keeps one FTS5 index of sections over every tree a roots registry claims; `build` rebuilds it and `update` re-indexes what changed. `search` ranks sections for a query: `--scope` narrows it (vault, brain, memory, plans, repo, rig or all; repeat it or comma-separate), `--top` caps the hits (default 10), `--budget` caps the returned text in tokens, and `--format` picks compact, snippet, paths, claims or json. `prefetch` takes realm and scopes from the working directory, never widens them, and stays silent below a score threshold; it returns at most 3 hits within 400 tokens. `--top` and the roots registry's `prefetch.max_rows` both cap the hits, so the lower of the two wins, and `--budget` sets the token ceiling; `--format json` prints the hits as JSON. Both cut each snippet at `--max-len` characters and take the realm from `--cwd` instead of the working directory.
-
-`roots` shows what the working directory may read and what is indexed. `stats` reports latency, fallback rate and prefetch silence over the last `--days` (default 7). `probe` scores a labelled question suite and exits 1 when precision drops, a row crosses a realm, a realm has fewer probes than the suite's minimum (default 5), the suite is empty, or the suite or roots registry can't be read. `probe --file` scores only that suite, where the default run also merges in every realm's own, and `--top` sets how deep a probe's expected path may rank (default 3). `--no-log` on `search`, `prefetch` and `probe` keeps a run out of the retrieval log. `--write` on `stats` and `probe` appends the summary to `retrieval-stats.jsonl` in the state directory, and `--json` on `roots`, `stats` and `probe` prints JSON. `--db` and `--registry` go before the subcommand and point any subcommand at another index or roots registry.
-
 ### `rigops mine`
 
 `rigops mine --dry-run` calls no model and writes nothing: it reports the corrections that repeat across sessions over a window (`--since`, default 90d), with paths, amounts, domains, ids and addresses masked. `--min-sessions` sets how many sessions a group has to span (default 2; 1 lists one-off corrections too), and `--transcripts-dir` reads a tree other than `transcripts_dir`. It needs no registry or index; list your own client names in `~/.config/rigops/redaction-patterns.txt` to mask them.
@@ -277,7 +267,7 @@ Two halves, one config.
 
 **Plugin half** - a Claude Code marketplace plugin: five commands (`/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:backlog`, `/rigops:week`), two skills (`ops-loop`, `fleet-triage`), and two hooks (`rigops hook session-start` prints one stale-gates line, `rigops hook user-prompt-submit` nudges on context size). The statusline is an example in `patterns/statusline/`, not an installed part. The `rg -r`/`-rn`/`-rl` guard and the skill-forcing gate that used to ship here now live in the user's own dispatcher: which workflow a prompt must go through is rig policy, and two copies of one gate is one copy too many. Zero daemons. No agents - deliberately; which subagent handles a task is a decision that belongs to the rig, not to rigops.
 
-**Script half** - the `rigops` CLI (`eit`, `ledger`, `eval`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`, `card`, `nudge`, `render`, `retrieval`, `mine`, `hook`, `version`), plus hardened launchd templates for the `doctor`, `ledger`, `janitor` and `reap` jobs, and a cron template for Linux hosts (unverified).
+**Script half** - the `rigops` CLI (`eit`, `ledger`, `eval`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`, `mine`, `hook`, `version`), plus hardened launchd templates for the `doctor`, `ledger`, `janitor` and `reap` jobs, and a cron template for Linux hosts (unverified).
 
 Both halves read the same `~/.config/rigops/config.json` (keys: [docs/CONFIG.md](docs/CONFIG.md)). Runtime state lives under `~/.local/state/rigops/`.
 
@@ -310,7 +300,6 @@ Python 3.9+, stdlib only. Full matrix: [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MAT
 - [docs/LEDGER.md](docs/LEDGER.md)
 - [docs/EVAL.md](docs/EVAL.md)
 - [docs/REGISTRY.md](docs/REGISTRY.md)
-- [docs/RENDER.md](docs/RENDER.md)
 - [docs/SAFETY.md](docs/SAFETY.md)
 - [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MATRIX.md)
 - [patterns/](patterns/) - the ideas, portable without the code: drift-ledger, context-tax, job-registry, hardened-launchd, tiered-refresh, auth-probe-gating, scope-gated-hooks, statusline.

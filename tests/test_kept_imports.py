@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-LEAVING = (
+REMOVED = (
     "lib/rigops/retrieval",
     "lib/rigops/render",
     "lib/rigops/context",
@@ -26,10 +26,6 @@ LEAVING_MODULES = (
     "rigops.mine_dedupe",
     "rigops.mine_es",
 )
-
-
-def _is_leaving(rel: str) -> bool:
-    return any(rel == p or rel.startswith(p + "/") for p in LEAVING)
 
 
 def _package(rel: str) -> list:
@@ -72,7 +68,7 @@ def _kept_modules() -> list:
         head = script.read_bytes()[:64].split(b"\n", 1)[0]
         if script.is_file() and head.startswith(b"#!") and b"python" in head:
             rels.append(str(script.relative_to(ROOT)))
-    return [r for r in rels if not _is_leaving(r)]
+    return rels
 
 
 class KeptImportsTests(unittest.TestCase):
@@ -84,9 +80,9 @@ class KeptImportsTests(unittest.TestCase):
                 bad[rel] = found
         self.assertEqual(bad, {})
 
-    def test_leaving_entries_exist(self):
-        missing = [p for p in LEAVING if not (ROOT / p).exists()]
-        self.assertEqual(missing, [])
+    def test_removed_paths_stay_removed(self):
+        present = [p for p in REMOVED if (ROOT / p).exists()]
+        self.assertEqual(present, [])
 
 
 if __name__ == "__main__":

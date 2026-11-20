@@ -608,6 +608,48 @@ seed_old_install - 1
 uninstall_old "created"
 [ -e "$SETTINGS" ] && fail "uninstall left the settings.json it created: $(cat "$SETTINGS")"
 
+echo "smoke: uninstall of a 0.10 prefix removes the files this version no longer ships"
+python3 - "$STATUSLINE_HOME" <<'PYEOF'
+import hashlib
+import json
+import os
+import sys
+
+home = sys.argv[1]
+prefix = home + "/.local/share/rigops"
+rels = ("libexec/rigops-card", "libexec/rigops-nudge", "libexec/rigops-render",
+        "libexec/rigops-retrieval", "lib/rigops/retrieval/index.py", "lib/rigops/render/claude.py",
+        "lib/rigops/context/card.py", "lib/rigops/mine_dedupe.py", "lib/rigops/mine_es.py",
+        "lib/rigops/doctor/check_plans.py", "lib/rigops/doctor/check_realms.py",
+        "lib/rigops/doctor/check_render.py")
+files = []
+for rel in rels:
+    path = prefix + "/" + rel
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    body = ("retired " + rel + "\n").encode()
+    with open(path, "wb") as fh:
+        fh.write(body)
+    files.append({"path": rel, "sha256": hashlib.sha256(body).hexdigest()})
+manifest = {
+    "version": "0.10.1", "home": home, "prefix": prefix,
+    "config_dir": home + "/.config/rigops", "state_dir": home + "/.local/state/rigops",
+    "log_dir": home + "/Library/Logs/rigops", "config_file_external": "",
+    "state_dir_external": "", "files": files, "symlinks": [], "jobs": [], "scaffolded": [],
+}
+with open(prefix + "/install.manifest.json", "w", encoding="utf-8") as fh:
+    json.dump(manifest, fh, indent=2, sort_keys=True)
+PYEOF
+uninstall_old "retired-files"
+for rel in libexec/rigops-card libexec/rigops-nudge libexec/rigops-render libexec/rigops-retrieval \
+    lib/rigops/retrieval/index.py lib/rigops/render/claude.py lib/rigops/context/card.py \
+    lib/rigops/mine_dedupe.py lib/rigops/mine_es.py lib/rigops/doctor/check_plans.py \
+    lib/rigops/doctor/check_realms.py lib/rigops/doctor/check_render.py; do
+    [ -e "$OLD_PREFIX/$rel" ] && fail "uninstall of a 0.10 prefix left $rel"
+done
+for dir in lib/rigops/retrieval lib/rigops/render lib/rigops/context; do
+    [ -d "$OLD_PREFIX/$dir" ] && fail "uninstall of a 0.10 prefix left the $dir directory"
+done
+
 echo "smoke: uninstall writes through a symlinked settings.json"
 DOTFILE="$STATUSLINE_HOME/dotfiles/settings.json"
 mkdir -p "$STATUSLINE_HOME/dotfiles"

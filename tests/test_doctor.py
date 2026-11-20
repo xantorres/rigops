@@ -1327,11 +1327,11 @@ class WarningSeverityTests(unittest.TestCase):
 class ConfigOnlyStagedTests(unittest.TestCase):
     """--staged asserts the commit is sound, not that the whole tree is quiet."""
 
-    GOOD = "---\nstatus: active\ndate: 2026-01-01\ntopic: something\n---\n\nbody\n"
-    BROKEN = "prose with no frontmatter block\n"
+    GOOD = "nothing to point at\n"
+    BROKEN = "see /opt/nonexistent-doctor-staged/missing-file.txt\n"
 
     def _repo(self, tmp):
-        root = Path(tmp) / "plans"
+        root = Path(tmp) / "notes"
         root.mkdir()
         for argv in (
             ("init", "-q", "-b", "main"),
@@ -1347,7 +1347,10 @@ class ConfigOnlyStagedTests(unittest.TestCase):
         subprocess.run(["git", "-C", str(root), *argv], check=True, capture_output=True)
 
     def _run(self, root, argv):
-        cfg = {"doctor": {"plans": {"dir": str(root)}}}
+        cfg = {"doctor": {"pointers": {
+            "sources": [str(root / "*.md")],
+            "ignore_prefixes": ["/this-prefix-matches-nothing-doctor-test"],
+        }}}
         buf = io.StringIO()
         cwd = os.getcwd()
         os.chdir(root)
@@ -1363,7 +1366,7 @@ class ConfigOnlyStagedTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = self._repo(tmp)
             (root / "in-flight.md").write_text(self.BROKEN)
-            code, out = self._run(root, ["--config-only", "--staged", "--check", "plans"])
+            code, out = self._run(root, ["--config-only", "--staged", "--check", "pointers"])
         self.assertEqual(code, 0)
         self.assertIn("0 findings", out)
 
@@ -1378,9 +1381,9 @@ class ConfigOnlyStagedTests(unittest.TestCase):
             self._git(root, "add", "plan.md")
             plan.write_text(self.BROKEN)
             staged_code, staged_out = self._run(
-                root, ["--config-only", "--staged", "--check", "plans"],
+                root, ["--config-only", "--staged", "--check", "pointers"],
             )
-            live_code, _ = self._run(root, ["--config-only", "--check", "plans"])
+            live_code, _ = self._run(root, ["--config-only", "--check", "pointers"])
         self.assertEqual((staged_code, live_code), (0, 1))
         self.assertIn("0 findings", staged_out)
 
@@ -1389,9 +1392,9 @@ class ConfigOnlyStagedTests(unittest.TestCase):
             root = self._repo(tmp)
             (root / "plan.md").write_text(self.BROKEN)
             self._git(root, "add", "plan.md")
-            code, out = self._run(root, ["--config-only", "--staged", "--check", "plans"])
+            code, out = self._run(root, ["--config-only", "--staged", "--check", "pointers"])
         self.assertEqual(code, 1)
-        self.assertIn("missing frontmatter", out)
+        self.assertIn("does not resolve", out)
 
     def test_staged_outside_config_only_is_refused(self):
         with self.assertRaises(SystemExit):

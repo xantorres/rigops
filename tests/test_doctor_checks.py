@@ -19,9 +19,7 @@ from rigops.doctor import (  # noqa: E402
     check_budget,
     check_levers,
     check_mcp,
-    check_plans,
     check_pointers,
-    check_render,
     pointer_grammar,
 )
 
@@ -73,7 +71,7 @@ class FindingLineTests(unittest.TestCase):
 class DiscoverNamesTests(unittest.TestCase):
     def test_names_contains_expected_checks(self):
         found = set(doctor.names())
-        self.assertTrue({"budget", "plans", "pointers"}.issubset(found))
+        self.assertTrue({"budget", "pointers"}.issubset(found))
         self.assertTrue({"imports", "rtk"}.isdisjoint(found))
 
     def test_discover_modules_expose_run_and_area(self):
@@ -81,86 +79,6 @@ class DiscoverNamesTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertTrue(callable(getattr(module, "run", None)))
                 self.assertIsInstance(getattr(module, "AREA", None), str)
-
-
-class CheckPlansTests(unittest.TestCase):
-    def _cfg(self, plans_dir):
-        return {"doctor": {"plans": {"dir": str(plans_dir)}}}
-
-    def test_well_formed_active_plan_no_finding(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "my-plan.md").write_text(
-                "---\nstatus: active\ndate: 2026-01-01\ntopic: something\n---\n\nbody\n"
-            )
-            findings = check_plans.run(self._cfg(root))
-            self.assertEqual(findings, [])
-
-    def test_missing_frontmatter_names_status_date_topic(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "no-frontmatter.md").write_text("just prose, no frontmatter block\n")
-            findings = check_plans.run(self._cfg(root))
-            self.assertEqual(len(findings), 1)
-            self.assertIn("status, date, topic", findings[0].symptom)
-
-    def test_done_outside_archive_is_unarchived(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "done-plan.md").write_text(
-                "---\nstatus: done\ndate: 2026-01-01\ntopic: something\n---\n\nbody\n"
-            )
-            findings = check_plans.run(self._cfg(root))
-            self.assertEqual([f.key for f in findings], ["unarchived:done-plan.md"])
-
-    def test_done_inside_archive_has_no_unarchived_finding(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            archive = root / "archive"
-            archive.mkdir()
-            (archive / "done-plan.md").write_text(
-                "---\nstatus: done\ndate: 2026-01-01\ntopic: something\n---\n\nbody\n"
-            )
-            findings = check_plans.run(self._cfg(root))
-            self.assertEqual(findings, [])
-
-    def test_active_inside_archive_is_flagged(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            archive = root / "archive"
-            archive.mkdir()
-            (archive / "active-plan.md").write_text(
-                "---\nstatus: active\ndate: 2026-01-01\ntopic: something\n---\n\nbody\n"
-            )
-            findings = check_plans.run(self._cfg(root))
-            self.assertEqual([f.key for f in findings], ["active-in-archive:active-plan.md"])
-
-    def test_uppercase_or_spaced_filename_is_flagged_kebab_case(self):
-        body = "---\nstatus: active\ndate: 2026-01-01\ntopic: something\n---\n\nbody\n"
-        for name in ("MyPlan.md", "my plan.md"):
-            with self.subTest(name=name):
-                with tempfile.TemporaryDirectory() as tmp:
-                    root = Path(tmp)
-                    (root / name).write_text(body)
-                    findings = check_plans.run(self._cfg(root))
-                    self.assertEqual([f.key for f in findings], [f"name:{name}"])
-
-    def test_quoted_and_commented_frontmatter_values_read_as_their_value(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "quoted.md").write_text(
-                '---\nstatus: "done"\ndate: "2026-01-01"  # closed\ntopic: something\n---\n'
-            )
-            findings = check_plans.run(self._cfg(root))
-        self.assertEqual([f.key for f in findings], ["unarchived:quoted.md"])
-
-    def test_readme_and_backlog_are_exempt(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "README.md").write_text("junk, no frontmatter\n")
-            (root / "backlog.md").write_text("junk, no frontmatter\n")
-            findings = check_plans.run(self._cfg(root))
-            self.assertEqual(findings, [])
 
 
 class CheckBudgetTests(unittest.TestCase):
@@ -443,13 +361,6 @@ class CheckPointersTests(unittest.TestCase):
         self.assertTrue(all(f.evidence == label for f in findings))
 
 
-class CheckRenderTests(unittest.TestCase):
-    def test_missing_source_dir_yields_no_findings(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            cfg = {"render": {"source": str(Path(tmp) / "does-not-exist")}}
-            self.assertEqual(check_render.run(cfg), [])
-
-
 class OverlayTests(unittest.TestCase):
     """Content handed to the checks instead of what is on disk."""
 
@@ -497,23 +408,6 @@ class StagedIndexTests(unittest.TestCase):
             found_root, files = core.staged_index(Path(tmp))
         self.assertIsNone(found_root)
         self.assertEqual(files, {})
-
-
-class CheckPlansRootTests(unittest.TestCase):
-    """A configured root that is gone is a defect; a default one that is gone is not."""
-
-    def test_configured_plans_dir_that_is_gone_is_reported(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            absent = Path(tmp) / "absent"
-            findings = check_plans.run({"doctor": {"plans": {"dir": str(absent)}}})
-        self.assertEqual([f.key for f in findings], [f"dir:{core.expand(absent)}"])
-
-    def test_default_plans_dir_that_is_gone_is_silent(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            absent = str(Path(tmp) / "absent")
-            with mock.patch.object(check_plans, "DEFAULT_DIR", absent):
-                findings = check_plans.run({})
-        self.assertEqual(findings, [])
 
 
 class CheckPointersRootTests(unittest.TestCase):
@@ -632,28 +526,6 @@ class CheckPointersPluginIdTests(unittest.TestCase):
 
 
 class CheckBudgetMembersTests(unittest.TestCase):
-    def test_a_registered_repo_instruction_file_is_not_counted(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            claude_dir = Path(tmp) / "claude"
-            (claude_dir / "rules").mkdir(parents=True)
-            repo = Path(tmp) / "repo"
-            repo.mkdir()
-            (repo / "CLAUDE.md").write_text("x" * 400)
-            source = Path(tmp) / "rig"
-            (source / "registry").mkdir(parents=True)
-            (source / "registry" / "roots.json").write_text(
-                json.dumps({"pointer_repos": [str(repo)]})
-            )
-            cfg = {
-                "render": {"source": str(source)},
-                "doctor": {"budget": {"always_on_tokens": 10}},
-            }
-            with mock.patch.object(core, "CLAUDE_DIR", claude_dir):
-                members = check_budget.members()
-                findings = check_budget.run(cfg)
-        self.assertEqual(members, [])
-        self.assertEqual(findings, [])
-
     def test_law_always_on_rule_and_memory_index_are_counted(self):
         with tempfile.TemporaryDirectory() as tmp:
             claude_dir = Path(tmp) / "claude"
@@ -1088,18 +960,6 @@ class CheckAgentsTests(unittest.TestCase):
             with mock.patch.object(core, "CLAUDE_DIR", Path(tmp)):
                 self.assertEqual(check_agents.run({}), [])
 
-    def test_agents_under_a_render_source_are_not_read(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            source = Path(tmp) / "rig"
-            (source / "agents").mkdir(parents=True)
-            (source / "agents" / "liar.md").write_text(
-                "---\nname: liar\ndescription: Triage.\ntools: [read, edit]\n---\nRead-only.\n"
-            )
-            claude_dir = Path(tmp) / "claude"
-            claude_dir.mkdir()
-            with mock.patch.object(core, "CLAUDE_DIR", claude_dir):
-                self.assertEqual(check_agents.run({"render": {"source": str(source)}}), [])
-
     def test_a_purpose_field_is_not_consulted(self):
         findings = self._run(liar=(
             "---\nname: liar\npurpose: Read-only triage.\ntools: [read, edit]\n---\nTriage.\n"
@@ -1113,7 +973,7 @@ class RunChecksTests(unittest.TestCase):
             raise RuntimeError("check is broken")
 
         with mock.patch.object(check_budget, "run", explode):
-            findings = doctor.run_checks({}, only={"budget", "plans"})
+            findings = doctor.run_checks({}, only={"budget", "pointers"})
         self.assertEqual([f.key for f in findings if f.check == "budget"], ["crashed"])
 
 

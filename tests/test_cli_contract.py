@@ -142,13 +142,6 @@ class CliContractTests(unittest.TestCase):
             "rules": [], "total_deleted": 0, "watermarks": [], "apply": False,
         })
 
-    def test_render_json_without_check_is_a_usage_error(self):
-        proc = self.run_cmd("render", "claude", "--json", "--home", str(self.home))
-
-        self.assertEqual(proc.returncode, 2)
-        self.assertIn("--json", proc.stderr)
-        self.assertEqual(proc.stdout, "")
-
     def test_reap_dry_run_without_apply_is_a_usage_error(self):
         proc = self.run_cmd("reap", "--dry-run")
 
@@ -216,8 +209,6 @@ class CliContractTests(unittest.TestCase):
     def test_every_command_answers_help_with_exit_0_under_an_empty_home(self):
         commands = sorted(p.name.removeprefix("rigops-") for p in LIBEXEC.glob("rigops-*"))
 
-        self.assertIn("render", commands)
-        self.assertIn("retrieval", commands)
         for cmd in commands:
             with self.subTest(cmd=cmd):
                 proc = self.run_cmd(cmd, "--help")

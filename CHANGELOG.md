@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rigops janitor` no longer routes watermarks to realm backlogs and has no `unrouted` status, so it no longer exits non-zero for one. Every tripped watermark goes to `backlog.path`.
 - Gate records and custom doctor check results no longer carry `realm`; a `realm` on `checks.custom[]` is accepted and ignored.
 - The public redaction pattern file moved from `tools/` to `lib/rigops/redaction-patterns.public.txt`. Point any script that read the old path at the new one.
+- `rigops card` is removed. Nothing in rigops replaces it; the session-start hook prints the stale-gates line. The 0.10.1 sources stay in git history at tag `v0.10.1`.
+- `rigops nudge` is removed, with its prompt-time retrieval prefetch. Nothing in rigops replaces it; the context-size nudge stays in `rigops hook user-prompt-submit`. The 0.10.1 sources stay in git history at tag `v0.10.1`.
+- `rigops render` is removed. Nothing in rigops replaces it, and its `--check` drift findings are gone with the `render` doctor check. The 0.10.1 sources stay in git history at tag `v0.10.1`.
+- `rigops retrieval` is removed, with the roots registry, the realm model and the FTS5 index. Nothing in rigops replaces it. The 0.10.1 sources stay in git history at tag `v0.10.1`.
+- The `plans`, `realms` and `render` doctor checks are removed, and `doctor --config-only` no longer runs them. Nothing in rigops replaces them. The 0.10.1 sources stay in git history at tag `v0.10.1`.
+- These config keys are ignored: `render.source`, `doctor.plans.dir`, `context.prompt_nudge`, `context.nudges_path`, `context.card.max_tokens` and the `context.preload` keys. Only `context.card.doctor_max_age_h` is still read, by the hook. The `needs` and `prefetch` keys of a roots registry are unread with the registry.
 
 ### Added
 
@@ -54,6 +60,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `rigops mine` report drops memory dedupe and realm labels: every group over the session threshold is listed, with no `realm:` or `nearest memory:` line and no "Dropped as already in memory" section.
 - Registry `client_tokens` are no longer masked in the report; list client names in the private pattern files instead.
 - The public redaction pattern file moved from `tools/` to `lib/rigops/redaction-patterns.public.txt` and installs with the package.
+
+### Removed
+
+- `rigops card`, `rigops nudge`, `rigops render` and `rigops retrieval`, with their libexec scripts, the `retrieval`, `render` and `context` packages and `docs/RENDER.md`.
+- The `plans`, `realms` and `render` doctor checks.
+- `rigops mine`'s memory dedupe and Spanish modules (`mine_dedupe`, `mine_es`).
+- The matching config keys and example entries (`render`, `context.prompt_nudge`, `context.nudges_path`, `context.card.max_tokens`, `context.preload`, `doctor.plans.dir`).
 
 ## [0.10.1] - 2026-11-20
 

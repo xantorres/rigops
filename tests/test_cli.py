@@ -38,6 +38,15 @@ class VersionTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("version", proc.stdout)
 
+    def test_usage_lists_exactly_the_twelve_visible_commands(self):
+        proc = _run("help")
+
+        listed = [line.strip() for line in proc.stdout.split("commands:\n", 1)[1].splitlines()]
+        self.assertEqual(sorted(listed), [
+            "authprobe", "backlog", "config", "doctor", "eit", "eval", "janitor",
+            "ledger", "mine", "reap", "tax", "version",
+        ])
+
     def test_unknown_command_still_fails(self):
         proc = _run("--nope")
 

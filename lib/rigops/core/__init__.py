@@ -24,7 +24,7 @@ from rigops import transcripts as _transcripts
 HOME = Path(os.path.expanduser("~"))
 CLAUDE_DIR = HOME / ".claude"
 
-# The doctor writes this record and stamp; the card reads both.
+# The doctor writes this record and stamp; the session-start hook reads both.
 GATES_STATE_NAME = "doctor/gates.json"
 UTC_STAMP = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -68,7 +68,7 @@ def state_dir() -> Path:
 
 def local_state_path(name: str) -> Path:
     """XDG state path for `name`, outside `~/.claude` even when RIGOPS_STATE_DIR
-    points inside it: retrieval's log and doctor's gate record both need state
+    points inside it: the doctor's gate record and the hook's nudge state need state
     that never lands under a directory a shared-state override might sync.
     Resolution only -- a caller that writes here creates its own parent dir,
     so a reader is never at the mercy of a writer's mkdir failing."""

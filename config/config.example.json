@@ -79,7 +79,6 @@
     "path": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
     "keychain_service": ""
   },
-  "render": {"source": "~/rig"},
   "eval": {
     "cases_dir": "~/projects/myapp/eval/cases",
     "system_file": "~/projects/myapp/prompts/system.md",

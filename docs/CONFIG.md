@@ -113,7 +113,7 @@ Scopes the ledger's interaction-friction columns (`denials`, `denials_headless`,
 
 ## `context`
 
-Config for the plugin's `rigops hook` command, the statusline example, `rigops card` (the `doctor` section below documents the gates record it reads) and `rigops nudge`. Run by hand, `rigops card` and `rigops nudge "<prompt>"` print what their hook would for the working directory, or for the one `--cwd` names; `nudge --no-log` keeps its prefetch out of the retrieval log. Both take `--registry` to read another roots registry. `card --json` prints the card as JSON, and `nudge --json` prints the run's metadata without the text. Under `--hook` each reads its hook's JSON payload on stdin (SessionStart for `card`; UserPromptSubmit, prompt included, for `nudge`), takes the working directory from it, and exits 0 even on an error.
+Config for the plugin's `rigops hook` command and the statusline example (the `doctor` section below documents the gates record the hook reads).
 
 - `nudge_tiers` (`array<int>`, minimum 3 items, default `[250000, 350000, 500000]`) - ascending token thresholds: low / heavy / critical.
 - `rearm_tokens` (`int`, default `50000`) - token climb past the lowest tier required to re-fire the nudge after it's already fired once in a session.
@@ -124,24 +124,10 @@ Config for the plugin's `rigops hook` command, the statusline example, `rigops c
 {"context": {"nudge_tiers": [250000, 350000, 500000], "rearm_tokens": 50000}}
 ```
 
-- `nudges_path` (`string`, default: `nudges.json` beside the roots registry file) - the nudge declarations `rigops nudge` matches a prompt against: `{"version": 1, "budget": 400, "repeat_after": 20, "nudges": [{"name": str, "pattern": <ERE>, "flags": "i"|"", "say": str, "realms": [str]?}]}`. A malformed entry (an uncompilable pattern, a missing or non-string `name`/`pattern`/`say`, a non-string `flags`, or a `realms` that isn't a list of strings -- `null` for either means unset) is skipped with a warning on stderr, and a file that isn't a JSON object or whose `nudges` isn't a list is ignored the same way; a missing file also means no nudges (the prefetch below still runs). `budget` (token ceiling for the matched `say` lines) and `repeat_after` (prompts before a nudge that already fired in this session can fire again) both fall back to the numbers shown when omitted or not non-negative integers; `--budget` on the command line wins over both.
-- `card.max_tokens` (`int`, default `250`) - token ceiling for the whole `rigops card` SessionStart summary; scope-note lines, then need lines, are dropped from the end (never the header, the stale line or the budget line) until it fits.
-- `card.doctor_max_age_h` (`int`, default `2`) - a doctor gate record (see the `doctor` section below) older than this adds a "doctor gates last recorded `<N>`h ago" item to the card's `stale:` line and is the age the session-start hook (`rigops hook`) treats as a stale gate record.
-- `needs` (a roots registry key, not a `config.json` key; default unset) - `{"<realm>": [{"need": str, "route": str, "skills": [str]}], "mixed": [...]}`; `rigops card` prints `- need <need>: <route>` under its search line for each entry of the cwd's realm and then of `mixed`, at most 15, and none for an unmapped cwd. An entry that is not an object or lacks a `need` or `route` is skipped; `skills` is not printed.
-- `preload.law` (`string`, default `~/.claude/CLAUDE.md`) - the always-loaded instruction file `rigops card` counts toward its preload estimate.
-- `preload.fixed_tokens` (`int`, default `0`) - a flat addition to that estimate for surfaces the card cannot read itself (skill listing, agent descriptions, plugin session-start text).
-- `preload.budget_tokens` (`int` or `{realm: int}`, default unset) - ceiling for the preload estimate; unset means `rigops card` never prints a `budget:` line. A map is looked up by the cwd's realm; a realm missing from the map is treated the same as unset, for that realm.
+- `card.doctor_max_age_h` (`int`, default `2`) - a doctor gate record (see the `doctor` section below) older than this is a stale gate record to the session-start hook (`rigops hook`), which says so.
 
 ```json
-{
-  "context": {
-    "prompt_nudge": true,
-    "nudges_path": "~/rig/registry/nudges.json",
-    "card": {"max_tokens": 250, "doctor_max_age_h": 2},
-    "preload": {"law": "~/.claude/CLAUDE.md", "fixed_tokens": 0,
-                "budget_tokens": {"work": 6000, "personal": 4000}}
-  }
-}
+{"context": {"card": {"doctor_max_age_h": 2}}}
 ```
 
 ## `doctor`
@@ -160,7 +146,6 @@ Config for `rigops doctor` (see [REGISTRY.md](REGISTRY.md) for the judgment mode
 - Pinning a tool version is a custom check, for example rtk: `{"name": "rtk-pin", "command": "test \"$(rtk --version)\" = \"rtk 0.42.4\"", "fail_exit": 1, "timeout_s": 10}`. The command exits 0 on the pinned output and 1 otherwise (a missing binary also exits nonzero, so it fails the same way). Under launchd, call the binary by absolute path.
 - Gates record (not configurable) - every fleet run (not `--list`, not `--config-only`) writes the non-`ok` jobs, checks and config-finding groups to `${XDG_STATE_HOME:-~/.local/state}/rigops/doctor/gates.json` - this one path ignores `RIGOPS_STATE_DIR`, so it stays off a shared or synced state directory even when one is configured: `{"version": 1, "ts": "<UTC Z>", "gates": [{"kind": "job"|"check"|"config", "name": str, "status": str, "detail": str, "since": "<UTC Z>"}]}`. `since` is the `ts` of the run a gate first appeared in and carries over while the gate stays in the record; a gate that clears, or that a `--check` run leaves out, starts over. The default output's first line counts failing or hung jobs, failing checks and failing config findings (`OK` when there are none), and a `red for:` line gives each failing gate's age from `since`; `--report` adds a `red for` column to the jobs and checks tables. Written even when every gate is `ok` (`gates: []`), so its `ts` alone proves the doctor ran; the session-start hook (`rigops hook`) reads it for its stale line. A state directory that can't be created for this write logs a warning on stderr and never fails the run.
 - `budget.always_on_tokens` (`int`, default `6000`) - ceiling for the instruction surface every session pays: the global instruction file, the rules with no `paths:` frontmatter, and the largest per-project memory index. A session loads one memory index, so the largest is the worst case. Tokens are bytes over four.
-- `plans.dir` (`string`, default `~/.claude/plans`) - the plans directory to lint. Set it and the check reports the directory itself when it is missing; left at the default, a rig that keeps no plans stays quiet.
 - `pointers.sources` / `pointers.skill_roots` / `pointers.agent_roots` (`array<string>`) - files to scan and roots to resolve skills and agents against. Same rule throughout: an entry you configured that no longer exists is a finding, a default that does not exist on this rig is not. `pointers.ignore_prefixes`, `pointers.ignore_segments`, `pointers.known_mcp`, `pointers.known_agents`, `pointers.known_skills` and `pointers.known_models` replace their defaults (an empty array is a deliberate override). Session transcripts under the transcripts root are skipped by shape, so the memory store beside them is still checked.
 - `pointers.memory_roots` (`array<string>`, default `~/.claude`, `~/bin`, `~/.local/bin`) - memory notes (`~/.claude/projects/*/memory/*.md`, a default source) are scanned narrowly. A session recalls a note and acts on it, so a dead path in one misleads like a dead rule; a note is also a dated record, so it is held to the path rule alone, and only for paths under these roots. Another host's filesystem is a fact about that host, and a launchd label, model id, plugin, agent, skill or MCP server named in a note is history. A note recording that a path was retired names it without its root, so a root-anchored path in a note always claims the path exists.
 - `levers.rules` (`object`, default `{}`) - lever regressions read from `ledger.jsonl`, keyed by ledger column. Each rule takes one or more of `max` (the newest row must not exceed it, for a lever whose right value is zero), `min` (the newest row must not fall below it, a floor), `rise_pct` and `drop_pct` (the newest row must not move further than this percentage, in the worse direction, from the median of up to four earlier weekly rows). Rows closer together than the ledger's 7-day window count as one week, a band needs at least two earlier weekly rows before it judges anything, and a limit judges from the first row. Every finding is a warning: printed under `warnings`, never a nonzero exit. A deliberate change is recorded with `rigops ledger note "<why>" --accept <lever>`: rows on or before that note's date are not judged for that lever, and a band's baseline restarts at the accepted row. A missing or malformed ledger, a misspelt column and a malformed rule are warnings too. Built-in rules apply on top: `turn1_p50`, `turn1_{group}` and `turn1_{group}_p50` rise 30%, `eit_per_turn` rise 20%, `cache_hit_pct` drop 3%, `fixed_tax_b` rise 10%, `start_tool_chars` rise 10%, `rebuild_eit_pct` rise 30%, `main_default_model_pct` min 50, `corrections` rise 150%, `tool_err_per_100` rise 50%. `{group}` stands for every `ledger.watch_projects` key, in built-in and configured rule keys alike. A configured rule replaces the built-in one for its lever and `null` turns a lever off. A built-in rule whose column the ledger lacks is skipped without a warning, and built-ins alone never report a missing, empty or stale ledger. The tolerances sit just above the widest swing in the author's flat weeks: replaying a 21-row ledger with `python3 tools/replay-levers.py --defaults-only -v` fired on the weeks a session-start change landed and on none of the ten weeks before them. `start_tool_chars` is newer than that ledger; four weekly backfills moved 1% between flat weeks and 15% on the week the overall turn-1 p50 jumped. `rebuild_eit_pct` is newer too; nine weekly backfills sat between 7.6% and 11.5% until compaction rebuilds pushed one week to 16.1%, the only week a 30% rise fires on. `main_default_model_pct` is a floor, not a band: weekly backfills ran 97-98% while settings named one family and 8-30% every week after settings switched to another while sessions kept picking the old one. Set it to `null` when sessions choose their model on purpose. Replay your own ledger the same way before tightening one.
@@ -332,22 +317,6 @@ Defaults for `rigops eval run` (see [EVAL.md](EVAL.md)). Each key has a matching
     "api_key_env": ""
   }
 }
-```
-
-## `prefetch` (roots registry, not `config.json`)
-
-Not a `config.json` key: it is a top-level `prefetch` object inside the retrieval roots registry (default `~/rig/registry/roots.json`, see `rigops retrieval roots`), read by `lib/rigops/retrieval/search.py` for prompt-time prefetch calls only - an explicit `rigops retrieval search` never reads it.
-
-- `min_score` (`number`, default `-14.0`) - bm25 ceiling (more negative is a better match; `rank > min_score` is dropped) a row must clear before the term gate below is even checked.
-- `min_terms` (`int`, default `2`) - a row also needs at least this many distinct prompt content words matching it somewhere, not just the one word that got it selected.
-- `min_head_terms` (`int`, default `1`) - and at least this many of those matches must land in its `title`, `section`, `answers` or `pathwords` columns, not only in the body prose.
-- `max_rows` (`int`, default `3`) - caps `top` for a prefetch call regardless of what the caller asked for.
-- `budget` (`int`, default `400`) - token ceiling for a prefetch call, used when the caller passes none.
-
-The two gate keys exist because a bare score cutoff let through rows that shared one weak word with the prompt and nothing else; a prefetch row now has to clear a real term-coverage bar before it is ever silently added to the prompt.
-
-```json
-{"prefetch": {"min_score": -14.0, "min_terms": 2, "min_head_terms": 1, "max_rows": 3, "budget": 400}}
 ```
 
 ## See also
