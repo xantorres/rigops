@@ -28,7 +28,6 @@
       "disk_free": null
     },
     "notify_command": "",
-    "rtk": {"version": "0.42.4"},
     "levers": {
       "max_age_days": 10,
       "rules": {
@@ -47,7 +46,7 @@
     "orphan_sweep": false,
     "kill_grace_s": 5,
     "max_worktrees": 5,
-    "ignored_untracked_dirs": ["node_modules", "dist", ".turbo", "@mf-types"],
+    "ignored_untracked_dirs": ["node_modules", "dist", ".turbo"],
     "ignored_untracked_prefixes": ["coverage"]
   },
   "janitor": {

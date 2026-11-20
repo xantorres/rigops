@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `reaper.roots` defaults to `[]` (was `["~/projects"]`). `rigops reap` with no roots and no `--root` prints one line to stderr naming the config path and exits 0; with `--json` stdout still carries the empty report.
+- `reaper.ignored_untracked_dirs` defaults to `["node_modules", "dist", ".turbo"]` (was with `"@mf-types"`), and `pointers.memory_roots` drops `~/rig` from its default.
+- The `imports` and `rtk` doctor checks are removed. The module rules now run as `tests/test_module_rules.py`; `doctor.imports.max_lines` is gone, and a config that still sets `doctor.rtk` is ignored. `docs/CONFIG.md` shows the rtk pin as a `checks.custom` example.
 - The prompt-scoped nudge left the plugin hook and `context.prompt_nudge` is ignored; only the context-size nudge remains.
 - The plugin hooks no longer need `jq`.
 - The always-on budget no longer counts a registered repo's instruction file.

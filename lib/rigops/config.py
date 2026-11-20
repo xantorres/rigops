@@ -28,7 +28,7 @@ DEFAULTS = {
         "cause_probe_command": "",
     },
     "reaper": {
-        "roots": ["~/projects"],
+        "roots": [],
         "sessions_dir": "~/.claude/sessions",
         "grace_days": 14,
         "max_kills_per_tree": 20,
@@ -36,7 +36,7 @@ DEFAULTS = {
         "orphan_sweep": False,
         "kill_grace_s": 5,
         "max_worktrees": 5,
-        "ignored_untracked_dirs": ["node_modules", "dist", ".turbo", "@mf-types"],
+        "ignored_untracked_dirs": ["node_modules", "dist", ".turbo"],
         "ignored_untracked_prefixes": ["coverage"],
     },
     "janitor": {

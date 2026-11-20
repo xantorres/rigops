@@ -93,7 +93,7 @@ class LoadTests(unittest.TestCase):
     def test_m6_defaults_present(self):
         with tempfile.TemporaryDirectory() as tmp:
             loaded = config.load(Path(tmp) / "nope.json")
-            self.assertEqual(loaded["reaper"]["roots"], ["~/projects"])
+            self.assertEqual(loaded["reaper"]["roots"], [])
             self.assertEqual(loaded["reaper"]["max_kills_per_tree"], 20)
             self.assertEqual(loaded["janitor"]["rules"], [])
             self.assertEqual(loaded["janitor"]["max_delete"], 200)

@@ -1,4 +1,4 @@
-"""A tiny YAML-shaped frontmatter reader for the ~/rig agent source files.
+"""A tiny YAML-shaped frontmatter reader for markdown agent definition files.
 
 Only what agents/<name>.md actually uses: scalar keys and one list field
 (``tools``, written either bracketed or as a bare comma list). No yaml
