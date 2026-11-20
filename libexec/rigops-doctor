@@ -606,7 +606,8 @@ def main(argv=None) -> int:
         print(render_findings(findings), end="")
 
     # Scheduled runs pass --exit-zero so the supervisor does not read a verdict as a crash.
-    verdict = bool(fail_count or _failing(findings))
+    failed_checks = any(c["status"] == "fail" for c in checks)
+    verdict = bool(fail_count or failed_checks or _failing(findings))
     return 1 if verdict and not args.exit_zero else 0
 
 

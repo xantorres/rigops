@@ -1063,7 +1063,8 @@ class ScanRepoTargetBudgetTests(GitFixtureTestCase):
         self.addCleanup(setattr, reap, "time", reap.time)
         reap.time = types.SimpleNamespace(time=jump, monotonic=time.monotonic)
 
-        result = reap.scan_repo(repo, [], self.tmp / "outside", False, 14, set(), (), remaining_s=60)
+        outside = self.tmp / "outside"
+        result = reap.scan_repo(repo, [], outside, False, 14, set(), (), remaining_s=60)
 
         self.assertEqual(result["target"], "main")
         self.assertEqual([w["verdict"] for w in result["worktrees"]], [reap.REAP])

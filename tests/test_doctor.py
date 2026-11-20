@@ -1258,7 +1258,7 @@ class PidChangedRaceTests(EnvIsolatedTestCase):
 
 
 class CheckFailReportingTests(EnvIsolatedTestCase):
-    def test_failing_custom_check_is_reported_without_failing_the_run(self):
+    def test_failing_custom_check_is_reported_and_exits_1(self):
         registry_path = _write_registry(self.tmp, OK_ITEM)
         config_path = Path(self.tmp) / "config.json"
         config_path.write_text(json.dumps({
@@ -1275,7 +1275,7 @@ class CheckFailReportingTests(EnvIsolatedTestCase):
         payload = json.loads(out)
         self.assertEqual(payload["fail_count"], 0)
         self.assertEqual(payload["checks"][0]["status"], "fail")
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
 
 
 class WarningSeverityTests(unittest.TestCase):

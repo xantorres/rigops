@@ -200,6 +200,16 @@ class DoctorExitTests(unittest.TestCase):
         self.assertEqual(payload["fail_count"], 1)
         kick.assert_called_once()
 
+    def test_failing_custom_check_exits_1(self):
+        config = Path(self.tmp) / "config.json"
+        check = {"name": "always-red", "command": "exit 3", "fail_exit": 3}
+        config.write_text(json.dumps({"doctor": {"checks": {"custom": [check]}}}), encoding="utf-8")
+        with mock.patch.dict(os.environ, {"RIGOPS_CONFIG": str(config)}):
+            code, payload, _, _ = self.run_doctor([], OK_ITEM, snapshot=(True, None, 0))
+
+        self.assertEqual([c["status"] for c in payload["checks"]], ["fail"])
+        self.assertEqual(code, 1)
+
     def test_healthy_job_exits_0(self):
         code, _, _, _ = self.run_doctor([], OK_ITEM, snapshot=(True, None, 0))
         self.assertEqual(code, 0)

@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Exit codes follow one model: `0` ok, `1` a negative verdict (failing check, failing or hung job, key not found), `2` an error or a run that cannot judge (usage, config, runtime, malformed state, a refused guard). When both apply, `2` wins.
 - A library error that used to end the process with a message now raises one typed error, and every command maps it to exit `2` in one place, printing a single `error:` line. `rigops hook` still always exits 0.
-- Plain `rigops doctor` exits `1` when a job is `failing` or `hung`, or a finding fails. `stale` and `unknown` jobs do not. `--heal` still heals and no longer forces exit 0.
+- Plain `rigops doctor` exits `1` when a job is `failing` or `hung`, or a check or finding fails. `stale` and `unknown` jobs do not. `--heal` still heals and no longer forces exit 0.
 - `rigops doctor --exit-zero` turns exit `1` into `0` and leaves `2` alone.
 - The doctor never judges, kills or kickstarts its own registry row: an item whose `entry_point` runs `rigops-doctor` or `rigops doctor` is reported `ok` with no action, under both supervisors.
 
@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A malformed or unreadable state file exited 1 in `rigops ledger` and `rigops tax --history` and now exits 2.
 - `rigops janitor` exited 1 when a rule or watermark errored and now exits 2.
 - `rigops doctor` with a missing registry file (an explicit `--registry`, or a configured `doctor.registry`) or a malformed registry exited 1 and now exits 2.
-- Plain `rigops doctor` ignored failing and hung jobs and exited 0 with `--heal`. It now exits 1 on a failing or hung job or a failing finding, with or without `--heal`. Pass `--exit-zero` to keep exit 0.
+- Plain `rigops doctor` ignored failing and hung jobs and exited 0 with `--heal`. It now exits 1 on a failing or hung job, a failing check or a failing finding, with or without `--heal`. Pass `--exit-zero` to keep exit 0.
 - Scheduled doctor jobs must pass `--exit-zero`, or a failing job makes the scheduled run itself fail. The launchd template already carries it: reinstall the job (`install.sh --apply`) or edit the plist's `ProgramArguments`. For cron, add `--exit-zero` to the `rigops doctor` line (`templates/cron/crontab.example`).
 - A doctor registry row whose `entry_point` runs the doctor is no longer judged. Delete the row if you only kept it to watch the doctor.
 
