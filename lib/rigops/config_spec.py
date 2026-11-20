@@ -169,7 +169,7 @@ SPEC: tuple[Key, ...] = (
     _k("context.nudge_tiers", list_of(INT), [250000, 350000, 500000],
         "Ascending token thresholds for the context nudge."),
     _k("context.rearm_tokens", INT, 50000, "Token climb needed to re-fire the nudge."),
-    _k("context.card.doctor_max_age_h", INT, 2,
+    _k("context.card.doctor_max_age_h", NUMBER, 2,
         "Hours before a doctor gate record counts as stale."),
     _k("doctor.registry", STRING, "~/.config/rigops/registry.md", "Path of the job registry file."),
     _k("doctor.label_prefix", STRINGS, ["local."],

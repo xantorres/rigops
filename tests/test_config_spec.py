@@ -190,6 +190,11 @@ class BadShapeTests(CliCase):
         proc = self.run_cmd(["config", "check"], {"doctor": {"kill_grace_s": 0.5}})
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
+    def test_a_fractional_gate_record_age_is_accepted(self):
+        cfg = {"context": {"card": {"doctor_max_age_h": 0.5}}}
+        proc = self.run_cmd(["config", "check"], cfg)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
 
 class UnknownKeyTests(CliCase):
     def test_config_check_reports_unknown_keys_at_every_depth_but_not_in_open_maps(self):

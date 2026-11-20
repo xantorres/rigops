@@ -124,7 +124,7 @@ Config for the plugin's `rigops hook` command and the statusline example (the `d
 {"context": {"nudge_tiers": [250000, 350000, 500000], "rearm_tokens": 50000}}
 ```
 
-- `card.doctor_max_age_h` (`int`, default `2`) - a doctor gate record (see the `doctor` section below) older than this is a stale gate record to the session-start hook (`rigops hook`), which says so.
+- `card.doctor_max_age_h` (`number`, default `2`) - a doctor gate record (see the `doctor` section below) older than this is a stale gate record to the session-start hook (`rigops hook`), which says so.
 
 ```json
 {"context": {"card": {"doctor_max_age_h": 2}}}
@@ -371,7 +371,7 @@ Every key the code reads. "none" means no built-in default: the key is absent un
 | `friction.headless_projects` | array of string | `[]` | Transcript-path substrings counted as headless. |
 | `context.nudge_tiers` | array of integer | `[250000,350000,500000]` | Ascending token thresholds for the context nudge. |
 | `context.rearm_tokens` | integer | `50000` | Token climb needed to re-fire the nudge. |
-| `context.card.doctor_max_age_h` | integer | `2` | Hours before a doctor gate record counts as stale. |
+| `context.card.doctor_max_age_h` | number | `2` | Hours before a doctor gate record counts as stale. |
 | `doctor.registry` | string | `"~/.config/rigops/registry.md"` | Path of the job registry file. |
 | `doctor.label_prefix` | array of string | `["local."]` | launchd label prefixes tried for a registry item. |
 | `doctor.kill_grace_s` | number | `5` | Seconds between SIGTERM and SIGKILL for a hung job. |
