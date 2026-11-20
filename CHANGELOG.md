@@ -35,6 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `rigops reap` never signals a terminal-less process it cannot attribute: one whose top-most matched ancestor still has a live parent outside the tree is listed as `owned` (`--json` `kills[].owned`), logged as `SKIP-OWNED`, and keeps the tree.
 
+- Config is code. `doctor` (a fleet run or `--heal`), `janitor --apply`, `reap --apply`, `authprobe` and `ledger write` with `sources.custom` exit `2` when the config file is writable by group or others, and `doctor` checks the registry the same way. `chmod go-w` the file.
+- Custom checks and janitor `command` rules run in their own process group, and a timeout kills the whole group. `reap` runs git through the same helper.
+- `janitor` does not truncate a file modified in the last 60 seconds and reports it as skipped.
+- `eval run` exits `2` before sending anything when the API key would go over plain http to a host that is not loopback.
+- `rigops hook` output is capped at 1000 bytes, trailing newline included, cut on a character boundary. A closed or broken stdout no longer changes the exit status, which is always 0, and a very long session id no longer disables the context nudge.
+- Eval flake count: not measured. The measurement needs five runs against a live endpoint and none was configured, so `eval run --repeat` is not in this release.
+
 ### Fixed
 
 - Day windows are built from local calendar days. The ledger window and every date-only or `today` bound use the UTC offset that holds on the day itself, not today's, and a seven-day window is seven local days, not 168 hours. A window that spans a clock change is now 167 or 169 hours long and both edges are local midnights. The stored `window.since` and `window.until` strings are still UTC.
@@ -43,6 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - New key `reaper.precious`: the file-name globs that keep a tree from being removed. Its default is the list reap already used (`.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`), so nothing changes until you set it. `[]` makes no file name precious.
 - A process that a live parent outside the tree still owns (an editor's language server, say) is no longer killed by `reap`, and its tree is kept with the reason printed. On Linux with a per-user service manager, orphans are reparented to the manager instead of pid 1, so those are left alone too.
+- A config file that group or others can write (mode `664`, `666` and the like) now stops `doctor`, `janitor --apply`, `reap --apply`, `authprobe` and `ledger write` with `sources.custom` with exit `2`; so does a registry file like that under `doctor`. Check with `ls -l` and run `chmod go-w` on the file before upgrading a scheduled job. `doctor --list`, `doctor --config-only` and read-only previews are not checked.
+- `eval run` with an API key and a plain http endpoint on another host used to send the key and now exits `2`. Use https, or a loopback address.
 - `--json` shape changes (existing keys unchanged): `ledger write --show --json` was a list of rows, now `{"version", "rows", "skipped"}`; `ledger write --json` was the row, now `{"version", "row"}`; `ledger diff --json` gains `version`, `skipped`, `incomplete`; `tax --history --json` was a list of `{date, fixed_tax_b}`, now `{"version", "skipped", "rows"}`; `tax --starts --session --json` was a list, now `{"version", "rows"}`; `eval list --json` was a list, now `{"version", "rows"}`; `doctor --list --json` was a list, now `{"version", "items"}`; `doctor --config-only --json` was a list, now `{"version", "findings"}`. `doctor`, `reap`, `eit`, `eit --rebuilds`, `tax`, `tax --dead`, `eval run`, `eval diff`, `janitor`, `authprobe` and `backlog lint` gain `version`.
 - State file shapes: `interventions.jsonl`, `eval.jsonl` and `doctor/events.jsonl` rows gain `version`. `heal-stamps.json`, `holds.json`, `kicked.json` and `notified.json` change from a flat object (`kicked.json` possibly a list) to `{"version": 1, "entries": {...}}`; the old shape still reads. 0.11 reads neither new shape, so do not run an older rigops against a state directory a newer one has written. `doctor/gates.json`, the context nudge file and `ledger.jsonl` rows are unchanged in content.
 - `rigops doctor` exits `2` whenever guard state is unreadable, malformed or newer, and `--exit-zero` no longer turns that into `0`.
