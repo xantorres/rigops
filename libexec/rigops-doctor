@@ -362,7 +362,12 @@ def main(argv=None) -> int:
         rigops_config.expand(args.registry) if args.registry
         else rigops_config.expand(rigops_config.get(cfg, "doctor.registry"))
     )
-    items = rigops_registry.load_registry(registry_path)
+    if not args.registry and not registry_path.exists():
+        print(f"note: no job registry at {rigops_core.short(registry_path)}; "
+              "job checks skipped", file=sys.stderr)
+        items = []
+    else:
+        items = rigops_registry.load_registry(registry_path)
 
     if args.list:
         if args.json:

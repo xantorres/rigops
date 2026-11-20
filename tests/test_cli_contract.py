@@ -249,6 +249,27 @@ class CliContractTests(unittest.TestCase):
 
                 self.assertEqual(set(empty), set(populated))
 
+    def test_doctor_without_a_default_registry_notes_it_and_still_records_gates(self):
+        proc = self.run_cmd("doctor", "--supervisor", "none")
+        config_only = self.run_cmd("doctor", "--config-only")
+
+        self.assertEqual(proc.returncode, config_only.returncode, proc.stderr)
+        note = "note: no job registry at ~/.config/rigops/registry.md; job checks skipped"
+        self.assertEqual(proc.stderr.strip().splitlines(), [note])
+        self.assertTrue((self.home / "xdg-state" / "rigops" / "doctor" / "gates.json").exists())
+
+    def test_doctor_list_without_a_default_registry_is_empty_and_exits_0(self):
+        proc = self.run_cmd("doctor", "--list", "--json")
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(json.loads(proc.stdout), [])
+
+    def test_doctor_with_a_missing_explicit_registry_still_exits_1(self):
+        proc = self.run_cmd("doctor", "--registry", str(self.home / "none.md"))
+
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("registry file not found", proc.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
