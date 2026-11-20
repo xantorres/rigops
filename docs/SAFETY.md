@@ -20,6 +20,8 @@ Config and registry are code. A custom check, notify command, probe, janitor `co
 
 `doctor --heal` fails closed on its own state: if `heal-stamps.json` (or `holds.json`, when `cause_policy` reads it) is unreadable, not a JSON object, or holds a non-numeric stamp, the run kickstarts nothing and releases no hold, moves the file aside as `<name>.corrupt-<timestamp>`, and raises a failing finding. A run that cannot heal reports the finding and leaves the file where it is.
 
+A doctor check that cannot measure fails closed too. A check module that fails to import, a check that crashes, or an always-on file the `budget` check cannot read is an `error` finding: the run exits `2` and `--exit-zero` does not hide it. The other checks still run.
+
 ## State files
 
 - The state directory is `0700`; a wider one is tightened on first use. So is `${XDG_STATE_HOME:-~/.local/state}/rigops`, which holds the doctor gate record and the hook's nudge state even when `RIGOPS_STATE_DIR` points elsewhere. Keep it on a local disk, because locking is `flock` and appends are `O_APPEND`.
