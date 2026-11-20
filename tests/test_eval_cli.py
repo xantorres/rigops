@@ -17,6 +17,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import state  # noqa: E402
+from rigops.errors import RigopsError  # noqa: E402
 from rigops.eval import client  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -465,6 +466,77 @@ class ClientCompleteTests(_StubServerMixin, unittest.TestCase):
         elapsed = time.monotonic() - started
         self.assertEqual(result["error"], "timed out")
         self.assertLess(elapsed, timeout_s + 10.0)
+
+
+class ClientPlainHttpKeyTests(_StubServerMixin, unittest.TestCase):
+    MESSAGES = [{"role": "user", "content": "hi"}]
+
+    def _complete(self, endpoint, api_key="k"):
+        return client.complete(
+            endpoint, "m", self.MESSAGES, max_tokens=10, temperature=0, timeout_s=5,
+            api_key=api_key,
+        )
+
+    def test_a_key_over_plain_http_to_a_public_host_is_refused_before_any_request(self):
+        with patch.object(client._OPENER, "open", side_effect=AssertionError("connected")):
+            with self.assertRaises(RigopsError) as ctx:
+                self._complete("http://example.com:9/v1")
+        message = str(ctx.exception)
+        self.assertIn("example.com", message)
+        self.assertIn("https", message)
+        self.assertIn("loopback", message)
+
+    def test_a_key_over_plain_http_to_a_loopback_host_still_works(self):
+        endpoint, captured = self._start_stub(_content_reply(lambda payload: "hello"))
+        result = self._complete(endpoint)
+        self.assertIsNone(result["error"])
+        self.assertEqual(captured[0]["headers"].get("Authorization"), "Bearer k")
+
+    def test_loopback_names_pass_and_other_hosts_are_refused(self):
+        for host in ("localhost", "127.0.0.1", "127.9.9.9", "[::1]"):
+            with self.subTest(host=host):
+                client.require_secure_endpoint(f"http://{host}:1/v1/chat/completions", "k")
+        for host in ("example.com", "10.0.0.5", "192.168.1.2", "[2001:db8::1]",
+                     "localhost.example.com"):
+            with self.subTest(host=host):
+                with self.assertRaises(RigopsError):
+                    client.require_secure_endpoint(f"http://{host}:1/v1/chat/completions", "k")
+
+    def test_https_with_a_key_builds_the_authorization_header(self):
+        seen = []
+
+        def fake_open(request, timeout):
+            seen.append(request)
+            raise OSError("stop")
+
+        with patch.object(client._OPENER, "open", side_effect=fake_open):
+            self._complete("https://example.com/v1")
+        self.assertEqual(seen[0].get_header("Authorization"), "Bearer k")
+
+    def test_plain_http_without_a_key_is_allowed(self):
+        with patch.object(client._OPENER, "open", side_effect=OSError("stop")) as opener:
+            result = self._complete("http://example.com:9/v1", api_key=None)
+        opener.assert_called_once()
+        self.assertIsNotNone(result["error"])
+
+
+class EvalRunPlainHttpKeyTests(_EnvIsolationMixin, unittest.TestCase):
+    def test_eval_run_exits_two_naming_the_host_and_sends_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._env_for(tmp)
+            env["RIGOPS_EVAL_TEST_KEY"] = "sk-test-not-a-real-key"
+            cases_dir = Path(tmp) / "cases"
+            cases_dir.mkdir()
+            _write_case(cases_dir, "c1")
+            result = _run_eval(
+                ["run", "--cases", str(cases_dir), "--endpoint", "http://example.com:9/v1",
+                 "--model", "m", "--api-key-env", "RIGOPS_EVAL_TEST_KEY"],
+                env,
+            )
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(result.stderr.count("error:"), 1, result.stderr)
+        self.assertIn("example.com", result.stderr)
+        self.assertNotIn("sk-test-not-a-real-key", result.stderr + result.stdout)
 
 
 class EvalRunValidationTests(_EnvIsolationMixin, _StubServerMixin, unittest.TestCase):

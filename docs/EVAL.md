@@ -83,7 +83,7 @@ A case that got no usable reply (refused connection, timeout, HTTP error, a redi
 - `--system FILE` - system prompt sent before every case (`eval.system_file`).
 - `--endpoint URL` - OpenAI-compatible base URL, e.g. `http://127.0.0.1:1234/v1` (`eval.endpoint`). A plain http(s) URL: credentials, a query or a fragment are refused, because the URL is recorded verbatim.
 - `--model ID` - model id sent with every request (`eval.model`).
-- `--api-key-env NAME` - name of the env var holding a bearer token (`eval.api_key_env`). The token must be printable ASCII without whitespace.
+- `--api-key-env NAME` - name of the env var holding a bearer token (`eval.api_key_env`). The token must be printable ASCII without whitespace. A token is only sent over https or to a loopback host (`localhost`, `127.0.0.0/8`, `::1`); over plain http to any other host the run exits 2 before sending anything.
 - `--temperature T` - default `0`.
 - `--label TEXT` - tag for the run, e.g. `main` or `proposal`; `diff` selects runs by it.
 - `--dry-run` - run and print, record nothing.

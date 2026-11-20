@@ -8,6 +8,7 @@ recorded and the run moves on to the next.
 from __future__ import annotations
 
 import http.client
+import ipaddress
 import json
 import re
 import socket
@@ -16,6 +17,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+
+from rigops.errors import RigopsError
 
 from .checks import printable
 
@@ -42,6 +45,26 @@ _OPENER = urllib.request.build_opener(_NoRedirect)
 def chat_url(endpoint: str) -> str:
     base = endpoint.rstrip("/")
     return base if base.endswith("/chat/completions") else base + "/chat/completions"
+
+
+def _is_loopback(host: str) -> bool:
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def require_secure_endpoint(url: str, api_key: str | None) -> None:
+    """Refuse to send a bearer key in clear text to a host that is not this machine."""
+    parts = urllib.parse.urlsplit(url)
+    host = (parts.hostname or "").lower()
+    if api_key and parts.scheme == "http" and not _is_loopback(host):
+        raise RigopsError(
+            f"refusing to send the API key over plain http to {host}: "
+            "use an https endpoint or a loopback one (localhost, 127.0.0.0/8, ::1)"
+        )
 
 
 def _echoes(text: str, api_key: str) -> bool:
@@ -122,6 +145,7 @@ def complete(endpoint, model, messages, *, max_tokens, temperature, timeout_s, a
         "max_tokens": max_tokens,
         "stream": False,
     }
+    require_secure_endpoint(url, api_key)
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
