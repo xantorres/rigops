@@ -65,11 +65,6 @@ def model_family(model: str) -> str:
     return m.group(1) if m else "other"
 
 
-def local_midnight(day: dt.date) -> dt.datetime:
-    local_tz = dt.datetime.now().astimezone().tzinfo
-    return dt.datetime.combine(day, dt.time.min, tzinfo=local_tz).astimezone(dt.timezone.utc)
-
-
 def median(values: list[float]) -> float | None:
     return statistics.median(values) if values else None
 
@@ -149,9 +144,9 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
         transcripts_dir = rigops_config.expand(
             rigops_config.get(cfg, "transcripts_dir", rigops_config.DEFAULTS["transcripts_dir"])
         )
-    until = local_midnight(at)
-    since = until - dt.timedelta(days=WINDOW_DAYS)
-    since_30 = until - dt.timedelta(days=SMOOTH_DAYS)
+    until = transcripts.start_of_day(at)
+    since = transcripts.start_of_day(at - dt.timedelta(days=WINDOW_DAYS))
+    since_30 = transcripts.start_of_day(at - dt.timedelta(days=SMOOTH_DAYS))
 
     # One pass over the corpus; first turns need history before the window, so no lower bound.
     turns = transcripts.collect_turns(None, until, transcripts_dir=transcripts_dir)
@@ -205,7 +200,11 @@ def build_row(at: dt.date, label: str, cfg=None, transcripts_dir=None) -> dict:
         "version": ledger_row.ROW_VERSION,
         "date": at.isoformat(),
         "label": label,
-        "window": {"since": since.isoformat(), "until": until.isoformat(), "days": WINDOW_DAYS},
+        "window": {
+            "since": since.astimezone(dt.timezone.utc).isoformat(),
+            "until": until.astimezone(dt.timezone.utc).isoformat(),
+            "days": WINDOW_DAYS,
+        },
         "turns": n,
         "sessions": len(started),
         "eit_total": round(total_eit),

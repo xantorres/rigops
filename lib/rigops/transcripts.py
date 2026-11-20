@@ -60,22 +60,23 @@ def project_label(path, transcripts_dir=None) -> str:
     return re.sub(r"--claude-worktrees-.*$", "", top)
 
 
+def start_of_day(day: dt.date) -> dt.datetime:
+    """Local midnight of a calendar day, with the UTC offset that holds on that day."""
+    return dt.datetime.combine(day, dt.time.min).astimezone()
+
+
 def parse_bound(value, now):
     if value is None:
         return None
     if value == "today":
-        local_midnight = dt.datetime.now().astimezone().replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        return local_midnight.astimezone(dt.timezone.utc)
+        return start_of_day(dt.date.today()).astimezone(dt.timezone.utc)
     m = re.match(r"^-(\d+)d$", value)
     if m:
         return now - dt.timedelta(days=int(m.group(1)))
     s = value.replace("Z", "+00:00")
     parsed = dt.datetime.fromisoformat(s)
     if parsed.tzinfo is None:
-        local_tz = dt.datetime.now().astimezone().tzinfo
-        parsed = parsed.replace(tzinfo=local_tz)
+        parsed = parsed.astimezone()
     return parsed.astimezone(dt.timezone.utc)
 
 

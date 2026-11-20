@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Guard state fails closed: a stamp file written by a newer rigops, like a corrupt one, stops `doctor --heal` from acting and exits `2`. `reap --apply` refuses when a session file is unreadable.
 - Every `--json` payload is one object with `"version": 1`, and a list is wrapped under a name. Existing keys are kept. `rigops config get` still prints a bare JSON value.
 
+### Fixed
+
+- Day windows are built from local calendar days. The ledger window and every date-only or `today` bound use the UTC offset that holds on the day itself, not today's, and a seven-day window is seven local days, not 168 hours. A window that spans a clock change is now 167 or 169 hours long and both edges are local midnights. The stored `window.since` and `window.until` strings are still UTC.
+
 ### Upgrading from 0.11.x
 
 - `--json` shape changes (existing keys unchanged): `ledger write --show --json` was a list of rows, now `{"version", "rows", "skipped"}`; `ledger write --json` was the row, now `{"version", "row"}`; `ledger diff --json` gains `version`, `skipped`, `incomplete`; `tax --history --json` was a list of `{date, fixed_tax_b}`, now `{"version", "skipped", "rows"}`; `tax --starts --session --json` was a list, now `{"version", "rows"}`; `eval list --json` was a list, now `{"version", "rows"}`; `doctor --list --json` was a list, now `{"version", "items"}`; `doctor --config-only --json` was a list, now `{"version", "findings"}`. `doctor`, `reap`, `eit`, `eit --rebuilds`, `tax`, `tax --dead`, `eval run`, `eval diff`, `janitor`, `authprobe` and `backlog lint` gain `version`.
@@ -33,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rigops doctor` exits `2` whenever guard state is unreadable, malformed or newer, and `--exit-zero` no longer turns that into `0`.
 - A ledger or eval row over 1 MiB, or a state directory on a filesystem without `flock`, now fails; keep state on a local disk.
 - A wider state directory is tightened to `0700` on first use.
+- Ledger weeks on either side of a clock change differ by an hour from what 0.11 computed: a row's window edges moved to the true local midnight, so turns in the hour around midnight can fall in the neighbouring week and a `ledger diff` across the change reads slightly differently. Rows already written are not rewritten. A date-only `--since`/`--until` with no offset is also read with the offset of that date. `ccusage` receives the local date of each edge.
 
 - `rigops config get` on a missing key exited 3 and now exits 1. Treat 1 as "not found".
 - A config that cannot be read, is not valid JSON or is not an object exited 1 and now exits 2, for every command including `rigops config check`. Treat 2 as "cannot run".
