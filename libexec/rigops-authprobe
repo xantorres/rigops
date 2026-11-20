@@ -39,6 +39,7 @@ def main() -> int:
             print("authprobe disabled (set authprobe.enabled true or pass --force)")
         return 0
 
+    rigops_config.require_private(rigops_config.config_path())
     ok, detail = authprobe.probe(cfg)
 
     if args.json:

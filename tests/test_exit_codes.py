@@ -52,7 +52,7 @@ class SubprocessExitCodes(unittest.TestCase):
         self.state = self.home / "state"
         self.config = self.home / "config.json"
 
-    def run_cmd(self, args, config=None) -> subprocess.CompletedProcess:
+    def run_cmd(self, args, config=None, mode=None) -> subprocess.CompletedProcess:
         env = {
             **os.environ,
             "HOME": str(self.home),
@@ -64,6 +64,8 @@ class SubprocessExitCodes(unittest.TestCase):
         self.config.unlink(missing_ok=True)
         if config is not None:
             self.config.write_text(config if isinstance(config, str) else json.dumps(config))
+            if mode is not None:
+                os.chmod(self.config, mode)
         return subprocess.run(
             [str(RIGOPS), *args], capture_output=True, text=True, check=False, timeout=60,
             env=env, stdin=subprocess.DEVNULL,
@@ -114,8 +116,22 @@ class SubprocessExitCodes(unittest.TestCase):
             ("doctor stale job does not fail",
              ["doctor", "--no-config", "--supervisor", "none", "--registry", "REG"], {}, 0),
             ("hook never fails on a broken config", ["hook", "session-start"], "{bad", 0),
+            ("doctor refuses a group-writable config",
+             ["doctor", "--no-config", "--supervisor", "none"], {}, 2, 0o664),
+            ("doctor refuses an other-writable config",
+             ["doctor", "--no-config", "--supervisor", "none"], {}, 2, 0o646),
+            ("doctor refuses a writable config under --exit-zero",
+             ["doctor", "--no-config", "--supervisor", "none", "--exit-zero"], {}, 2, 0o664),
+            ("doctor runs with a 0644 config",
+             ["doctor", "--no-config", "--supervisor", "none"], {}, 0, 0o644),
+            ("doctor --list ignores a writable config", ["doctor", "--list"], {}, 0, 0o664),
+            ("janitor --apply refuses a writable config", ["janitor", "--apply"], {}, 2, 0o664),
+            ("janitor --apply refuses an other-writable config",
+             ["janitor", "--apply"], {}, 2, 0o646),
+            ("janitor --apply runs with a 0644 config", ["janitor", "--apply"], {}, 0, 0o644),
+            ("janitor dry run ignores a writable config", ["janitor"], {}, 0, 0o664),
         ]
-        for name, args, config, want in rows:
+        for name, args, config, want, *mode in rows:
             with self.subTest(name):
                 if "REG" in args:
                     evidence = self.home / "evidence"
@@ -126,7 +142,7 @@ class SubprocessExitCodes(unittest.TestCase):
                         STALE_ITEM.format(health=evidence, entry="rigops ledger write"),
                     )
                     args = [str(reg) if a == "REG" else a for a in args]
-                proc = self.run_cmd(args, config)
+                proc = self.run_cmd(args, config, *mode)
                 self.assertEqual(proc.returncode, want, proc.stderr)
                 self.assertNotIn("Traceback", proc.stderr)
 

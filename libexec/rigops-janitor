@@ -43,6 +43,8 @@ def main() -> int:
     args = ap.parse_args()
 
     cfg = rigops_config.load()
+    if args.apply:
+        rigops_config.require_private(rigops_config.config_path())
     rules = rigops_config.get(cfg, "janitor.rules", []) or []
     watermarks = rigops_config.get(cfg, "janitor.watermarks", []) or []
     if not rules and not watermarks:

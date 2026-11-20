@@ -19,6 +19,24 @@ def config_path() -> Path:
     return expand(Path(xdg) / "rigops" / "config.json")
 
 
+def require_private(*paths) -> None:
+    """Refuse a file that exists and, symlinks followed, group or others can write.
+
+    Config and registry name the commands rigops runs and the paths it deletes,
+    so whoever can write them can run code as this user.
+    """
+    for path in paths:
+        try:
+            mode = os.stat(path).st_mode
+        except OSError:
+            continue
+        if mode & 0o022:
+            raise RigopsError(
+                f"{path} is writable by group or others; refusing to run commands "
+                f"from it (chmod go-w {path})"
+            )
+
+
 def _deep_merge(base, overlay):
     merged = dict(base)
     for key, value in overlay.items():

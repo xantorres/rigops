@@ -395,6 +395,7 @@ def main(argv=None) -> int:
             print(fmt.table(rows, ["id", "domain", "trigger", "cadence"]))
         return 0
 
+    rigops_config.require_private(rigops_config.config_path(), registry_path)
     doctor_state_dir = state.state_dir() / "doctor"
     with state.locked(doctor_state_dir / "doctor"):
         return _fleet_run(args, cfg, items)

@@ -88,6 +88,8 @@ def cmd_write(args) -> int:
     if existing and not args.force and not args.dry_run:
         return _refuse_existing(at)
 
+    if rigops_config.get(cfg, "sources.custom"):
+        rigops_config.require_private(rigops_config.config_path())
     row = levers.build_row(at, args.label, cfg=cfg)
     _warn_on_row_health(row, at)
     prev = rows[-1] if rows else None
