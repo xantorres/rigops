@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `reaper.roots` now defaults to `[]`; it was the home projects directory. Set `reaper.roots` to the directories to scan to keep the old behaviour. Until then `rigops reap` prints one line to stderr and exits 0, so a scheduled run no longer scans anything; `--root` and `--repo` still do.
 - `rigops doctor` with no job registry at the default `doctor.registry` path no longer exits 1. It prints one `note:` line to stderr, skips the job checks, runs the config checks and writes the gates record. An explicit `--registry`, or a `doctor.registry` set to another path, that is missing still exits 1.
+- The environment variables `RIGOPS_ROOTS`, `RIGOPS_RETRIEVAL_LOG` and `RIGOPS_PROBES` are no longer read; they belonged to the removed retrieval code.
 - `reaper.ignored_untracked_dirs` lost one author-specific build directory from its default. Add it back to the list if your repos need it.
 - `sources.rtk.argv` and `sources.rtk.timeout_s` are gone: the `rtk` source is no longer built in, and a config that still holds `sources.rtk` is silently ignored. Move it to a `sources.custom` entry (the example is in `docs/CONFIG.md`) to keep recording it. The `caveman` source is gone the same way. Rows written by 0.10 keep their columns.
 - The corrections, denials and denials_headless metrics are redefined: Spanish handling is no longer built in, and two author-specific denial patterns are dropped. `ledger diff` marks all three `not comparable` across the 0.10 to 0.11 row change. To keep the old counting, put the old rules in `ledger.extra_correction_patterns`, `ledger.correction_exclude_patterns` and `ledger.extra_denial_patterns` (all three default to `[]`; see `docs/CONFIG.md`).
@@ -30,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rigops render` is removed. Nothing in rigops replaces it, and its `--check` drift findings are gone with the `render` doctor check. The 0.10.1 sources stay in git history at tag `v0.10.1`.
 - `rigops retrieval` is removed, with the roots registry, the realm model and the FTS5 index. Nothing in rigops replaces it. The 0.10.1 sources stay in git history at tag `v0.10.1`.
 - The `plans`, `realms` and `render` doctor checks are removed, and `doctor --config-only` no longer runs them. Nothing in rigops replaces them. The 0.10.1 sources stay in git history at tag `v0.10.1`.
-- These config keys are ignored: `render.source`, `doctor.plans.dir`, `context.prompt_nudge`, `context.nudges_path`, `context.card.max_tokens` and the `context.preload` keys. Only `context.card.doctor_max_age_h` is still read, by the hook. The `needs` and `prefetch` keys of a roots registry are unread with the registry.
+- These config keys are ignored: `render.source`, `doctor.plans.dir`, `context.prompt_nudge`, `context.nudges_path`, `context.card.max_tokens` and the `context.preload` keys. Of the `context.card` keys only `context.card.doctor_max_age_h` is still read, by the hook; `context.nudge_tiers` and `context.rearm_tokens` are read too. The `needs` and `prefetch` keys of a roots registry are unread with the registry.
 
 ### Added
 
@@ -41,9 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The statusline moved from `plugin/statusline/` to `patterns/statusline/`, with `ctx-probe.sh` beside it, and is an example to copy rather than an installed component. `install.sh --statusline` is removed and exits 2; Re-running `install.sh --apply` over such an install restores the `statusLine` it replaced and removes the copied script, and `install.sh --uninstall` still does the same for an install not yet upgraded.
+- The statusline moved from `plugin/statusline/` to `patterns/statusline/`, with `ctx-probe.sh` beside it, and is an example to copy rather than an installed component. `install.sh --statusline` is removed and exits 2; re-running `install.sh --apply` over such an install restores the `statusLine` it replaced and removes the copied script, and `install.sh --uninstall` still does the same for an install not yet upgraded.
 - The built-in `rtk` and `caveman` ledger sources are removed, and `sources.rtk` is no longer a default. Rows carry only `sources.ccusage` plus custom entries, and the summary line no longer prints `rtk saved` or `caveman proxy`. A `sources.custom` entry named `rtk` or `caveman` now works and stores the command's whole JSON output; `docs/CONFIG.md` shows both. Rows written by 0.10 keep their `rtk_*` columns without showing as deltas.
-- `reaper.roots` defaults to `[]` (was `["~/projects"]`). `rigops reap` with no roots and no `--root` prints one line to stderr naming the config path and exits 0; with `--json` stdout still carries the empty report.
+- `reaper.roots` defaults to `[]` (was `["~/projects"]`). `rigops reap` with no roots and no `--root` or `--repo` prints one line to stderr naming the config path and exits 0; with `--json` stdout still carries the empty report.
 - `reaper.ignored_untracked_dirs` defaults to `["node_modules", "dist", ".turbo"]` (was with `"@mf-types"`), and `pointers.memory_roots` drops `~/rig` from its default.
 - The `imports` and `rtk` doctor checks are removed. The module rules now run as `tests/test_module_rules.py`; `doctor.imports.max_lines` is gone, and a config that still sets `doctor.rtk` is ignored. `docs/CONFIG.md` shows the rtk pin as a `checks.custom` example.
 - The prompt-scoped nudge left the plugin hook and `context.prompt_nudge` is ignored; only the context-size nudge remains.
