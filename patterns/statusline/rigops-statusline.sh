@@ -4,7 +4,7 @@
 # missing; never blocks the UI, never exits nonzero.
 set -u
 
-HOOKS_DIR="$(cd "$(dirname "$0")/../hooks" 2>/dev/null && pwd)"
+PROBE_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
 
 HAVE_JQ=0
 command -v jq >/dev/null 2>&1 && HAVE_JQ=1
@@ -37,8 +37,8 @@ if [ -n "$RIGOPS_BIN" ] && [ "$HAVE_JQ" -eq 1 ]; then
 fi
 
 CTX_SEG=""
-if [ -n "$TP" ] && [ -n "$HOOKS_DIR" ] && [ -f "$HOOKS_DIR/ctx-probe.sh" ]; then
-  CTX=$(bash "$HOOKS_DIR/ctx-probe.sh" "$TP" 2>/dev/null || true)
+if [ -n "$TP" ] && [ -n "$PROBE_DIR" ] && [ -f "$PROBE_DIR/ctx-probe.sh" ]; then
+  CTX=$(bash "$PROBE_DIR/ctx-probe.sh" "$TP" 2>/dev/null || true)
   if [[ "$CTX" =~ ^[0-9]+$ ]]; then
     K=$((CTX / 1000))
     C_YELLOW=$'\033[33m'

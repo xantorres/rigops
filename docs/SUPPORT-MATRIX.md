@@ -9,7 +9,7 @@ What's first-class on which platform, the version floors, and exactly what CI co
 | CLI (`rigops <cmd>`) | First-class. | Runs - every subcommand is plain Python 3.9+ stdlib. |
 | `rigops doctor` | `--supervisor launchd` (default) - full runtime/exit-code judgment via `launchctl`. | `--supervisor none` only - evidence-file-age judgment, no runtime/exit-code signal (no `launchctl` to ask). Not auto-detected by the CLI itself: pass `--supervisor none` explicitly when running by hand. |
 | Scheduled jobs | `install.sh` installs launchd jobs: `doctor` (report-only unless installed with `--heal`) every 30 min and `ledger write` weekly Monday 09:05 by default; `janitor --apply` (Sunday 10:00) and `reap --apply` (daily 08:30) only through `--jobs`. | No installer-managed scheduler. `templates/cron/crontab.example` ships as a starting point - **unverified**, read it before use. |
-| Statusline / plugin hooks | Full. | Full - pure bash plus optional `jq`, nothing macOS-specific. |
+| Plugin hooks | Full. | Full - pure bash plus optional `jq`, nothing macOS-specific. |
 | `rigops reap` | Full - process matching via `ps`/`lsof`. | Full - the same `ps`/`lsof` parsing handles both tty formats (`??` on macOS, `?` on Linux; both are stripped to detect "no controlling tty"). |
 
 `install.sh` itself: when `launchctl` isn't found on PATH, it automatically behaves as `--no-jobs` and prints a note pointing at the cron template - see [INSTALL.md](INSTALL.md#linux).
@@ -26,8 +26,8 @@ So: the Python 3.9 floor is exercised on Linux; launchd-specific behavior is exe
 ## Floors
 
 - **Python** - 3.9+, stdlib only, for every shipped script (`bin/`, `libexec/`, `lib/rigops/`). Dev tooling (`ruff`, `shellcheck`) is exempt - it isn't shipped to installs.
-- **Shell** - bash 3.2 / BSD userland compatible for everything shipped (`install.sh`, `plugin/hooks/*.sh`, `plugin/statusline/*.sh`). No GNU-only flags assumed; where GNU and BSD tools diverge (for example `stat`), the script tries GNU's flags first and falls back to BSD's.
-- **jq** - optional, not a hard dependency. The hooks no longer need it. The statusline (and the `ctx-probe.sh` helper it calls) degrades per-segment without `jq`: both its context and EIT segments go blank, but it still prints (empty) and exits `0`.
+- **Shell** - bash 3.2 / BSD userland compatible for everything shipped (`install.sh`, `plugin/hooks/*.sh`, `patterns/statusline/*.sh`). No GNU-only flags assumed; where GNU and BSD tools diverge (for example `stat`), the script tries GNU's flags first and falls back to BSD's.
+- **jq** - optional, not a hard dependency. The hooks no longer need it. The statusline example in `patterns/statusline/` degrades per-segment without `jq`: both its context and EIT segments go blank, but it still prints (empty) and exits `0`.
 
 ## Explicitly unverified
 

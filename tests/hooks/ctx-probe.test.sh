@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Table test for plugin/hooks/ctx-probe.sh.
+# Table test for patterns/statusline/ctx-probe.sh.
 set -u
-HOOK="$(cd "$(dirname "$0")/../../plugin/hooks" && pwd)/ctx-probe.sh"
+HOOK="$(cd "$(dirname "$0")/../../patterns/statusline" && pwd)/ctx-probe.sh"
 PASS=0; FAIL=0
 
 check() { # check <name> <expected> <actual>

@@ -27,9 +27,9 @@ and never blocks waiting for the expensive tier to catch up.
 
 ## How rigops implements it
 
-[../plugin/statusline/rigops-statusline.sh](../plugin/statusline/rigops-statusline.sh)
+[statusline/rigops-statusline.sh](statusline/rigops-statusline.sh)
 runs both tiers side by side. The cheap tier is the context-size segment: it
-shells out to [../plugin/hooks/ctx-probe.sh](../plugin/hooks/ctx-probe.sh) on
+shells out to [statusline/ctx-probe.sh](statusline/ctx-probe.sh) on
 every render with no cache at all, on the reasoning in the script's own
 comment: "Cheap enough to call every render; no cache." `ctx-probe.sh` tails
 the last 400 lines of the transcript file and reads the token usage off the

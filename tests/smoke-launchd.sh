@@ -27,7 +27,6 @@ run() {
 }
 
 SMOKE_HOME="$(mktemp -d)"
-SRC_COPY=""
 export RIGOPS_INSTALL_LABEL_PREFIX="com.rigops.smoke$$"
 LABEL="${RIGOPS_INSTALL_LABEL_PREFIX}.doctor"
 ALL_JOBS="doctor ledger janitor reap"
@@ -40,7 +39,6 @@ cleanup() {
         launchctl bootout "user/$UID_NUM/$RIGOPS_INSTALL_LABEL_PREFIX.$job" >/dev/null 2>&1 || true
     done
     rm -rf "$SMOKE_HOME"
-    if [ -n "$SRC_COPY" ]; then rm -rf "$SRC_COPY"; fi
 }
 trap cleanup EXIT
 
@@ -77,38 +75,12 @@ set -e
 leftover="$(find "$SMOKE_HOME" -name '*rigops*' 2>/dev/null || true)"
 [ -z "$leftover" ] || fail "leftover rigops paths after purge: $leftover"
 
-echo "smoke-launchd: manifest job record survives a later mid-install failure"
+echo "smoke-launchd: reinstall keeps the job"
 run bash "$INSTALL_SH" --apply --jobs doctor --yes
 [ "$RC" -eq 0 ] || fail "second install exit $RC: $OUT"
 
 run launchctl list "$LABEL"
 [ "$RC" -eq 0 ] || fail "label not loaded after second install: $LABEL ($OUT)"
-
-SRC_COPY="$(mktemp -d)"
-cp -R "$REPO_ROOT/." "$SRC_COPY/"
-mkdir -p "$SRC_COPY/plugin/statusline"
-cat >"$SRC_COPY/plugin/statusline/rigops-statusline.sh" <<'EOF'
-#!/bin/sh
-echo "rigops"
-EOF
-chmod +x "$SRC_COPY/plugin/statusline/rigops-statusline.sh"
-
-mkdir -p "$SMOKE_HOME/.claude"
-printf '{invalid' >"$SMOKE_HOME/.claude/settings.json"
-
-run bash "$SRC_COPY/install.sh" --apply --jobs doctor --statusline --yes
-[ "$RC" -eq 1 ] || fail "corrupted-settings install expected exit 1, got $RC: $OUT"
-
-MANIFEST="$SMOKE_HOME/.local/share/rigops/install.manifest.json"
-python3 - "$MANIFEST" "$LABEL" <<'PYEOF' || fail "manifest lost job record after mid-install failure"
-import json
-import sys
-
-manifest_path, label = sys.argv[1], sys.argv[2]
-data = json.load(open(manifest_path, encoding="utf-8"))
-labels = [j.get("label") for j in data.get("jobs", [])]
-sys.exit(0 if label in labels else 1)
-PYEOF
 
 run bash "$INSTALL_SH" --uninstall --apply --yes
 [ "$RC" -eq 0 ] || fail "final uninstall exit $RC: $OUT"
@@ -121,8 +93,6 @@ set -e
 
 [ -f "$PLIST" ] && fail "plist still present after final uninstall: $PLIST"
 
-rm -rf "$SRC_COPY"
-SRC_COPY=""
 
 echo "smoke-launchd: every shipped job loads and unloads"
 run bash "$INSTALL_SH" --apply --jobs "$(printf '%s' "$ALL_JOBS" | tr ' ' ',')" --yes

@@ -28,9 +28,8 @@ What lands:
 - **5 commands** - `/rigops:backlog`, `/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:week`.
 - **2 skills** - `ops-loop` (the measure/intervene/note/diff weekly loop, see [LEDGER.md](LEDGER.md)) and `fleet-triage` (reading a `doctor` report, see [REGISTRY.md](REGISTRY.md)).
 - **2 hook entries**, from `plugin/hooks/hooks.json`: one `SessionStart` hook (on startup, resume and compact) and one `UserPromptSubmit` hook, both running `rigops hook <event>` through `rigops-hook.sh`. Two hooks left the plugin for the user's own dispatcher: the `rg -r`/`-rn`/`-rl` guard (`-r` means `--replace` in ripgrep, not recursive, and the mistake fails silently) and the skill-forcing gate.
-- The statusline script (`plugin/statusline/rigops-statusline.sh`) - shipped but not wired into `~/.claude/settings.json` automatically; see `--statusline` below.
 
-The plugin works standalone. Hooks need no `jq`. `rigops-hook.sh` and the statusline script look for a `rigops` binary on PATH or at `~/.local/bin/rigops`; without it, or with a CLI too old to know `rigops hook`, the hooks print nothing. The statusline hardcodes only the first two thresholds (250000 / 350000) for coloring, has no re-arm, and only reads config at all when `jq` is present. Without `jq`, the statusline's context and EIT segments both go blank, but it still prints and exits cleanly.
+The plugin works standalone. Hooks need no `jq`. `rigops-hook.sh` looks for a `rigops` binary on PATH or at `~/.local/bin/rigops`; without it, or with a CLI too old to know `rigops hook`, the hooks print nothing.
 
 ## Script install
 
@@ -81,7 +80,6 @@ rigops install: plan for ~ (dry run; re-run with --apply to act)
      installed ~/.local/share/rigops/templates/launchd/janitor.plist.in
      installed ~/.local/share/rigops/templates/launchd/ledger.plist.in
      installed ~/.local/share/rigops/templates/launchd/reap.plist.in
-     installed ~/.local/share/rigops/plugin/statusline/rigops-statusline.sh
      installed ~/.local/share/rigops/LICENSE
 3. plan: symlink ~/.local/bin/rigops -> ~/.local/share/rigops/bin/rigops
      installed ~/.local/bin/rigops
@@ -114,13 +112,12 @@ From `bash install.sh --help`:
 | Flag | Meaning |
 |---|---|
 | `--apply` | Perform the actions. Without it, every run is plan-only, regardless of any other flag. |
-| `--plugin-only` | Install the CLI tree and symlink only; skip jobs, templates, and the statusline copy. Config and registry are still scaffolded. Conflicts with `--statusline`. |
+| `--plugin-only` | Install the CLI tree and symlink only; skip jobs and templates. Config and registry are still scaffolded. |
 | `--no-jobs` | Skip launchd job installation. Conflicts with `--jobs`. |
 | `--jobs a,b` | Comma-separated job list to install. Available jobs: `doctor` (every 30 minutes), `ledger` (Monday 09:05), `janitor` (Sunday 10:00) and `reap` (daily 08:30). Without `--jobs`, a first install gets `doctor` and `ledger`, and a later run keeps the job set the manifest recorded. `janitor` and `reap` run with `--apply`, so they delete on schedule and only `--jobs` installs them. Naming anything else is a usage error. A job the previous install recorded but the list leaves out is booted out and its plist removed, the same way `--uninstall` does it. install.sh is the one scheduler of these jobs: a job that another LaunchAgent in `~/Library/LaunchAgents` already runs (its `ProgramArguments` run `rigops <job>` or `rigops-<job>`) is skipped, and one this install placed earlier is booted out, so no job runs twice. The output names that plist; remove it and re-run with `--jobs` to schedule the job here. |
 | `--prefix DIR` | Install prefix (default `$HOME/.local/share/rigops`). |
 | `--python PATH` | `python3` interpreter to use (default: first `python3` on PATH). Must be >= 3.9. |
 | `--heal` | Schedule the `doctor` job with `--heal`. Off by default, so the scheduled doctor only reports. Like the other options it applies to this run only: a later `--apply` without `--heal` installs the report-only job again. A usage error when the run does not install `doctor` (`--no-jobs`, `--plugin-only`, a `--jobs` list without `doctor`, `--uninstall`). |
-| `--statusline` | Wire the plugin statusline into `~/.claude/settings.json`. Conflicts with `--plugin-only`. |
 | `--uninstall` | Remove a previous install, driven entirely by its manifest. |
 | `--purge` | With `--uninstall`, also delete the config/state/log directories. Requires `--uninstall`. |
 | `--yes` | Skip the confirmation prompt before a `--purge` deletion. |
@@ -139,16 +136,16 @@ launchd jobs follow the same idea: if the rendered plist's hash matches what's o
 
 Config and registry are scaffolded **only if the destination doesn't already exist** - `install.sh` never overwrites a config file you've edited. The scaffold is minimal: `config.json` is an empty object (every key takes its built-in default) and `registry.md` lists no jobs. `config/config.example.json` and `config/registry.example.md` stay in the checkout as examples and are never copied as live files.
 
-### Statusline wiring
+### Statusline
 
-`--statusline` (without `--plugin-only`) edits `~/.claude/settings.json`, setting its `statusLine` key to run the installed statusline script. It prints a unified diff of the change before writing, and on `--apply` writes a timestamped backup first: `~/.claude/settings.json.rigops-backup.<YYYYMMDDHHMMSS>`. If `settings.json` doesn't exist yet, it's created fresh with no backup needed, and `--uninstall` deletes it again while nothing else has been added to it. The manifest records the `statusLine` value it replaced, so `--uninstall` can put it back.
+The statusline is an example, not an installed component: see [../patterns/statusline.md](../patterns/statusline.md) for wiring it by hand. `--statusline`, which earlier versions used to edit `~/.claude/settings.json`, now exits 2.
 
 ### Uninstall and purge
 
 `--uninstall` reads `install.manifest.json` and undoes exactly what it recorded - nothing else:
 
 - Each job is booted out of launchd. If its on-disk plist still matches the manifest's recorded hash, the plist is removed; if it's been edited since install, it's renamed to `<plist>.rigops-disabled` instead (with a printed restore command) - never silently deleted, never silently left live.
-- A `statusLine` wired by `--statusline` is reverted: the value it replaced comes back, or the key is dropped if there was none. A timestamped backup of `settings.json` is written first. If `statusLine` no longer runs the installed script, it's left alone.
+- A `statusLine` wired by an earlier version's `--statusline` is reverted: the value it replaced comes back, or the key is dropped if there was none. A timestamped backup of `settings.json` is written first. If `statusLine` no longer runs the script that install copied, it's left alone. The script itself is removed with the other recorded files.
 - Each file is removed if its hash still matches what was installed; a file modified since install is left in place with a warning, never overwritten or deleted out from under you.
 - `__pycache__` directories under the prefix are swept (they're not in the manifest - Python writes them lazily) and the now-empty prefix tree is removed.
 

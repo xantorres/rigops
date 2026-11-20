@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Table test for plugin/statusline/rigops-statusline.sh: the GNU/BSD stat
+# Table test for patterns/statusline/rigops-statusline.sh: the GNU/BSD stat
 # mtime fallback in _mtime() (order matters -- GNU's own -f is filesystem
 # mode, where %m is an unsupported directive that prints "?" and exits 0,
 # so a -f-first fallback never reaches -c on Linux), the rigops-not-on-PATH
 # fallback location, and the no-CLI degrade path.
 set -u
-STATUSLINE_DIR="$(cd "$(dirname "$0")/../../plugin/statusline" && pwd)"
+STATUSLINE_DIR="$(cd "$(dirname "$0")/../../patterns/statusline" && pwd)"
 STATUSLINE="$STATUSLINE_DIR/rigops-statusline.sh"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 FIXTURE_TP="$REPO_ROOT/tests/fixtures/transcripts/proj-alpha/session-a.jsonl"

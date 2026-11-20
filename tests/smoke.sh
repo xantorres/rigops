@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fresh-HOME end-to-end smoke test for install.sh: plan mode, apply,
-# idempotent re-apply, the shipped CLIs against repo fixtures, statusline
-# wiring, and the hash-checked uninstall/purge path. Runs on macOS and
+# idempotent re-apply, the shipped CLIs against repo fixtures, the removed
+# statusline option, and the hash-checked uninstall/purge path. Runs on macOS and
 # Linux. No real launchd interaction here -- see smoke-launchd.sh (macOS
 # only) for that.
 set -euo pipefail
@@ -486,61 +486,75 @@ esac
 after_tree="$(snapshot_tree "$SMOKE_HOME")"
 [ "$before_tree" = "$after_tree" ] || fail "uninstall plan mode modified \$SMOKE_HOME"
 
-echo "smoke: statusline wiring"
+echo "smoke: --statusline was removed"
+for args in "--statusline" "--no-jobs --statusline --apply --yes"; do
+    # shellcheck disable=SC2086
+    run bash "$INSTALL_SH" $args
+    [ "$RC" -eq 2 ] || fail "install.sh $args expected exit 2, got $RC: $OUT"
+    case "$OUT" in
+        *"error: --statusline was removed; see patterns/statusline.md"*) : ;;
+        *) fail "install.sh $args missing the removal error: $OUT" ;;
+    esac
+done
+
 STATUSLINE_HOME="$(mktemp -d)"
-
-mkdir -p "$STATUSLINE_HOME/.claude"
-printf '{"existing": true}' >"$STATUSLINE_HOME/.claude/settings.json"
-
-# The main checkout ships plugin/statusline/rigops-statusline.sh (M5); apply
-# directly against it instead of a copied dummy stub.
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
-[ "$RC" -eq 0 ] || fail "statusline apply exit $RC: $OUT"
-printf '%s\n' "$OUT" | grep -E '^[[:space:]]*\+.*statusLine' >/dev/null \
-    || fail "statusline output missing diff line matching '+.*statusLine': $OUT"
-
 SETTINGS="$STATUSLINE_HOME/.claude/settings.json"
-python3 - "$SETTINGS" "$STATUSLINE_HOME" <<'PYEOF' || fail "settings.json statusLine wiring incorrect"
+OLD_PREFIX="$STATUSLINE_HOME/.local/share/rigops"
+OLD_CMD="$OLD_PREFIX/plugin/statusline/rigops-statusline.sh"
+OLD_PREV='{"type": "command", "command": "/usr/bin/true"}'
+
+# Writes what an earlier install run with the removed statusline option left
+# behind: the copied script, its manifest file record and the statusline record.
+seed_old_install() {
+    python3 - "$STATUSLINE_HOME" "$1" "$2" <<'PYEOF'
+import hashlib
 import json
+import os
 import sys
 
-settings_path, home = sys.argv[1], sys.argv[2]
-data = json.load(open(settings_path, encoding="utf-8"))
-expected = home + "/.local/share/rigops/plugin/statusline/rigops-statusline.sh"
-if data.get("statusLine", {}).get("command") != expected:
-    sys.exit(1)
-if data.get("existing") is not True:
-    sys.exit(1)
+home, previous, created = sys.argv[1:4]
+prefix = home + "/.local/share/rigops"
+rel = "plugin/statusline/rigops-statusline.sh"
+script = prefix + "/" + rel
+os.makedirs(os.path.dirname(script), exist_ok=True)
+body = b"#!/bin/sh\necho old\n"
+with open(script, "wb") as fh:
+    fh.write(body)
+record = {"settings": home + "/.claude/settings.json", "command": script}
+if previous != "-":
+    record["previous"] = json.loads(previous)
+if created == "1":
+    record["created"] = True
+manifest = {
+    "version": "0.10.0",
+    "home": home,
+    "prefix": prefix,
+    "config_dir": home + "/.config/rigops",
+    "state_dir": home + "/.local/state/rigops",
+    "log_dir": home + "/Library/Logs/rigops",
+    "config_file_external": "",
+    "state_dir_external": "",
+    "files": [{"path": rel, "sha256": hashlib.sha256(body).hexdigest()}],
+    "symlinks": [],
+    "jobs": [],
+    "scaffolded": [],
+    "statusline": record,
+}
+with open(prefix + "/install.manifest.json", "w", encoding="utf-8") as fh:
+    json.dump(manifest, fh, indent=2, sort_keys=True)
 PYEOF
+}
 
-backups="$(find "$STATUSLINE_HOME/.claude" -name 'settings.json.rigops-backup.*' 2>/dev/null || true)"
-[ -n "$backups" ] || fail "no settings.json backup found"
+uninstall_old() {
+    run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
+    [ "$RC" -eq 0 ] || fail "$1: uninstall exit $RC: $OUT"
+}
 
-echo "smoke: a statusline install never overwrites an earlier backup"
-stamps="$(python3 -c 'import datetime as d
-now = d.datetime.now()
-print(" ".join((now + d.timedelta(seconds=s)).strftime("%Y%m%d%H%M%S") for s in range(60)))')"
-for stamp in $stamps; do
-    printf 'earlier\n' >"$SETTINGS.rigops-backup.$stamp"
-done
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
-[ "$RC" -eq 0 ] || fail "statusline backup re-apply exit $RC: $OUT"
-for stamp in $stamps; do
-    [ "$(cat "$SETTINGS.rigops-backup.$stamp")" = earlier ] \
-        || fail "statusline install overwrote backup $stamp"
-done
-[ -n "$(find "$STATUSLINE_HOME/.claude" -name 'settings.json.rigops-backup.*.*')" ] \
-    || fail "statusline install wrote no backup of its own"
-rm -f "$SETTINGS".rigops-backup.*
-
-echo "smoke: uninstall restores the statusLine that --statusline replaced"
-printf '{"existing": true, "statusLine": {"type": "command", "command": "/usr/bin/true"}}' >"$SETTINGS"
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
-[ "$RC" -eq 0 ] || fail "statusline re-wire exit $RC: $OUT"
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
-[ "$RC" -eq 0 ] || fail "statusline re-apply exit $RC: $OUT"
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
-[ "$RC" -eq 0 ] || fail "statusline uninstall exit $RC: $OUT"
+echo "smoke: uninstall restores the statusLine an earlier install replaced and removes its script"
+mkdir -p "$STATUSLINE_HOME/.claude"
+printf '{"existing": true, "statusLine": {"type": "command", "command": "%s"}}' "$OLD_CMD" >"$SETTINGS"
+seed_old_install "$OLD_PREV" 0
+uninstall_old "restore"
 python3 - "$SETTINGS" <<'PYEOF' || fail "uninstall did not restore the previous statusLine: $(cat "$SETTINGS")"
 import json
 import sys
@@ -548,16 +562,15 @@ import sys
 data = json.load(open(sys.argv[1], encoding="utf-8"))
 if data.get("statusLine") != {"type": "command", "command": "/usr/bin/true"}:
     sys.exit(1)
-if data.get("existing") is not True:
-    sys.exit(1)
+sys.exit(0 if data.get("existing") is True else 1)
 PYEOF
+[ -e "$OLD_CMD" ] && fail "uninstall left the statusline script an earlier install copied"
+[ -d "$OLD_PREFIX/plugin/statusline" ] && fail "uninstall left the plugin/statusline directory"
 
-echo "smoke: uninstall drops a statusLine key that --statusline added"
-printf '{"existing": true}' >"$SETTINGS"
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
-[ "$RC" -eq 0 ] || fail "statusline fresh wire exit $RC: $OUT"
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
-[ "$RC" -eq 0 ] || fail "statusline fresh uninstall exit $RC: $OUT"
+echo "smoke: uninstall drops a statusLine an earlier install added"
+printf '{"existing": true, "statusLine": {"type": "command", "command": "%s"}}' "$OLD_CMD" >"$SETTINGS"
+seed_old_install - 0
+uninstall_old "drop"
 python3 - "$SETTINGS" <<'PYEOF' || fail "uninstall left the rigops statusLine: $(cat "$SETTINGS")"
 import json
 import sys
@@ -565,88 +578,12 @@ import sys
 data = json.load(open(sys.argv[1], encoding="utf-8"))
 sys.exit(0 if "statusLine" not in data and data.get("existing") is True else 1)
 PYEOF
-
-echo "smoke: a second prefix's uninstall restores the statusLine from before both"
-printf '{"existing": true, "statusLine": {"type": "command", "command": "/usr/bin/true"}}' >"$SETTINGS"
-for prefix in a b; do
-    run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline \
-        --prefix "$STATUSLINE_HOME/prefix-$prefix" --yes
-    [ "$RC" -eq 0 ] || fail "statusline wire into prefix-$prefix exit $RC: $OUT"
-done
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --prefix "$STATUSLINE_HOME/prefix-b" --yes
-[ "$RC" -eq 0 ] || fail "prefix-b uninstall exit $RC: $OUT"
-python3 - "$SETTINGS" <<'PYEOF' || fail "prefix-b uninstall left another prefix's statusLine: $(cat "$SETTINGS")"
-import json
-import sys
-
-data = json.load(open(sys.argv[1], encoding="utf-8"))
-sys.exit(0 if data.get("statusLine") == {"type": "command", "command": "/usr/bin/true"} else 1)
-PYEOF
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --prefix "$STATUSLINE_HOME/prefix-a" --yes
-[ "$RC" -eq 0 ] || fail "prefix-a uninstall exit $RC: $OUT"
-
-echo "smoke: uninstall finishes when settings.json is not UTF-8"
-printf '{"existing": true}' >"$SETTINGS"
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
-[ "$RC" -eq 0 ] || fail "statusline wire before the bad-bytes uninstall exit $RC: $OUT"
-printf '{"x": "\377"}' >"$SETTINGS"
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
-[ "$RC" -eq 0 ] || fail "uninstall over non-UTF-8 settings.json exit $RC: $OUT"
-case "$OUT" in
-    *"kept     statusLine"*) : ;;
-    *) fail "uninstall over non-UTF-8 settings.json did not keep statusLine: $OUT" ;;
-esac
-[ -f "$STATUSLINE_HOME/.local/share/rigops/install.manifest.json" ] \
-    && fail "uninstall over non-UTF-8 settings.json stopped before the manifest"
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
-[ "$RC" -ne 0 ] || fail "statusline wire over non-UTF-8 settings.json succeeded: $OUT"
-case "$OUT" in
-    *Traceback*) fail "statusline wire over non-UTF-8 settings.json crashed: $OUT" ;;
-    *"is not valid JSON"*) : ;;
-    *) fail "statusline wire over non-UTF-8 settings.json gave no clear error: $OUT" ;;
-esac
-
-echo "smoke: uninstall deletes a settings.json that --statusline created"
-rm -f "$SETTINGS" "$SETTINGS".rigops-backup.*
-for pass in 1 2; do
-    run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
-    [ "$RC" -eq 0 ] || fail "statusline wire into a missing settings.json, pass $pass, exit $RC: $OUT"
-done
-# The second pass's backup is install's to keep; only uninstall's own is checked.
-rm -f "$SETTINGS".rigops-backup.*
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
-[ "$RC" -eq 0 ] || fail "uninstall of a created settings.json exit $RC: $OUT"
-[ -e "$SETTINGS" ] && fail "uninstall left the settings.json it created: $(cat "$SETTINGS")"
-[ -z "$(find "$STATUSLINE_HOME/.claude" -name 'settings.json.rigops-backup.*')" ] \
-    || fail "uninstall of a created settings.json left a backup"
-
-echo "smoke: uninstall keeps a created settings.json the user added to"
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
-[ "$RC" -eq 0 ] || fail "statusline wire into a missing settings.json exit $RC: $OUT"
-python3 - "$SETTINGS" <<'PYEOF'
-import json
-import sys
-
-data = json.load(open(sys.argv[1], encoding="utf-8"))
-data["theme"] = "dark"
-json.dump(data, open(sys.argv[1], "w", encoding="utf-8"))
-PYEOF
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
-[ "$RC" -eq 0 ] || fail "uninstall of an edited created settings.json exit $RC: $OUT"
-python3 - "$SETTINGS" <<'PYEOF' || fail "uninstall lost what the user added: $(cat "$SETTINGS")"
-import json
-import sys
-
-data = json.load(open(sys.argv[1], encoding="utf-8"))
-sys.exit(0 if data == {"theme": "dark"} else 1)
-PYEOF
+[ -e "$OLD_CMD" ] && fail "uninstall left the statusline script (added case)"
 
 echo "smoke: uninstall keeps a statusLine the user changed"
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
-[ "$RC" -eq 0 ] || fail "statusline wire before the user change exit $RC: $OUT"
 printf '{"statusLine": {"type": "command", "command": "/usr/bin/true"}}' >"$SETTINGS"
-run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
-[ "$RC" -eq 0 ] || fail "uninstall over a user statusLine exit $RC: $OUT"
+seed_old_install - 0
+uninstall_old "user-changed"
 case "$OUT" in
     *"kept     statusLine (no longer runs"*) : ;;
     *) fail "uninstall over a user statusLine did not say it kept it: $OUT" ;;
@@ -654,38 +591,38 @@ esac
 [ "$(cat "$SETTINGS")" = '{"statusLine": {"type": "command", "command": "/usr/bin/true"}}' ] \
     || fail "uninstall changed a statusLine the user set: $(cat "$SETTINGS")"
 
+echo "smoke: uninstall finishes when settings.json is not UTF-8"
+printf '{"x": "\377"}' >"$SETTINGS"
+seed_old_install - 0
+uninstall_old "non-utf8"
+case "$OUT" in
+    *"kept     statusLine"*) : ;;
+    *) fail "uninstall over non-UTF-8 settings.json did not keep statusLine: $OUT" ;;
+esac
+[ -f "$OLD_PREFIX/install.manifest.json" ] \
+    && fail "uninstall over non-UTF-8 settings.json stopped before the manifest"
+
+echo "smoke: uninstall deletes a settings.json an earlier install created"
+printf '{"statusLine": {"type": "command", "command": "%s"}}' "$OLD_CMD" >"$SETTINGS"
+seed_old_install - 1
+uninstall_old "created"
+[ -e "$SETTINGS" ] && fail "uninstall left the settings.json it created: $(cat "$SETTINGS")"
+
 echo "smoke: uninstall writes through a symlinked settings.json"
 DOTFILE="$STATUSLINE_HOME/dotfiles/settings.json"
 mkdir -p "$STATUSLINE_HOME/dotfiles"
-for start in '{"theme": "dark"}' dangling; do
-    rm -f "$SETTINGS" "$SETTINGS".rigops-backup.* "$DOTFILE"
-    [ "$start" = dangling ] || printf '%s' "$start" >"$DOTFILE"
-    ln -s "$DOTFILE" "$SETTINGS"
-    run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --apply --no-jobs --statusline --yes
-    [ "$RC" -eq 0 ] || fail "statusline wire through a symlink ($start) exit $RC: $OUT"
-    run env HOME="$STATUSLINE_HOME" bash "$INSTALL_SH" --uninstall --apply --yes
-    [ "$RC" -eq 0 ] || fail "uninstall through a settings.json symlink ($start) exit $RC: $OUT"
-    [ -L "$SETTINGS" ] || fail "uninstall replaced the settings.json symlink ($start)"
-    python3 - "$DOTFILE" <<'PYEOF' || fail "uninstall left the statusLine in the symlink target ($start): $(cat "$DOTFILE")"
+printf '{"theme": "dark", "statusLine": {"type": "command", "command": "%s"}}' "$OLD_CMD" >"$DOTFILE"
+rm -f "$SETTINGS"
+ln -s "$DOTFILE" "$SETTINGS"
+seed_old_install - 0
+uninstall_old "symlink"
+[ -L "$SETTINGS" ] || fail "uninstall replaced the settings.json symlink"
+python3 - "$DOTFILE" <<'PYEOF' || fail "uninstall left the statusLine in the symlink target: $(cat "$DOTFILE")"
 import json
 import sys
 
-sys.exit(0 if "statusLine" not in json.load(open(sys.argv[1], encoding="utf-8")) else 1)
+sys.exit(0 if json.load(open(sys.argv[1], encoding="utf-8")) == {"theme": "dark"} else 1)
 PYEOF
-done
-rm -f "$SETTINGS" "$SETTINGS".rigops-backup.*
-
-echo "smoke: statusline error path (checkout without the script)"
-SRC_COPY="$(mktemp -d)"
-cp -R "$REPO_ROOT/." "$SRC_COPY/"
-rm -rf "$SRC_COPY/plugin/statusline"
-
-run bash "$SRC_COPY/install.sh" --statusline
-[ "$RC" -eq 1 ] || fail "expected exit 1 for --statusline without the script, got $RC"
-case "$OUT" in
-    *"statusline script ships with the plugin half; not present in this checkout"*) : ;;
-    *) fail "missing expected statusline error message: $OUT" ;;
-esac
 
 echo "smoke: hash-mismatch uninstall path"
 TAX_PATH="$SMOKE_HOME/.local/share/rigops/libexec/rigops-tax"

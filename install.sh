@@ -32,8 +32,8 @@ Plan-by-default: with no --apply, prints what would happen and changes
 nothing. Pass --apply to actually install.
 
   --apply         perform the actions (default: plan only)
-  --plugin-only   install tree + symlink only; skip jobs, templates,
-                  statusline; still scaffold config/registry
+  --plugin-only   install tree + symlink only; skip jobs and templates;
+                  still scaffold config/registry
   --no-jobs       skip launchd job installation
   --jobs a,b      comma list of jobs to install (default: doctor, ledger;
                   also available: janitor, reap, which run with --apply)
@@ -41,7 +41,6 @@ nothing. Pass --apply to actually install.
   --python PATH   python3 interpreter to use (default: first on PATH)
   --heal          schedule the doctor job with --heal, so it may kill hung
                   jobs and kickstart stale ones (default: report-only)
-  --statusline    wire the plugin statusline into ~/.claude/settings.json
   --uninstall     remove a previous install, using its manifest
   --purge         with --uninstall, also delete config/state/log dirs
   --yes           skip confirmation prompts
@@ -61,7 +60,6 @@ NO_JOBS=0
 JOBS_FILTER=""
 PREFIX=""
 PYTHON_BIN=""
-STATUSLINE=0
 HEAL=0
 UNINSTALL=0
 PURGE=0
@@ -112,8 +110,8 @@ while [ "$#" -gt 0 ]; do
             shift 2
             ;;
         --statusline)
-            STATUSLINE=1
-            shift
+            echo "error: --statusline was removed; see patterns/statusline.md" >&2
+            exit 2
             ;;
         --heal)
             HEAL=1
@@ -155,11 +153,6 @@ fi
 
 if [ "$NO_JOBS" -eq 1 ] && [ -n "$JOBS_FILTER" ]; then
     echo "error: --jobs conflicts with --no-jobs" >&2
-    exit 2
-fi
-
-if [ "$PLUGIN_ONLY" -eq 1 ] && [ "$STATUSLINE" -eq 1 ]; then
-    echo "error: --plugin-only conflicts with --statusline" >&2
     exit 2
 fi
 
@@ -239,7 +232,6 @@ PREFIX="${PREFIX:-$EFFECTIVE_HOME/.local/share/rigops}"
 LOG_DIR="$EFFECTIVE_HOME/Library/Logs/rigops"
 LAUNCH_AGENTS_DIR="$EFFECTIVE_HOME/Library/LaunchAgents"
 BIN_LINK="$EFFECTIVE_HOME/.local/bin/rigops"
-CLAUDE_SETTINGS="$EFFECTIVE_HOME/.claude/settings.json"
 LABEL_PREFIX="${RIGOPS_INSTALL_LABEL_PREFIX:-com.rigops}"
 
 WORK_TMP="$(mktemp -d "${TMPDIR:-/tmp}/rigops-install.XXXXXX")"
@@ -285,13 +277,6 @@ PY_STATUS="$(printf '%s\n' "$PY_CHECK" | sed -n '2p')"
 if [ "$PY_STATUS" != "OK" ]; then
     echo "error: python at $PY_ABS is older than 3.9 (need >=3.9)" >&2
     exit 1
-fi
-
-if [ "$UNINSTALL" -eq 0 ] && [ "$STATUSLINE" -eq 1 ] && [ "$PLUGIN_ONLY" -eq 0 ]; then
-    if [ ! -f "$ROOT_DIR/plugin/statusline/rigops-statusline.sh" ]; then
-        echo "error: statusline script ships with the plugin half; not present in this checkout" >&2
-        exit 1
-    fi
 fi
 
 JOBS_ENABLED=1
@@ -411,7 +396,7 @@ step_log() {
 # Single per-file decision point: hash source vs. dest, classify
 # installed/updated/unchanged, warn when a file changed outside of this
 # installer since the last recorded install, and (only in --apply) write
-# it. Every tree-copy call and the statusline copy share this one path.
+# it. Every tree-copy call shares this one path.
 copy_file_step() {
     local src="$1" dest="$2" rel="$3" exec_mode="$4"
     local src_hash dest_hash status old_hash locally_modified note tmp_dest
@@ -507,15 +492,13 @@ step_copy_tree() {
     copy_lib_py
     if [ "$PLUGIN_ONLY" -eq 0 ]; then
         copy_tree "$ROOT_DIR/templates" "templates" 0
-        if [ -d "$ROOT_DIR/plugin/statusline" ]; then
-            copy_tree "$ROOT_DIR/plugin/statusline" "plugin/statusline" 1
-        fi
     fi
     copy_file_step "$ROOT_DIR/LICENSE" "$PREFIX/LICENSE" "LICENSE" 0
 }
 
 # Only roots this run copied: a plugin-only run skips templates and the
-# statusline, so their absence from it says nothing about what ships.
+# statusline files an earlier version copied, so their absence from it says
+# nothing about what ships.
 step_prune() {
     local stale="$WORK_TMP/stale.tsv" tag rel sha
     : >"$stale"
@@ -595,96 +578,6 @@ step_scaffold() {
     do_scaffold "$ROOT_DIR/config/config.scaffold.json" "$CONFIG_DIR/config.json" "config"
     do_scaffold "$ROOT_DIR/config/registry.scaffold.md" "$CONFIG_DIR/registry.md" "registry"
     printf '     examples: %s/config/config.example.json, %s/config/registry.example.md\n' "$ROOT_DIR" "$ROOT_DIR"
-}
-
-step_statusline() {
-    [ "$STATUSLINE" -eq 1 ] && [ "$PLUGIN_ONLY" -eq 0 ] || return 0
-    step_log "wire statusLine into $CLAUDE_SETTINGS"
-    local src="$ROOT_DIR/plugin/statusline/rigops-statusline.sh"
-    local dest_rel="plugin/statusline/rigops-statusline.sh"
-    copy_file_step "$src" "$PREFIX/$dest_rel" "$dest_rel" 1
-    local mode="plan"
-    [ "$APPLY" -eq 1 ] && mode="apply"
-    "$PY_ABS" - "$CLAUDE_SETTINGS" "$PREFIX/$dest_rel" "$mode" \
-        "$PREFIX/install.manifest.json" "$MANIFEST_TSV" <<'PYEOF'
-import difflib
-import json
-import os
-import sys
-from datetime import datetime
-
-settings_path, command_path, mode, manifest_path, tsv_path = sys.argv[1:6]
-
-if os.path.exists(settings_path):
-    try:
-        with open(settings_path, encoding="utf-8") as fh:
-            old_text = fh.read()
-        data = json.loads(old_text) if old_text.strip() else {}
-    except (OSError, ValueError) as exc:
-        print(f"error: {settings_path} is not valid JSON: {exc}", file=sys.stderr)
-        sys.exit(1)
-    if not isinstance(data, dict):
-        print(f"error: {settings_path} must contain a JSON object", file=sys.stderr)
-        sys.exit(1)
-    existed = True
-else:
-    old_text = ""
-    data = {}
-    existed = False
-
-# Uninstall puts back what was here before; when the value here is already a
-# rigops one, from this prefix or another, that install's record holds it.
-record = {"settings": settings_path, "command": command_path}
-current = data.get("statusLine")
-current_command = current.get("command") if isinstance(current, dict) else None
-suffix = "/plugin/statusline/rigops-statusline.sh"
-if isinstance(current_command, str) and current_command.endswith(suffix):
-    owner_manifest = current_command[: -len(suffix)] + "/install.manifest.json"
-    try:
-        with open(owner_manifest, encoding="utf-8") as fh:
-            earlier = json.load(fh).get("statusline")
-    except (OSError, ValueError, AttributeError):
-        earlier = None
-    if isinstance(earlier, dict) and earlier.get("command") == current_command:
-        for key in ("previous", "created"):
-            if key in earlier:
-                record[key] = earlier[key]
-elif "statusLine" in data:
-    record["previous"] = current
-if not os.path.lexists(settings_path):
-    record["created"] = True
-
-data["statusLine"] = {"type": "command", "command": command_path}
-new_text = json.dumps(data, indent=2, sort_keys=True) + "\n"
-
-diff = difflib.unified_diff(
-    old_text.splitlines(keepends=True),
-    new_text.splitlines(keepends=True),
-    fromfile=settings_path,
-    tofile=settings_path,
-)
-for line in diff:
-    sys.stdout.write("     " + line)
-print()
-
-if mode == "apply":
-    if existed:
-        # A run in the same second must not overwrite the earlier backup.
-        stem = settings_path + ".rigops-backup." + datetime.now().strftime("%Y%m%d%H%M%S")
-        backup_path, n = stem, 0
-        while os.path.exists(backup_path):
-            n += 1
-            backup_path = f"{stem}.{n}"
-        with open(backup_path, "x", encoding="utf-8") as fh:
-            fh.write(old_text)
-    else:
-        print(f"     note: {settings_path} did not exist; created minimal file with statusLine (no backup needed)")
-    os.makedirs(os.path.dirname(settings_path), exist_ok=True)
-    with open(settings_path, "w", encoding="utf-8") as fh:
-        fh.write(new_text)
-    with open(tsv_path, "a", encoding="utf-8") as fh:
-        fh.write("STATUSLINE\t" + json.dumps(record, sort_keys=True) + "\n")
-PYEOF
 }
 
 render_template() {
@@ -947,7 +840,6 @@ import sys
  config_file_external, state_dir_external) = sys.argv[1:14]
 
 files, symlinks, jobs, scaffolded = [], [], [], []
-statusline = None
 with open(tsv_path, encoding="utf-8") as fh:
     for raw in fh:
         line = raw.rstrip("\n")
@@ -965,8 +857,6 @@ with open(tsv_path, encoding="utf-8") as fh:
             )
         elif tag == "SCAFFOLD":
             scaffolded.append(parts[1])
-        elif tag == "STATUSLINE":
-            statusline = json.loads(line.split("\t", 1)[1])
 
 old_jobs = []
 if jobs_authoritative != "1" and os.path.exists(old_jobs_path):
@@ -1016,12 +906,10 @@ manifest = {
     "jobs": jobs,
     "scaffolded": scaffolded,
 }
-# A run without --statusline leaves the earlier wiring in settings.json,
-# so its record carries forward for --uninstall to undo.
-if statusline is None and isinstance(existing, dict) and isinstance(existing.get("statusline"), dict):
-    statusline = existing["statusline"]
-if statusline is not None:
-    manifest["statusline"] = statusline
+# An earlier version's wiring stays in settings.json, so its record carries
+# forward for --uninstall to undo.
+if isinstance(existing, dict) and isinstance(existing.get("statusline"), dict):
+    manifest["statusline"] = existing["statusline"]
 
 
 def without_created(data):
@@ -1111,7 +999,7 @@ purge_safe() {
     return 0
 }
 
-# Puts back the statusLine that --statusline replaced, only while
+# Puts back the statusLine an earlier version's --statusline replaced, only while
 # settings.json still runs the command the manifest recorded.
 undo_statusline() {
     local mode="plan"
@@ -1465,17 +1353,12 @@ print(json.load(open(sys.argv[1]))["version"])' "$ROOT_DIR/plugin/.claude-plugin
     step_prune
     step_symlink
     step_scaffold
-    # Checkpoint after tree+symlink+scaffold, and again after statusline, so
-    # a crash before step_jobs still leaves a manifest --uninstall can act
-    # on instead of an orphaned, unmanifested partial install. Both are
+    # Checkpoint after tree+symlink+scaffold, so a crash before step_jobs still leaves a manifest --uninstall can act
+    # on instead of an orphaned, unmanifested partial install. It is
     # non-authoritative for "jobs" (arg 0): step_jobs hasn't run yet this
     # invocation, so write_manifest forwards the PREVIOUS manifest's job
     # records rather than wiping them to [].
     if [ "$APPLY" -eq 1 ]; then
-        write_manifest 0
-    fi
-    step_statusline
-    if [ "$APPLY" -eq 1 ] && [ "$STATUSLINE" -eq 1 ] && [ "$PLUGIN_ONLY" -eq 0 ]; then
         write_manifest 0
     fi
     step_jobs

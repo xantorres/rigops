@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The statusline moved from `plugin/statusline/` to `patterns/statusline/`, with `ctx-probe.sh` beside it, and is an example to copy rather than an installed component. `install.sh --statusline` is removed and exits 2; `install.sh --uninstall` still restores a `statusLine` an earlier version wired and removes the script it copied.
 - The built-in `rtk` and `caveman` ledger sources are removed, and `sources.rtk` is no longer a default. Rows carry only `sources.ccusage` plus custom entries, and the summary line no longer prints `rtk saved` or `caveman proxy`. A `sources.custom` entry named `rtk` or `caveman` now works and stores the command's whole JSON output; `docs/CONFIG.md` shows both. Rows written by 0.10 keep their `rtk_*` columns without showing as deltas.
 - `reaper.roots` defaults to `[]` (was `["~/projects"]`). `rigops reap` with no roots and no `--root` prints one line to stderr naming the config path and exits 0; with `--json` stdout still carries the empty report.
 - `reaper.ignored_untracked_dirs` defaults to `["node_modules", "dist", ".turbo"]` (was with `"@mf-types"`), and `pointers.memory_roots` drops `~/rig` from its default.

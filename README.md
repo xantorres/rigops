@@ -257,7 +257,6 @@ rigops install: plan for ~ (dry run; re-run with --apply to act)
 A few flags worth knowing up front:
 
 - `--no-jobs` - install the CLI without touching launchd.
-- `--statusline` - wire the plugin statusline into `~/.claude/settings.json`.
 - `--uninstall --purge` - remove a previous install, including its config and state.
 
 `rigops help` lists the commands; `rigops version` (or `rigops --version`) prints the installed version, which is what a bug report needs.
@@ -276,7 +275,7 @@ Note interventions as you make them: `rigops ledger note "<what you changed>"`.
 
 Two halves, one config.
 
-**Plugin half** - a Claude Code marketplace plugin: five commands (`/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:backlog`, `/rigops:week`), two skills (`ops-loop`, `fleet-triage`), two hooks (`rigops hook session-start` prints one stale-gates line, `rigops hook user-prompt-submit` nudges on context size), and a statusline. The `rg -r`/`-rn`/`-rl` guard and the skill-forcing gate that used to ship here now live in the user's own dispatcher: which workflow a prompt must go through is rig policy, and two copies of one gate is one copy too many. Zero daemons. No agents - deliberately; which subagent handles a task is a decision that belongs to the rig, not to rigops.
+**Plugin half** - a Claude Code marketplace plugin: five commands (`/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:backlog`, `/rigops:week`), two skills (`ops-loop`, `fleet-triage`), and two hooks (`rigops hook session-start` prints one stale-gates line, `rigops hook user-prompt-submit` nudges on context size). The statusline is an example in `patterns/statusline/`, not an installed part. The `rg -r`/`-rn`/`-rl` guard and the skill-forcing gate that used to ship here now live in the user's own dispatcher: which workflow a prompt must go through is rig policy, and two copies of one gate is one copy too many. Zero daemons. No agents - deliberately; which subagent handles a task is a decision that belongs to the rig, not to rigops.
 
 **Script half** - the `rigops` CLI (`eit`, `ledger`, `eval`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`, `card`, `nudge`, `render`, `retrieval`, `mine`, `hook`, `version`), plus hardened launchd templates for the `doctor`, `ledger`, `janitor` and `reap` jobs, and a cron template for Linux hosts (unverified).
 
@@ -314,7 +313,7 @@ Python 3.9+, stdlib only. Full matrix: [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MAT
 - [docs/RENDER.md](docs/RENDER.md)
 - [docs/SAFETY.md](docs/SAFETY.md)
 - [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MATRIX.md)
-- [patterns/](patterns/) - the ideas, portable without the code: drift-ledger, context-tax, job-registry, hardened-launchd, tiered-refresh, auth-probe-gating, scope-gated-hooks.
+- [patterns/](patterns/) - the ideas, portable without the code: drift-ledger, context-tax, job-registry, hardened-launchd, tiered-refresh, auth-probe-gating, scope-gated-hooks, statusline.
 
 ## License
 
