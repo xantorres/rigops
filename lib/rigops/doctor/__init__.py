@@ -13,7 +13,26 @@ from pathlib import Path
 
 from rigops import core
 
+from . import ids
+
 PREFIX = "check_"
+
+
+class _Unimportable:
+    """Stands in for a check module that raised on import, so the run can say so."""
+
+    def __init__(self, name: str, exc: Exception) -> None:
+        self.name = name
+        self.exc = exc
+
+    def run(self, cfg):
+        return [core.Finding(
+            check=self.name, area="rigops", key="import",
+            symptom=f"check `{self.name}` failed to import: {type(self.exc).__name__}",
+            evidence=str(self.exc) or type(self.exc).__name__,
+            fix="fix the check module; until then it is reporting nothing about its area",
+            severity="error",
+        )]
 
 
 def discover() -> list:
@@ -22,8 +41,12 @@ def discover() -> list:
     for info in sorted(pkgutil.iter_modules([str(Path(__file__).parent)]), key=lambda i: i.name):
         if not info.name.startswith(PREFIX):
             continue
-        module = importlib.import_module(f"{__name__}.{info.name}")
-        found.append((info.name[len(PREFIX):], module))
+        name = info.name[len(PREFIX):]
+        try:
+            module = importlib.import_module(f"{__name__}.{info.name}")
+        except Exception as exc:  # noqa: BLE001 - one broken module must not hide the others
+            module = _Unimportable(name, exc)
+        found.append((name, module))
     return found
 
 
@@ -46,6 +69,7 @@ def run_checks(cfg: dict, only=None) -> list:
                 symptom=f"check `{name}` raised {type(exc).__name__}",
                 evidence=str(exc) or type(exc).__name__,
                 fix="fix the check; until then it is reporting nothing about its area",
+                severity="error",
             ))
     return sorted(findings, key=lambda f: (f.check, f.id))
 
@@ -54,4 +78,4 @@ def names() -> list:
     return [name for name, _ in discover()]
 
 
-__all__ = ["discover", "run_checks", "names", "core"]
+__all__ = ["discover", "run_checks", "names", "core", "ids"]

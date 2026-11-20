@@ -52,7 +52,7 @@ class SubprocessExitCodes(unittest.TestCase):
         self.state = self.home / "state"
         self.config = self.home / "config.json"
 
-    def run_cmd(self, args, config=None, mode=None) -> subprocess.CompletedProcess:
+    def run_cmd(self, args, config=None, mode=None, extra_env=None) -> subprocess.CompletedProcess:
         env = {
             **os.environ,
             "HOME": str(self.home),
@@ -60,6 +60,7 @@ class SubprocessExitCodes(unittest.TestCase):
             "RIGOPS_CONFIG": str(self.config),
             "XDG_CONFIG_HOME": str(self.home / "xdg-config"),
             "XDG_STATE_HOME": str(self.home / "xdg-state"),
+            **(extra_env or {}),
         }
         self.config.unlink(missing_ok=True)
         if config is not None:
@@ -75,6 +76,28 @@ class SubprocessExitCodes(unittest.TestCase):
         self.state.mkdir(parents=True, exist_ok=True)
         (self.state / "ledger.jsonl").write_text("{not json\n")
         (self.state / "eval.jsonl").write_text("{not json\n")
+
+    def _import_failure_env(self) -> dict:
+        hook = self.home / "hook"
+        hook.mkdir()
+        (hook / "sitecustomize.py").write_text(
+            "import importlib\n"
+            "_real = importlib.import_module\n"
+            "def _fake(name, package=None):\n"
+            "    if name.endswith('check_mcp'):\n"
+            "        raise ImportError('boom')\n"
+            "    return _real(name, package)\n"
+            "importlib.import_module = _fake\n"
+        )
+        return {"PYTHONPATH": str(hook)}
+
+    def _unreadable_rule(self) -> None:
+        rules = self.home / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        locked = rules / "locked.md"
+        locked.write_text("always on\n")
+        locked.chmod(0)
+        self.addCleanup(locked.chmod, 0o644)
 
     def _janitor_error_config(self) -> dict:
         watched = self.home / "watched"
@@ -131,7 +154,22 @@ class SubprocessExitCodes(unittest.TestCase):
             ("janitor --apply runs with a 0644 config", ["janitor", "--apply"], {}, 0, 0o644),
             ("janitor dry run ignores a writable config", ["janitor"], {}, 0, 0o664),
         ]
-        for name, args, config, want, *mode in rows:
+        if os.geteuid() != 0:
+            self._unreadable_rule()
+            rows += [
+                ("doctor unreadable always-on file", ["doctor", "--config-only"], {}, 2),
+                ("doctor unreadable always-on file under --exit-zero",
+                 ["doctor", "--config-only", "--exit-zero"], {}, 2),
+            ]
+        broken = {"extra_env": self._import_failure_env()}
+        rows += [
+            ("doctor check import failure", ["doctor", "--config-only"], {}, 2, broken),
+            ("doctor check import failure under --exit-zero",
+             ["doctor", "--config-only", "--exit-zero"], {}, 2, broken),
+        ]
+        for name, args, config, want, *extra in rows:
+            mode = [x for x in extra if isinstance(x, int)]
+            env = next((x["extra_env"] for x in extra if isinstance(x, dict)), None)
             with self.subTest(name):
                 if "REG" in args:
                     evidence = self.home / "evidence"
@@ -142,7 +180,7 @@ class SubprocessExitCodes(unittest.TestCase):
                         STALE_ITEM.format(health=evidence, entry="rigops ledger write"),
                     )
                     args = [str(reg) if a == "REG" else a for a in args]
-                proc = self.run_cmd(args, config, *mode)
+                proc = self.run_cmd(args, config, *mode, extra_env=env)
                 self.assertEqual(proc.returncode, want, proc.stderr)
                 self.assertNotIn("Traceback", proc.stderr)
 

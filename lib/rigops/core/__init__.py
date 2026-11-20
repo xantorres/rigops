@@ -194,7 +194,8 @@ class Finding:
 
     ``key`` is what makes the id stable across runs: it must identify the defect
     itself, never the run that found it, so a line can be deduplicated against an
-    existing backlog entry. A ``warn`` finding is reported but never fails the run.
+    existing backlog entry. A ``warn`` finding is reported but never fails the run; an
+    ``error`` finding is a check that could not measure, and ends the run with 2.
     """
 
     check: str

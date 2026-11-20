@@ -66,7 +66,7 @@ label namespace.
 
 `--list` prints the registry without judging anything; a full run judges every item,
 optionally heals under `--heal`, and always writes an event line to `doctor/events.jsonl`
-regardless of outcome. The exit code is `1` when a job is failing or hung or a check or finding fails, `2` when the registry cannot be read, `0` otherwise; a scheduled run passes `--exit-zero`.
+regardless of outcome. The exit code is `1` when a job is failing or hung or a check or finding fails, `2` when the registry cannot be read or a config check cannot measure, `0` otherwise; a scheduled run passes `--exit-zero`.
 
 Sample `rigops doctor --list`:
 

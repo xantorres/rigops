@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shlex
 import shutil
@@ -194,7 +195,7 @@ def render_report(ts: str, jobs: list, checks: list, heal_log: list, supervisor:
     return "\n".join(lines) + "\n"
 
 
-RED = ("failing", "hung", "fail")
+RED = config_checks.ids.EXIT_1_STATUSES
 
 
 def render_summary(jobs: list, checks: list, findings: list, gates: list, ts: str) -> str:
@@ -202,6 +203,7 @@ def render_summary(jobs: list, checks: list, findings: list, gates: list, ts: st
         (sum(1 for j in jobs if j["status"] in ("failing", "hung")), "failing/hung job"),
         (sum(1 for c in checks if c["status"] == "fail"), "failing check"),
         (len(_failing(findings)), "failing config finding"),
+        (len(_errors(findings)), "config check error"),
     ]
     summary = ", ".join(f"{n} {noun}{'' if n == 1 else 's'}" for n, noun in counts if n)
     lines = [f"rigops doctor: {summary or 'OK'} ({len(jobs)} jobs checked)"]
@@ -213,7 +215,26 @@ def render_summary(jobs: list, checks: list, findings: list, gates: list, ts: st
 
 
 def _failing(findings: list) -> list:
-    return [f for f in findings if f.severity != "warn"]
+    return [f for f in findings if f.severity not in ("warn", "error")]
+
+
+def _errors(findings: list) -> list:
+    return [f for f in findings if f.severity == "error"]
+
+
+def default_supervisor() -> str:
+    return "launchd" if sys.platform == "darwin" else "none"
+
+
+def default_registry() -> Path:
+    xdg = os.environ.get("XDG_CONFIG_HOME") or "~/.config"
+    return rigops_config.expand(Path(xdg) / "rigops" / "registry.md")
+
+
+def exit_code(findings: list, verdict: bool, exit_zero: bool) -> int:
+    if _errors(findings):
+        return 2
+    return 1 if verdict and not exit_zero else 0
 
 
 def render_unknown_keys(keys: list) -> str:
@@ -228,6 +249,10 @@ def render_findings(findings: list) -> str:
     warnings = [f for f in findings if f.severity == "warn"]
     lines = [f"config checks: {len(failing)} findings"]
     lines.extend(f.line() for f in failing)
+    errors = _errors(findings)
+    if errors:
+        lines.append(f"errors: {len(errors)} (a check could not measure; the run exits 2)")
+        lines.extend(f.line() for f in errors)
     if warnings:
         lines.append(f"warnings: {len(warnings)} (reported, never fail the run)")
         lines.extend(f.line() for f in warnings)
@@ -269,7 +294,7 @@ def report_config_checks(cfg: dict, args) -> int:
         ))
     else:
         print(render_findings(findings), end="")
-    return 1 if _failing(findings) and not args.exit_zero else 0
+    return exit_code(findings, bool(_failing(findings)), args.exit_zero)
 
 
 def _job_gate_entries(jobs: list) -> list:
@@ -335,10 +360,13 @@ def main(argv=None) -> int:
         help="exit 0 even when a finding fails; output and findings are unchanged",
     )
     ap.add_argument(
-        "--supervisor", choices=["launchd", "none"], default="launchd",
-        help="'none' skips launchctl entirely and judges from evidence file ages only",
+        "--supervisor", choices=["launchd", "none"], default=default_supervisor(),
+        help=(
+            "'none' skips launchctl entirely and judges from evidence file ages only "
+            "(default: launchd on macOS, none elsewhere)"
+        ),
     )
-    ap.add_argument("--registry", help="registry file path (default: config doctor.registry)")
+    ap.add_argument("--registry", help="registry file path (default: config doctor.registry, else $XDG_CONFIG_HOME/rigops/registry.md)")
     ap.add_argument(
         "--config-only", action="store_true",
         help=(
@@ -374,8 +402,9 @@ def main(argv=None) -> int:
         return report_config_checks(cfg, args)
 
     configured = rigops_config.get(cfg, "doctor.registry")
-    registry_path = rigops_config.expand(args.registry or configured)
     is_default = configured == rigops_config.DEFAULTS["doctor"]["registry"]
+    registry_path = rigops_config.expand(
+        args.registry or (default_registry() if is_default else configured))
     if not args.registry and is_default and not registry_path.exists():
         print(f"note: no job registry at {rigops_core.short(registry_path)}; "
               "job checks skipped", file=sys.stderr)
@@ -635,7 +664,7 @@ def _fleet_run(args, cfg: dict, items: list) -> int:
     verdict = bool(fail_count or failed_checks or _failing(findings))
     if guard_findings:
         return 2
-    return 1 if verdict and not args.exit_zero else 0
+    return exit_code(findings, verdict, args.exit_zero)
 
 
 if __name__ == "__main__":

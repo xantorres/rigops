@@ -171,8 +171,16 @@ def _fix(lever) -> str:
 def _judge_lever(lever, rule, series, accepted, ledger) -> list:
     latest = series[-1]
     value = latest.get(lever)
-    if not _number(value) or (accepted and latest["date"] <= accepted):
+    if accepted and latest["date"] <= accepted:
         return []
+    if not _number(value):
+        return [_warning(
+            f"{lever}:value",
+            f"{lever} is {value!r} on the {latest['date']} ledger row, not a number, so its "
+            "rule is not judged",
+            f"{core.short(ledger)} row {latest['date']}",
+            "check what wrote the column, or turn the rule off", ledger,
+        )]
     fix = _fix(lever)
     found = []
     if "max" in rule and value > rule["max"]:

@@ -646,10 +646,13 @@ class CheckLeversTests(unittest.TestCase):
                          ["2026-09-01", "2026-09-08", "2026-09-15"])
         self.assertEqual(self._judge(rows, rules=rules), [])
 
-    def test_missing_value_on_the_latest_row_is_not_judged(self):
+    def test_missing_value_on_the_latest_row_warns_instead_of_going_quiet(self):
         rows = self._rows(denials_headless=[5, None], out_per_turn=[1000, None],
                           cache_hit_pct=[97.0, None])
-        self.assertEqual(self._judge(rows), [])
+        found = self._judge(rows)
+        self.assertEqual(sorted(f.key for f in found),
+                         ["cache_hit_pct:value", "denials_headless:value", "out_per_turn:value"])
+        self.assertEqual({f.severity for f in found}, {"warn"})
 
     def test_stale_ledger_is_reported(self):
         rows = self._rows(denials_headless=[0], out_per_turn=[1000], cache_hit_pct=[97.0])

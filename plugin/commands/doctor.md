@@ -6,7 +6,7 @@ description: Run the rigops job-fleet health check and interpret the report. Use
 
 1. Check the CLI is reachable: `command -v rigops` or `$HOME/.local/bin/rigops`. If neither exists, tell the user to run `install.sh` (the skills work without the CLI; the hooks print nothing without it) and stop.
 
-2. Run `rigops doctor --report`. This is report-only: no kill/kickstart side effects. Add `--json` when you need structured output to reason over instead of the text table. On Linux (or anywhere launchd isn't the supervisor), add `--supervisor=none` - this skips launchctl entirely and judges each job from evidence-file age only.
+2. Run `rigops doctor --report`. This is report-only: no kill/kickstart side effects. Add `--json` when you need structured output to reason over instead of the text table. Off macOS the supervisor already defaults to `none`; `--supervisor=none` skips launchctl entirely and judges each job from evidence-file age only.
 
 3. Read the `== jobs ==` table: columns are id, status, runtime, evidence age, action. Statuses and what they mean live in the `fleet-triage` skill - invoke it for anything beyond a quick read (stale vs hung vs failed, when `--heal` is warranted).
 
@@ -16,4 +16,4 @@ description: Run the rigops job-fleet health check and interpret the report. Use
 
 6. For the registry itself (job cadence, evidence paths, `id`/`plist` fields), point the user at `config/registry.example.md` in the rigops repo, or their configured `doctor.registry` path (`rigops config get doctor.registry`).
 
-`--json` is one object with `version`; `--list` puts the items under `items` and `--config-only` puts them under `findings`. Exit 2 also means guard state was unreadable or newer than this rigops.
+`--json` is one object with `version`; `--list` puts the items under `items` and `--config-only` puts them under `findings`. Exit 2 also means guard state was unreadable or newer than this rigops, or a config check could not measure (an `error` finding: import failure, crash, unreadable always-on file); `--exit-zero` never hides it.

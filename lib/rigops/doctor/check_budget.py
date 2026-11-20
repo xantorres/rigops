@@ -43,41 +43,62 @@ def _memory_index():
     return indexes[:1]
 
 
+def _counts(rule) -> bool:
+    """True for an always-on rule, and for one that cannot be read to tell."""
+    try:
+        core.read_bytes(rule)
+    except OSError:
+        return True
+    return core.is_always_on(rule)
+
+
 def members():
     files = []
     law = core.CLAUDE_DIR / "CLAUDE.md"
     if law.is_file():
         files.append(law)
     for rule in sorted((core.CLAUDE_DIR / "rules").rglob("*.md")):
-        if core.is_always_on(rule):
+        if _counts(rule):
             files.append(rule)
     files.extend(_memory_index())
     return files
 
 
-def _total(files):
-    total = 0
+def _measure(files):
+    """(tokens, unreadable files): a member that cannot be read is named, never skipped."""
+    total, unreadable = 0, []
     for path in files:
         try:
             total += len(core.read_bytes(path)) // 4
         except OSError:
-            continue
-    return total
+            unreadable.append(path)
+    return total, unreadable
 
 
 def tokens(cfg):
-    return _total(members())
+    return _measure(members())[0]
+
+
+def _unreadable(files) -> core.Finding:
+    names = ", ".join(core.short(p) for p in files)
+    return core.Finding(
+        check=CHECK, area=AREA, key="unreadable", severity="error",
+        symptom=f"{len(files)} always-on file(s) could not be read, so the budget is not measured",
+        evidence=names, fix="make the file readable or remove it",
+        extra={"paths": [str(p) for p in files]},
+    )
 
 
 def run(cfg):
     ceiling = core.cfg_get(cfg, "doctor.budget.always_on_tokens", DEFAULT_CEILING)
     files = members()
-    total = _total(files)
+    total, unreadable = _measure(files)
+    found = [_unreadable(unreadable)] if unreadable else []
     if total <= ceiling:
-        return []
+        return found
     biggest = sorted(files, key=_size, reverse=True)[:3]
     worst = ", ".join(core.short(p) for p in biggest)
-    return [core.Finding(
+    return found + [core.Finding(
         check=CHECK, area=AREA, key="always_on",
         symptom=f"always-on instruction surface is {total} tokens against a {ceiling} ceiling",
         evidence=f"{len(files)} files, largest: {worst}",
