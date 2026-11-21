@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-21
+
 ### Changed
 
 - Exit codes follow one model: `0` ok, `1` a negative verdict (failing check, failing or hung job, key not found), `2` an error or a run that cannot judge (usage, config, runtime, malformed state, a refused guard). When both apply, `2` wins.
