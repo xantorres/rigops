@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Day windows are built from local calendar days. The ledger window and every date-only or `today` bound use the UTC offset that holds on the day itself, not today's, and a seven-day window is seven local days, not 168 hours. A window that spans a clock change is now 167 or 169 hours long and both edges are local midnights. The stored `window.since` and `window.until` strings are still UTC.
+- `rigops reap` measures its run deadline and the kill grace period on the monotonic clock. A machine that slept during a run used to wake with the deadline spent and skip a healthy repository, or with the grace period already over.
 
 ### Upgrading from 0.11.x
 
