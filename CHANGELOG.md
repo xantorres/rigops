@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A job already scheduled by a hand-written LaunchAgent under another label is no longer skipped when installing; remove that agent or the duplicate.
 - Python 3.11 or newer is required.
+- The plugin and the package share one version string, checked by tests.
 
 ### Removed
 
