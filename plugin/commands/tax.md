@@ -4,7 +4,7 @@ description: Show the rigops fixed context tax (always-loaded config bytes) and 
 
 # rigops tax
 
-1. Check the CLI is reachable: `command -v rigops` or `$HOME/.local/bin/rigops`. If neither exists, tell the user to run `install.sh` and stop.
+1. Check the CLI is reachable: `command -v rigops` or `$HOME/.local/bin/rigops`. If neither exists, tell the user to install the `rigops` package (see `docs/INSTALL.md`) and stop.
 
 2. `rigops tax` prints the current fixed context tax: every file counted toward it (`fixed_tax.paths`, always counted, plus `fixed_tax.globs` matches that aren't themselves path-scoped) and its size, plus a total. Add `--json` for structured output. If it prints "fixed_tax not configured", the user hasn't set `fixed_tax.paths`/`fixed_tax.globs` in their rigops config yet - point them at `config/config.example.json` for the shape.
 

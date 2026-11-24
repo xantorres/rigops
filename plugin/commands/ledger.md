@@ -4,7 +4,7 @@ description: Write, show, note, or diff the rigops weekly effectiveness ledger. 
 
 # rigops ledger
 
-1. Check the CLI is reachable: `command -v rigops` or `$HOME/.local/bin/rigops`. If neither exists, tell the user to run `install.sh` and stop - the ledger has no plugin-only fallback, it needs the CLI's transcript scan.
+1. Check the CLI is reachable: `command -v rigops` or `$HOME/.local/bin/rigops`. If neither exists, tell the user to install the `rigops` package (see `docs/INSTALL.md`) and stop - the ledger has no plugin-only fallback, it needs the CLI's transcript scan.
 
 2. To write this week's row: `rigops ledger write`. Useful flags: `--at YYYY-MM-DD` (default today), `--label "<text>"` (free-text tag for the row), `--dry-run` (compute and print, write nothing), `--force` (replace an existing row for that date), `--json`. It reads the transcripts once and exits 2 if `transcripts_dir` is missing; stderr warns when over 1% of transcript lines did not parse or the week had no turns.
 

@@ -8,11 +8,11 @@ What's first-class on which platform, the version floors, and exactly what CI co
 |---|---|---|
 | CLI (`rigops <cmd>`) | First-class. | Runs - every subcommand is plain Python 3.11+ stdlib. |
 | `rigops doctor` | `--supervisor launchd` (default) - full runtime/exit-code judgment via `launchctl`. | `--supervisor none` (default off macOS) - evidence-file-age judgment, no runtime/exit-code signal (no `launchctl` to ask). |
-| Scheduled jobs | `install.sh` installs launchd jobs: `doctor` (passes `--exit-zero`; report-only unless installed with `--heal`) every 30 min and `ledger write` weekly Monday 09:05 by default; `janitor --apply` (Sunday 10:00) and `reap --apply` (daily 08:30) only through `--jobs`. | No installer-managed scheduler. `lib/rigops/templates/cron/crontab.example` ships as a starting point - **unverified**, read it before use. |
+| Scheduled jobs | `rigops jobs install --apply` installs launchd jobs: `doctor` (passes `--exit-zero`; report-only unless installed with `--heal`) every 30 min and `ledger write` weekly Monday 09:05 by default; `janitor --apply` (Sunday 10:00) and `reap --apply` (daily 08:30) only through `--jobs`. | `rigops jobs install` prints crontab lines to add by hand; `lib/rigops/templates/cron/crontab.example` ships the same lines. **Unverified**, read them before use. |
 | Plugin hooks | Full. | Full - pure bash, no `jq`, nothing macOS-specific. |
 | `rigops reap` | Full - process matching via `ps`/`lsof`. | Full - the same `ps`/`lsof` parsing handles both tty formats (`??` on macOS, `?` on Linux; both are stripped to detect "no controlling tty"). A process is killed only when reparented to pid 1; with a per-user service manager (systemd `--user`), orphans go to that manager instead, so reap leaves them alone and keeps the tree. |
 
-`install.sh` itself: when `launchctl` isn't found on PATH, it automatically behaves as `--no-jobs` and prints a note pointing at the cron template - see [INSTALL.md](INSTALL.md#linux).
+`rigops jobs install` on a host without launchd (any non-macOS platform) prints crontab lines instead of writing plists - see [INSTALL.md](INSTALL.md#linux).
 
 ## CI coverage
 
@@ -26,8 +26,19 @@ So: the Python 3.9 floor is exercised on Linux; launchd-specific behavior is exe
 ## Floors
 
 - **Python** - 3.11+, stdlib only, for the shipped package (`lib/rigops/`). Dev tooling (`ruff`, `shellcheck`) is exempt - it isn't shipped to installs.
-- **Shell** - bash 3.2 / BSD userland compatible for everything shipped (`install.sh`, `plugin/hooks/*.sh`, `patterns/statusline/*.sh`). No GNU-only flags assumed; where GNU and BSD tools diverge (for example `stat`), the script tries GNU's flags first and falls back to BSD's.
+- **Shell** - bash 3.2 / BSD userland compatible for everything shipped (`plugin/hooks/*.sh`, `patterns/statusline/*.sh`). No GNU-only flags assumed; where GNU and BSD tools diverge (for example `stat`), the script tries GNU's flags first and falls back to BSD's.
 - **jq** - optional, not a hard dependency. The hooks no longer need it. The statusline example in `patterns/statusline/` degrades per-segment without `jq`: both its context and EIT segments go blank, but it still prints (empty) and exits `0`.
+
+## Experimental commands
+
+These four commands carry no compatibility promise; the CLI help line says the same.
+
+| Command | Status |
+|---|---|
+| `authprobe` | No compatibility promise; may change or leave in any release. |
+| `backlog` | No compatibility promise; may change or leave in any release. |
+| `eit` | No compatibility promise; may change or leave in any release. |
+| `mine` | No compatibility promise; may change or leave in any release. |
 
 ## Explicitly unverified
 

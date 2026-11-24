@@ -13,7 +13,7 @@ A segment goes blank when its tool is missing (`jq`, the `rigops` binary). The s
 
 ## An example to copy
 
-This is not an installed component. [statusline/](statusline/) holds the two scripts as a starting point: `rigops-statusline.sh` and `ctx-probe.sh`, which it finds beside itself. Copy both into one directory you own and edit them to fit. Earlier versions of `install.sh` wired it with `--statusline`; that option is gone, and `install.sh --uninstall` still undoes an earlier wiring.
+This is not an installed component. [statusline/](statusline/) holds the two scripts as a starting point: `rigops-statusline.sh` and `ctx-probe.sh`, which it finds beside itself. Copy both into one directory you own and edit them to fit. Earlier versions of `install.sh` wired it with `--statusline`; that option is gone, and `install.sh --uninstall` from tag `v0.12.0` still undoes an earlier wiring (see [../docs/INSTALL.md](../docs/INSTALL.md)).
 
 ## Wiring it by hand
 

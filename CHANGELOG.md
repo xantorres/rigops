@@ -25,13 +25,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- `install.sh` and its launchd smoke test. The command scripts now live in the `rigops.cli` package, and the install docs follow in a later release note.
+- `install.sh` and its launchd smoke test, with its flags (`--prefix`, `--home`, `--statusline`, `--purge`, `--no-jobs`), `RIGOPS_INSTALL_LABEL_PREFIX` and the `bin/rigops` shell dispatcher. The `rigops` console script replaces the dispatcher, and the command scripts now live in the `rigops.cli` package. See Upgrading from 0.12.x.
 
 ### Fixed
 
 - Two fixes to the 0.12 exit-code and process-group contract.
 - `reap --apply` now exits 2 when a removal fails, as the 0.12 exit-code contract says; it exited 0.
 - `doctor.notify_command` and `cause_probe_command` now run in their own process group and are killed whole on timeout, like custom checks and janitor commands.
+
+### Upgrading from 0.12.x
+
+- `install.sh` is gone. Move off it in four steps: run `install.sh --uninstall --apply` from tag `v0.12.0` (it removes the prefix and its jobs and restores the `statusLine` a 0.10 `--statusline` replaced), install the package (`pipx install rigops`), run `rigops jobs install --apply`, then check with `rigops jobs status`. `docs/INSTALL.md` has the commands.
+- Python 3.11 or newer is required.
+- No config default changed since 0.12.0.
 
 ## [0.12.0] - 2026-11-21
 

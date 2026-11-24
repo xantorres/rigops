@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from rigops import config_spec
+from rigops.cli import EXPERIMENTAL
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -258,6 +259,15 @@ class ConfigDocsMatchSpecTests(unittest.TestCase):
     def test_every_documented_key_is_in_the_spec(self):
         spec = {key.path for key in config_spec.SPEC}
         self.assertEqual(sorted(self.documented().keys() - spec), [])
+
+
+class ExperimentalTableTests(unittest.TestCase):
+    def test_the_table_lists_exactly_the_experimental_commands(self):
+        text = (REPO_ROOT / "docs" / "SUPPORT-MATRIX.md").read_text(encoding="utf-8")
+        section = re.search(r"^## Experimental commands\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+        assert section, "docs/SUPPORT-MATRIX.md has no '## Experimental commands' section"
+        rows = re.findall(r"^\| `([^`]+)` \|", section.group(1), re.M)
+        self.assertEqual(sorted(rows), sorted(EXPERIMENTAL))
 
 
 if __name__ == "__main__":

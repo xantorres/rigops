@@ -57,8 +57,15 @@ class UpgradeNotesTests(unittest.TestCase):
         self.assert_named(changed, "### Upgrading from 0.10.x")
 
     def test_defaults_changed_since_0_11_are_named(self):
-        changed = _changed(_fixture("defaults-0.11.0.json"), _hashed(config.DEFAULTS))
+        changed = _changed(_fixture("defaults-0.11.0.json"), _fixture("defaults-0.12.0.json"))
         self.assert_named(changed, "### Upgrading from 0.11.x")
+
+    def test_defaults_changed_since_0_12_are_named(self):
+        changed = _changed(_fixture("defaults-0.12.0.json"), _hashed(config.DEFAULTS))
+        if changed:
+            self.assert_named(changed, "### Upgrading from 0.12.x")
+        else:
+            self.assertIn("### Upgrading from 0.12.x", (REPO_ROOT / "CHANGELOG.md").read_text())
 
 
 if __name__ == "__main__":

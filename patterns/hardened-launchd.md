@@ -20,7 +20,7 @@ shows up as a job that silently stopped doing its work.
 ## Pattern
 
 A hardened plist template plus a bootstrap ritual, each defending against a specific failure
-above. Template defenses: an absolute, install-time-resolved interpreter path, not
+above. Template defenses: an absolute, install-time-resolved program path, not
 whatever's on `PATH` months later; explicit `EnvironmentVariables` for `HOME` and `PATH`
 rather than trusting launchd's minimal default environment; `ProcessType Background`, a
 positive `Nice`, and low-priority I/O so the job is a background citizen by construction;
@@ -59,35 +59,35 @@ template defense above. Quoting doctor's environment block exactly:
 </dict>
 ```
 
-`@PYTHON@`, `@PREFIX@`, `@HOME@`, `@LOG_DIR@`, `@LABEL@`, and `@EXTRA_ENV@` are placeholders
-that `install.sh`'s `render_template` fills with fully resolved absolute
-paths - and it fails loudly (`error: unresolved placeholder(s)`) if any placeholder survives
-substitution, rather than shipping a plist with a literal `@PYTHON@` in it.
-`doctor.plist.in` fires every 30 minutes (`StartInterval 1800`) with `--heal`;
+`@LABEL@`, `@RIGOPS@`, `@HOME@`, `@LOG_DIR@`, `@EXTRA_ENV@` and `@HEAL_ARG@` are placeholders
+that `render_plist` in [../lib/rigops/jobs.py](../lib/rigops/jobs.py) fills with fully resolved absolute
+paths - and it raises `unresolved placeholder(s) in the <name> template` if any placeholder survives
+substitution, rather than shipping a plist with a literal `@RIGOPS@` in it. It also parses the
+result with `plistlib`, so a malformed plist is refused before it is written.
+`doctor.plist.in` fires every 30 minutes (`StartInterval 1800`), with `--heal` only when installed with `rigops jobs install --heal`;
 `ledger.plist.in` fires weekly, Monday 09:05 local (`StartCalendarInterval`). Both set
 `RunAtLoad` false.
 
-The bootstrap ritual lives in `install.sh`'s `load_launchd_job`, quoted exactly:
+The bootstrap ritual lives in `bootstrap` in [../lib/rigops/launchd.py](../lib/rigops/launchd.py), quoted exactly:
 
-```bash
-launchctl bootout "$primary/$label" >/dev/null 2>&1 || true
-# A previously `launchctl disable`d label persists that override across
-# bootout, and bootstrap of a disabled label silently fails -- enable
-# must run before the bootstrap attempt, not just after a success.
-launchctl enable "$primary/$label" >/dev/null 2>&1 || true
-if launchctl bootstrap "$primary" "$plist" >/dev/null 2>&1; then
-    launchctl enable "$primary/$label" >/dev/null 2>&1 || true
+```python
+for domain in domains:
+    _launchctl("bootout", f"{domain}/{label}")
+    _launchctl("enable", f"{domain}/{label}")
+    if _launchctl("bootstrap", domain, str(plist_path)):
+        _launchctl("enable", f"{domain}/{label}")
+        return domain
 ```
 
 Bootout first, enable before the bootstrap attempt, enable again after success for good
-measure, with a `gui/$uid` domain tried first and a `user/$uid` fallback if that bootstrap
-fails. `load -w` never appears anywhere in the installer.
+measure, with the `gui/<uid>` domain tried first and `user/<uid>` as the fallback if that bootstrap
+fails. `load -w` never appears anywhere in the code.
 
 The runtime-deadline defense lives in [../lib/rigops/cli/reap.py](../lib/rigops/cli/reap.py), not
 a plist key: `RIGOPS_RUN_DEADLINE_S` (default 3600s) bounds how long a single run may scan
 before it stops and reports partial results, on the reasoning in its own comment: "Per-fetch
 timeouts alone let a run crawl: three slow remotes stretched one run to 2h41m." `reap` is
-an opt-in launchd job (`install.sh --jobs ...,reap`, daily 08:30), and this deadline is what
+an opt-in launchd job (`rigops jobs install --jobs ...,reap`, daily 08:30), and this deadline is what
 bounds its scheduled run: no plist key can express a wall-clock cap.
 
 For hosts without launchd,

@@ -4,7 +4,7 @@ description: Run the full weekly rigops ritual - write the ledger row, diff it, 
 
 # rigops week
 
-Check the CLI is reachable first: `command -v rigops` or `$HOME/.local/bin/rigops`. If neither exists, tell the user to run `install.sh` and stop - this ritual needs the CLI end to end.
+Check the CLI is reachable first: `command -v rigops` or `$HOME/.local/bin/rigops`. If neither exists, tell the user to install the `rigops` package (see `docs/INSTALL.md`) and stop - this ritual needs the CLI end to end.
 
 Run these in order:
 

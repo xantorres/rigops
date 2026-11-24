@@ -26,9 +26,8 @@ State directory (where `ledger.jsonl`, `ledger.md`, `interventions.jsonl`, `eval
 
 | Var | Read by | Effect |
 |---|---|---|
-| `RIGOPS_CONFIG` | The CLI's config loader (every command) and `install.sh` | Overrides the config file path entirely, skipping XDG resolution. `install.sh` also treats a set value as marking the config directory "externally managed" - skipped by `--purge`. |
-| `RIGOPS_STATE_DIR` | The CLI's state helper (every command that touches the ledger or logs) and `install.sh` | Overrides the state directory entirely. Same "externally managed" treatment for `--purge`. |
-| `RIGOPS_INSTALL_LABEL_PREFIX` | `install.sh` only | launchd label prefix for the jobs it installs (default `com.rigops`). |
+| `RIGOPS_CONFIG` | The CLI's config loader (every command) | Overrides the config file path entirely, skipping XDG resolution. |
+| `RIGOPS_STATE_DIR` | The CLI's state helper (every command that touches the ledger or logs) | Overrides the state directory entirely. |
 | `RIGOPS_RUN_DEADLINE_S` | `rigops reap` only | Wall-clock budget in seconds for one reap run across every configured repo (default 3600). Scanning stops at the deadline; whatever's left is picked up next run. |
 
 `XDG_CONFIG_HOME` and `XDG_STATE_HOME` feed the two resolution formulas above but aren't `RIGOPS_`-prefixed themselves.
@@ -432,5 +431,5 @@ Every key the code reads. "none" means no built-in default: the key is absent un
 
 ## See also
 
-- [INSTALL.md](INSTALL.md) - what scaffolds the config file, and when.
+- [INSTALL.md](INSTALL.md) - install, upgrade and uninstall. Nothing creates the config file for you; write it by hand.
 - [LEDGER.md](LEDGER.md), [EVAL.md](EVAL.md), [REGISTRY.md](REGISTRY.md), [SAFETY.md](SAFETY.md) - the commands these keys drive.
