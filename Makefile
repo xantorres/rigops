@@ -2,7 +2,7 @@
 STRICT ?=
 SKIP = if [ "$(STRICT)" = 1 ]; then echo "fail: $(1) not installed (STRICT)" >&2; exit 1; else echo "skip: $(1) not installed"; fi
 
-.PHONY: check gate gate-history shellcheck ruff test test-hooks validate-manifests plugin-validate hooks smoke smoke-launchd
+.PHONY: check gate gate-history shellcheck ruff test test-hooks validate-manifests plugin-validate hooks smoke
 
 check: gate gate-history shellcheck ruff test test-hooks smoke validate-manifests plugin-validate
 
@@ -48,6 +48,3 @@ hooks:
 
 smoke:
 	bash tests/smoke.sh
-
-smoke-launchd:
-	bash tests/smoke-launchd.sh

@@ -60,7 +60,7 @@ template defense above. Quoting doctor's environment block exactly:
 ```
 
 `@PYTHON@`, `@PREFIX@`, `@HOME@`, `@LOG_DIR@`, `@LABEL@`, and `@EXTRA_ENV@` are placeholders
-that [../install.sh](../install.sh)'s `render_template` fills with fully resolved absolute
+that `install.sh`'s `render_template` fills with fully resolved absolute
 paths - and it fails loudly (`error: unresolved placeholder(s)`) if any placeholder survives
 substitution, rather than shipping a plist with a literal `@PYTHON@` in it.
 `doctor.plist.in` fires every 30 minutes (`StartInterval 1800`) with `--heal`;
