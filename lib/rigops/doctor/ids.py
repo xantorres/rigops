@@ -10,6 +10,7 @@ from __future__ import annotations
 EXIT_1_FINDINGS = frozenset({
     ("agents", "read_only_edit:*"),
     ("budget", "always_on"),
+    ("jobs", "program:*"),
     ("mcp", "stdio:*"),
     ("pointers", "agent:*"),
     ("pointers", "launchd:*"),

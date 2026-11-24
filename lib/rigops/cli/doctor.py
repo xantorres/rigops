@@ -368,7 +368,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--config-only", action="store_true",
         help=(
-            "run only the config checks (agents, budget, levers, mcp, memory, "
+            "run only the config checks (agents, budget, jobs, levers, mcp, memory, "
             "pointers) and skip the fleet"
         ),
     )

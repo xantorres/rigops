@@ -18,6 +18,7 @@ from pathlib import Path
 
 from rigops import config as _config
 from rigops import frontmatter as _frontmatter
+from rigops import jobs as _jobs
 from rigops import ledger_row as _ledger_row
 from rigops import state as _state
 from rigops import transcripts as _transcripts
@@ -100,6 +101,10 @@ def find_transcripts(transcripts_dir=None) -> list:
 
 def parse_ts(value):
     return _transcripts.parse_ts(value)
+
+
+def job_problems() -> list:
+    return _jobs.installed_problems()
 
 
 def parse_frontmatter(text: str) -> tuple:
