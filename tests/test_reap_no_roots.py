@@ -8,12 +8,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests.support import cli_argv  # noqa: E402
+
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "lib"))
 
 from rigops import config  # noqa: E402
-
-REAP = REPO / "libexec" / "rigops-reap"
 
 
 class DefaultsTests(unittest.TestCase):
@@ -32,6 +32,7 @@ class ReapNoRootsTests(unittest.TestCase):
         self.config = self.tmp / "config.json"
         self.env = {
             "PATH": os.environ.get("PATH", ""),
+            "PYTHONPATH": os.environ.get("PYTHONPATH", ""),
             "HOME": str(self.tmp),
             "RIGOPS_CONFIG": str(self.config),
             "RIGOPS_STATE_DIR": str(self.tmp / "state"),
@@ -41,7 +42,7 @@ class ReapNoRootsTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def _run(self, *args):
-        return subprocess.run([sys.executable, str(REAP), *args], env=self.env,
+        return subprocess.run([*cli_argv("reap"), *args], env=self.env,
                               capture_output=True, text=True, timeout=60)
 
     def test_no_roots_prints_one_actionable_line_and_exits_zero(self):

@@ -20,13 +20,14 @@ from rigops import state  # noqa: E402
 from rigops.errors import RigopsError  # noqa: E402
 from rigops.eval import client  # noqa: E402
 
+from tests.support import cli_argv  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-EVAL_SCRIPT = REPO_ROOT / "libexec" / "rigops-eval"
 
 
 def _run_eval(args: list, env: dict) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(EVAL_SCRIPT), *args],
+        [*cli_argv("eval"), *args],
         env=env, capture_output=True, text=True, check=False,
     )
 

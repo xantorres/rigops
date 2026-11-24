@@ -4,9 +4,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import cli  # noqa: E402
 from rigops import authprobe  # noqa: E402

@@ -3,14 +3,12 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
+from tests.support import cli_argv
 from tests.test_eval_cli import _content_reply, _run_eval, _StubServerMixin, _write_case
-
-LIBEXEC = Path(__file__).resolve().parent.parent / "libexec"
 
 FORMS = [
     ("authprobe", "--json"),
@@ -51,7 +49,7 @@ class EveryJsonPayloadTests(unittest.TestCase):
                     args += ["--dir", str(home / "transcripts")]
                 with self.subTest(form=" ".join((cmd, *args))):
                     proc = subprocess.run(
-                        [sys.executable, str(LIBEXEC / f"rigops-{cmd}"), *args],
+                        [*cli_argv(cmd), *args],
                         capture_output=True, text=True, timeout=60, env=env,
                         stdin=subprocess.DEVNULL, check=False,
                     )

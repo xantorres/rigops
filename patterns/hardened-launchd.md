@@ -36,10 +36,10 @@ itself, driven by an environment variable, since a plist has no timeout key.
 ## How rigops implements it
 
 The four shipped templates,
-[../templates/launchd/doctor.plist.in](../templates/launchd/doctor.plist.in),
-[../templates/launchd/ledger.plist.in](../templates/launchd/ledger.plist.in),
-[../templates/launchd/janitor.plist.in](../templates/launchd/janitor.plist.in) and
-[../templates/launchd/reap.plist.in](../templates/launchd/reap.plist.in), carry every
+[../lib/rigops/templates/launchd/doctor.plist.in](../lib/rigops/templates/launchd/doctor.plist.in),
+[../lib/rigops/templates/launchd/ledger.plist.in](../lib/rigops/templates/launchd/ledger.plist.in),
+[../lib/rigops/templates/launchd/janitor.plist.in](../lib/rigops/templates/launchd/janitor.plist.in) and
+[../lib/rigops/templates/launchd/reap.plist.in](../lib/rigops/templates/launchd/reap.plist.in), carry every
 template defense above. Quoting doctor's environment block exactly:
 
 ```xml
@@ -83,7 +83,7 @@ Bootout first, enable before the bootstrap attempt, enable again after success f
 measure, with a `gui/$uid` domain tried first and a `user/$uid` fallback if that bootstrap
 fails. `load -w` never appears anywhere in the installer.
 
-The runtime-deadline defense lives in [../libexec/rigops-reap](../libexec/rigops-reap), not
+The runtime-deadline defense lives in [../lib/rigops/cli/reap.py](../lib/rigops/cli/reap.py), not
 a plist key: `RIGOPS_RUN_DEADLINE_S` (default 3600s) bounds how long a single run may scan
 before it stops and reports partial results, on the reasoning in its own comment: "Per-fetch
 timeouts alone let a run crawl: three slow remotes stretched one run to 2h41m." `reap` is
@@ -91,7 +91,7 @@ an opt-in launchd job (`install.sh --jobs ...,reap`, daily 08:30), and this dead
 bounds its scheduled run: no plist key can express a wall-clock cap.
 
 For hosts without launchd,
-[../templates/cron/crontab.example](../templates/cron/crontab.example) is the fallback: healing
+[../lib/rigops/templates/cron/crontab.example](../lib/rigops/templates/cron/crontab.example) is the fallback: healing
 is gated on launchd - `doctor` only kills or kickstarts with `--heal` under `--supervisor
 launchd` - so the cron template runs `doctor --supervisor none` without `--heal`; staleness is
 judged from evidence-file ages only, since there's no launchd to inspect for hung PIDs, and on

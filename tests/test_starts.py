@@ -13,9 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import levers, starts  # noqa: E402
 
-from tests.support import no_external_sources  # noqa: E402
+from tests.support import cli_argv, no_external_sources  # noqa: E402
 
-TAX_SCRIPT = Path(__file__).resolve().parent.parent / "libexec" / "rigops-tax"
 UTC = dt.timezone.utc
 
 
@@ -195,7 +194,7 @@ class TaxStartsCliTests(unittest.TestCase):
     def _run(self, root: Path, *args) -> subprocess.CompletedProcess:
         env = {**os.environ, "RIGOPS_CONFIG": str(root / "absent.json")}
         return subprocess.run(
-            [sys.executable, str(TAX_SCRIPT), "--starts", "--dir", str(root), *args],
+            [*cli_argv("tax"), "--starts", "--dir", str(root), *args],
             env=env, capture_output=True, text=True,
         )
 

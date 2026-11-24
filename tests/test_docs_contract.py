@@ -19,10 +19,8 @@ DOC_PAGES = (
     + sorted((REPO_ROOT / "docs").glob("*.md"))
     + sorted(PLUGIN_COMMANDS.glob("*.md"))
 )
-FLAG_SOURCES = (
-    sorted((REPO_ROOT / "libexec").glob("rigops-*"))
-    + sorted((REPO_ROOT / "lib" / "rigops").rglob("*.py"))
-)
+CLI_DIR = REPO_ROOT / "lib" / "rigops" / "cli"
+FLAG_SOURCES = sorted((REPO_ROOT / "lib" / "rigops").rglob("*.py"))
 
 # "<command> <flag>" pairs no doc page needs to name, each with the reason.
 UNDOCUMENTED_FLAGS: dict[str, str] = {}
@@ -47,8 +45,8 @@ ALWAYS_OK_FLAGS = {"--help", "-h"}
 
 
 def command_of(source: Path) -> str:
-    # lib/rigops/<module>.py parses the arguments of `rigops <module>`.
-    return source.name[len("rigops-"):] if source.parent.name == "libexec" else source.stem
+    # lib/rigops/cli/<command>.py and lib/rigops/<module>.py parse the arguments of `rigops <name>`.
+    return source.stem
 
 
 def defined_flags() -> dict[tuple[str, str], str]:
@@ -61,12 +59,16 @@ def defined_flags() -> dict[tuple[str, str], str]:
     return flags
 
 
+def shipped_cli() -> set[str]:
+    return {p.stem for p in CLI_DIR.glob("*.py") if p.stem != "__init__"}
+
+
 def shipped_commands() -> set[str]:
-    return {p.name[len("rigops-"):] for p in (REPO_ROOT / "libexec").glob("rigops-*")} | {"help"}
+    return shipped_cli() | {"help"}
 
 
 def subcommands(command: str) -> set[str]:
-    sources = [REPO_ROOT / "libexec" / f"rigops-{command}",
+    sources = [CLI_DIR / f"{command}.py",
                REPO_ROOT / "lib" / "rigops" / f"{command}.py"]
     return {name for source in sources if source.exists()
             for name in ADD_PARSER.findall(source.read_text(encoding="utf-8"))}
@@ -170,11 +172,11 @@ def markdown_files() -> list[Path]:
 class DocsContractTests(unittest.TestCase):
     maxDiff = None
 
-    def test_readme_command_list_matches_libexec(self):
+    def test_readme_command_list_matches_cli_modules(self):
         match = SCRIPT_HALF.search(README.read_text(encoding="utf-8"))
         self.assertIsNotNone(match, "README lost its script-half command list")
         listed = set(re.findall(r"`([a-z]+)`", match.group(1)))
-        shipped = {p.name[len("rigops-"):] for p in (REPO_ROOT / "libexec").glob("rigops-*")}
+        shipped = shipped_cli()
 
         self.assertEqual(listed, shipped)
 
@@ -192,7 +194,7 @@ class DocsContractTests(unittest.TestCase):
                                       "naming it, or allowlist it with a reason")
 
     def test_every_flag_source_maps_to_a_shipped_command(self):
-        shipped = {p.name[len("rigops-"):] for p in (REPO_ROOT / "libexec").glob("rigops-*")}
+        shipped = shipped_cli()
         strays = {source for (command, _), source in defined_flags().items()
                   if command not in shipped}
 

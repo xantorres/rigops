@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
+from tests.support import cli_argv
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-EIT_SCRIPT = REPO_ROOT / "libexec" / "rigops-eit"
 
 
 def _write_line(path: Path, obj: dict) -> None:
@@ -43,7 +43,7 @@ def _turn(
 
 def _run_eit(args: list, env: dict) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(EIT_SCRIPT), *args],
+        [*cli_argv("eit"), *args],
         env=env, capture_output=True, text=True, check=False,
     )
 

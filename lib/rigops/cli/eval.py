@@ -12,8 +12,6 @@ import urllib.parse
 import uuid
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
 from rigops import cli  # noqa: E402
 from rigops import config as rigops_config  # noqa: E402
 from rigops import core, fmt, state  # noqa: E402

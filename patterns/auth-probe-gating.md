@@ -54,7 +54,7 @@ str)` status pair, so a caller always gets a clean, structured answer instead
 of having to handle an unexpected exception from what's supposed to be a plain
 health check.
 
-[../libexec/rigops-authprobe](../libexec/rigops-authprobe) is the CLI wrapper.
+[../lib/rigops/cli/authprobe.py](../lib/rigops/cli/authprobe.py) is the CLI wrapper.
 It ships disabled by default (`authprobe.enabled: false` in
 [../lib/rigops/config.py](../lib/rigops/config.py)'s `DEFAULTS`) - running it
 requires either flipping that flag or passing `--force`. Disabled is not an
@@ -77,7 +77,7 @@ Sample `--json` in the same disabled state:
 The gate into fleet health is documented in the `authprobe` section of
 [../docs/CONFIG.md](../docs/CONFIG.md#authprobe): wire it into doctor with a
 `checks.custom` entry that runs `rigops authprobe`. `rigops doctor`'s `run_custom_check` (in
-[../libexec/rigops-doctor](../libexec/rigops-doctor)) runs any shell command
+[../lib/rigops/cli/doctor.py](../lib/rigops/cli/doctor.py)) runs any shell command
 and classifies its exit code as ok/warn/fail against configured thresholds -
 pointing one `checks.custom` entry at `rigops authprobe` turns the probe into
 one more line in the doctor report, so a dead credential shows up next to hung

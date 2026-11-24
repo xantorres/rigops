@@ -12,14 +12,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import state  # noqa: E402
 
+from tests.support import cli_argv  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TAX_SCRIPT = REPO_ROOT / "libexec" / "rigops-tax"
 FIXTURE_FIXED_TAX = Path(__file__).resolve().parent / "fixtures" / "fixed_tax"
 
 
 def _run_tax(args: list, env: dict) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(TAX_SCRIPT), *args],
+        [*cli_argv("tax"), *args],
         env=env, capture_output=True, text=True, check=False,
     )
 

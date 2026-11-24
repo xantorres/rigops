@@ -7,8 +7,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
 from rigops import cli  # noqa: E402
 from rigops import backlog as rigops_backlog  # noqa: E402
 from rigops import config as rigops_config  # noqa: E402

@@ -15,13 +15,13 @@ resolve_dir() {
 
 BIN_DIR="$(resolve_dir "$0")"
 ROOT_DIR="$(cd -P "$BIN_DIR/.." && pwd)"
-LIBEXEC="$ROOT_DIR/libexec"
+CLI_DIR="$ROOT_DIR/lib/rigops/cli"
 
 list_commands() {
-    for f in "$LIBEXEC"/rigops-*; do
+    for f in "$CLI_DIR"/*.py; do
         [ -e "$f" ] || continue
-        basename "$f" | sed 's/^rigops-//'
-    done | grep -vx hook
+        basename "$f" .py
+    done | grep -vx -e hook -e __init__
 }
 
 usage() {
@@ -49,12 +49,11 @@ case "$cmd" in
         ;;
 esac
 
-target="$LIBEXEC/rigops-$cmd"
-if [ ! -x "$target" ]; then
+if [ ! -f "$CLI_DIR/$cmd.py" ] || [ "$cmd" = __init__ ]; then
     echo "error: unknown command '$cmd'" >&2
     echo "" >&2
     usage >&2
     exit 2
 fi
 
-exec "$target" "$@"
+PYTHONPATH="$ROOT_DIR/lib${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m "rigops.cli.$cmd" "$@"

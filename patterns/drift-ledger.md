@@ -44,7 +44,7 @@ a note at every change - more than in the tooling.
 ## How rigops implements it
 
 `rigops ledger` (dispatched from
-[../libexec/rigops-ledger](../libexec/rigops-ledger)) has three subcommands.
+[../lib/rigops/cli/ledger.py](../lib/rigops/cli/ledger.py)) has three subcommands.
 `write` (`cmd_write`, the default when none is given) appends one row via
 `levers.build_row` in [../lib/rigops/levers.py](../lib/rigops/levers.py) -
 EIT/turn over a 7-day window, a smoothed 30-day EIT/turn, context p50, turn-1

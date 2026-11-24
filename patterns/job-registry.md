@@ -54,7 +54,7 @@ considered." Absent a live run, staleness only applies when both `expected_inter
 `evidence_age_h` are known; no evidence yet reads as `unknown`, not `stale`, because the job
 may simply not have fired since registration.
 
-The kill-target defense lives in [../libexec/rigops-doctor](../libexec/rigops-doctor)'s
+The kill-target defense lives in [../lib/rigops/cli/doctor.py](../lib/rigops/cli/doctor.py)'s
 `_resolve_label`: a candidate label only counts as a job's real label when it is both
 actually loaded (`launchd.is_loaded`) and starts with one of the prefixes from
 `doctor.label_prefix` in config - operator-owned config, not registry data. Verified

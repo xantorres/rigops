@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import importlib.machinery
-import importlib.util
 import io
 import json
 import os
@@ -19,24 +17,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import core, guard_state, launchd  # noqa: E402
 from rigops import notify as rigops_notify  # noqa: E402
+from rigops.cli import doctor  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DOCTOR_SCRIPT = REPO_ROOT / "libexec" / "rigops-doctor"
-
-
-def _load_doctor_module():
-    # libexec/rigops-doctor has no .py suffix, so importlib can't guess a loader
-    # from the file extension the way spec_from_file_location normally would.
-    loader = importlib.machinery.SourceFileLoader("rigops_doctor_cli", str(DOCTOR_SCRIPT))
-    spec = importlib.util.spec_from_loader(loader.name, loader)
-    module = importlib.util.module_from_spec(spec)
-    loader.exec_module(module)
-    return module
-
-
-doctor = _load_doctor_module()
-
-
 def pin_launchd_supervisor(case: unittest.TestCase) -> None:
     # The heal tests mock launchd; the default supervisor follows the host platform.
     patcher = mock.patch.object(doctor, "default_supervisor", return_value="launchd")

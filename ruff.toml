@@ -3,3 +3,6 @@ line-length = 100
 
 [lint]
 select = ["E", "F", "W", "I", "UP", "B"]
+
+[lint.per-file-ignores]
+"lib/rigops/cli/*.py" = ["E501", "I001"]

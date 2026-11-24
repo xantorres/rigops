@@ -121,7 +121,7 @@ class SpecTableTests(unittest.TestCase):
             r"""(?:cfg_get|config\.get)\(\s*(?:rigops_config\.load\(\)|cfg),\s*"([a-z_.]+)\""""
         )
         found = set()
-        sources = [*(REPO_ROOT / "lib").rglob("*.py"), *(REPO_ROOT / "libexec").glob("rigops-*")]
+        sources = (REPO_ROOT / "lib").rglob("*.py")
         for source in sources:
             found.update(pattern.findall(source.read_text(encoding="utf-8")))
         missing = sorted(p for p in found if not any(

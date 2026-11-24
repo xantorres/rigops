@@ -39,6 +39,10 @@ def path_with_failing_sources(path: str) -> str:
     return f"{_stub_dir}{os.pathsep}{path}"
 
 
+def cli_argv(cmd: str) -> list[str]:
+    return [sys.executable, "-m", f"rigops.cli.{cmd}"]
+
+
 ES_OVERLAY = Path(__file__).resolve().parent / "fixtures" / "corrections" / "es.json"
 
 

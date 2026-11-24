@@ -19,8 +19,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import core, hook  # noqa: E402
 
+from tests.support import cli_argv  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-HOOK_BIN = REPO_ROOT / "libexec" / "rigops-hook"
 BIN = REPO_ROOT / "bin" / "rigops"
 
 
@@ -279,7 +280,7 @@ class ExitZeroTests(HookCase):
 
     def test_closed_stdout_exits_0_through_the_real_entry_point(self):
         proc = subprocess.run(
-            ["sh", "-c", '"$0" "$1" "$2" 1>&-', sys.executable, str(HOOK_BIN), "session-start"],
+            ["sh", "-c", '"$0" "$1" "$2" "$3" 1>&-', *cli_argv("hook"), "session-start"],
             capture_output=True, text=True, timeout=30,
             env={**os.environ, "XDG_STATE_HOME": str(self.tmp / "x"),
                  "RIGOPS_CONFIG": str(self.tmp / "config.json")})
@@ -287,7 +288,7 @@ class ExitZeroTests(HookCase):
 
     def test_stdout_pipe_closed_early_exits_0(self):
         proc = subprocess.Popen(
-            [sys.executable, str(HOOK_BIN), "session-start"], stdout=subprocess.PIPE,
+            [*cli_argv("hook"), "session-start"], stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env={**os.environ, "XDG_STATE_HOME": str(self.tmp / "x"),
                  "RIGOPS_CONFIG": str(self.tmp / "config.json")})
@@ -305,7 +306,7 @@ class CapTests(unittest.TestCase):
                     "RIGOPS_CONFIG": str(self.tmp / "config.json")}
 
     def run_entry(self, event, stdin=""):
-        return subprocess.run([sys.executable, str(HOOK_BIN), event], input=stdin.encode(),
+        return subprocess.run([*cli_argv("hook"), event], input=stdin.encode(),
                               capture_output=True, timeout=30, env=self.env)
 
     def seed_gates(self, text):
@@ -359,7 +360,7 @@ class SubprocessTests(unittest.TestCase):
 
     def run_bin(self, *args, stdin=""):
         start = time.monotonic()
-        proc = subprocess.run([sys.executable, str(HOOK_BIN), *args], input=stdin,
+        proc = subprocess.run([*cli_argv("hook"), *args], input=stdin,
                               capture_output=True, text=True, timeout=30, env=self.env)
         return proc, time.monotonic() - start
 

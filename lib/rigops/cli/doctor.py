@@ -13,8 +13,6 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
 from rigops import cause as rigops_cause  # noqa: E402
 from rigops import cli  # noqa: E402
 from rigops import config as rigops_config  # noqa: E402

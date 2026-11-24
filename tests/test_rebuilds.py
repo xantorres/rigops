@@ -13,9 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import levers, rebuilds  # noqa: E402
 
-from tests.support import no_external_sources  # noqa: E402
+from tests.support import cli_argv, no_external_sources  # noqa: E402
 
-EIT_SCRIPT = Path(__file__).resolve().parent.parent / "libexec" / "rigops-eit"
 UTC = dt.timezone.utc
 BASE = dt.datetime(2026, 8, 12, 9, 0, tzinfo=UTC)
 
@@ -132,7 +131,7 @@ class EitRebuildsCliTests(unittest.TestCase):
             root = Path(tmp)
             write(root, session_rows())
             env = {**os.environ, "RIGOPS_CONFIG": str(root / "absent.json")}
-            base = [sys.executable, str(EIT_SCRIPT), "--rebuilds", "--dir", str(root),
+            base = [*cli_argv("eit"), "--rebuilds", "--dir", str(root),
                     "--since", "2026-08-01"]
             as_json = subprocess.run([*base, "--json"], env=env, capture_output=True, text=True)
             text = subprocess.run(base, env=env, capture_output=True, text=True)

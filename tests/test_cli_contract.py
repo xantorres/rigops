@@ -3,13 +3,14 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
+from tests.support import cli_argv
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-LIBEXEC = REPO_ROOT / "libexec"
+CLI_DIR = REPO_ROOT / "lib" / "rigops" / "cli"
 
 
 class CliContractTests(unittest.TestCase):
@@ -32,7 +33,7 @@ class CliContractTests(unittest.TestCase):
         if config is not None:
             self.config.write_text(config if isinstance(config, str) else json.dumps(config))
         return subprocess.run(
-            [sys.executable, str(LIBEXEC / f"rigops-{cmd}"), *args],
+            [*cli_argv(cmd), *args],
             capture_output=True, text=True, check=False, timeout=60, env=env,
             stdin=subprocess.DEVNULL,
         )
@@ -215,7 +216,7 @@ class CliContractTests(unittest.TestCase):
         )
 
     def test_every_command_answers_help_with_exit_0_under_an_empty_home(self):
-        commands = sorted(p.name.removeprefix("rigops-") for p in LIBEXEC.glob("rigops-*"))
+        commands = sorted(p.stem for p in CLI_DIR.glob("*.py") if p.stem != "__init__")
 
         for cmd in commands:
             with self.subTest(cmd=cmd):

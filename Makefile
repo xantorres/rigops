@@ -1,5 +1,6 @@
 # STRICT=1 (exactly 1) turns a missing optional tool from a skip into a failure; CI sets it.
 STRICT ?=
+export PYTHONPATH := $(CURDIR)/lib
 SKIP = if [ "$(STRICT)" = 1 ]; then echo "fail: $(1) not installed (STRICT)" >&2; exit 1; else echo "skip: $(1) not installed"; fi
 
 .PHONY: check gate gate-history shellcheck ruff test test-hooks validate-manifests plugin-validate hooks smoke

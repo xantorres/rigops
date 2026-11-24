@@ -46,7 +46,7 @@ path-scoped and gets excluded from the tax. The fixtures at
 (no frontmatter - always counted) are the pattern's own test cases for this
 rule.
 
-`rigops tax` ([../libexec/rigops-tax](../libexec/rigops-tax)) has two modes.
+`rigops tax` ([../lib/rigops/cli/tax.py](../lib/rigops/cli/tax.py)) has two modes.
 The default prints the current per-file breakdown sorted by size with a total
 (`cmd_current`). `--history` prints a sparkline plus first/last/delta across
 every ledger row that recorded `fixed_tax_b` (`cmd_history`, backed by

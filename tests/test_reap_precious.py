@@ -14,10 +14,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import config, reap, reap_guards  # noqa: E402
 
+from tests.support import cli_argv  # noqa: E402
 from tests.test_reap import GitFixtureTestCase, _init_repo, _rev_parse, _run_git  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-REAP_CMD = REPO_ROOT / "libexec" / "rigops-reap"
 
 
 class PreciousPatternsTests(unittest.TestCase):
@@ -47,7 +47,7 @@ class PreciousConfigCliTests(unittest.TestCase):
                    "RIGOPS_CONFIG": str(home / "config.json"),
                    "XDG_CONFIG_HOME": str(home / "xdg-config"),
                    "XDG_STATE_HOME": str(home / "xdg-state")}
-            return subprocess.run([sys.executable, str(REAP_CMD), "--root", str(home / "tree")],
+            return subprocess.run([*cli_argv("reap"), "--root", str(home / "tree")],
                                   capture_output=True, text=True, env=env, check=False)
 
     def test_wrong_type_exits_2_naming_the_key(self):

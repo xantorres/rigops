@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import contextlib
 import datetime as dt
-import importlib.machinery
-import importlib.util
 import io
 import json
 import os
@@ -17,11 +15,11 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from rigops import cost, levers, state  # noqa: E402
+from rigops.cli import ledger as ledger_cli  # noqa: E402
 
-from tests.support import no_external_sources, path_with_failing_sources  # noqa: E402
+from tests.support import cli_argv, no_external_sources, path_with_failing_sources  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-LEDGER_SCRIPT = REPO_ROOT / "libexec" / "rigops-ledger"
 FIXTURE_TRANSCRIPTS = Path(__file__).resolve().parent / "fixtures" / "transcripts"
 FIXTURE_FIXED_TAX = Path(__file__).resolve().parent / "fixtures" / "fixed_tax"
 
@@ -136,22 +134,10 @@ class BuildRowTests(EnvIsolatedTestCase):
 
 def _run_ledger(args: list, env: dict) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(LEDGER_SCRIPT), *args],
+        [*cli_argv("ledger"), *args],
         env={**env, "PATH": path_with_failing_sources(env.get("PATH", ""))},
         capture_output=True, text=True, check=False,
     )
-
-
-def _load_ledger_module():
-    # libexec/rigops-ledger has no .py suffix, so importlib needs an explicit loader.
-    loader = importlib.machinery.SourceFileLoader("rigops_ledger_cli", str(LEDGER_SCRIPT))
-    spec = importlib.util.spec_from_loader(loader.name, loader)
-    module = importlib.util.module_from_spec(spec)
-    loader.exec_module(module)
-    return module
-
-
-ledger_cli = _load_ledger_module()
 
 
 def _second_writer_lands_mid_write(first, second):
