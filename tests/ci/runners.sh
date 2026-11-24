@@ -15,6 +15,7 @@ trap 'rm -rf "$work"' EXIT
 export HOME="$work/home"
 mkdir -p "$HOME" "$work/fake"
 unset PYTHONPATH XDG_CONFIG_HOME XDG_STATE_HOME XDG_DATA_HOME XDG_CACHE_HOME
+unset UV_CACHE_DIR PIPX_HOME PIPX_BIN_DIR PIPX_LOCAL_VENVS PIPX_SHARED_LIBS PIPX_VENV_CACHEDIR PIPX_TRASH_DIR
 
 launchctl_log="$work/launchctl.log"
 : > "$launchctl_log"

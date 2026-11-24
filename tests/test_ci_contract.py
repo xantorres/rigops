@@ -113,6 +113,15 @@ class CiContractTests(unittest.TestCase):
         self.assertEqual(holders, ["publish"])
         self.assertIn("environment: pypi", jobs["publish"])
 
+    def test_jobs_that_run_the_runner_checks_do_not_cache_uv(self):
+        jobs = _jobs(CI.read_text(encoding="utf-8"))
+
+        self.assertIn("tests/ci/runners.sh", jobs["runners"])
+        self.assertRegex(
+            jobs["runners"],
+            r"astral-sh/setup-uv@\w+ # v[\d.]+\n\s+with:\n\s+enable-cache: false",
+        )
+
     def test_the_release_creates_a_prerelease_for_candidates(self):
         self.assertIn("--prerelease", _jobs(RELEASE.read_text(encoding="utf-8"))["github-release"])
 
