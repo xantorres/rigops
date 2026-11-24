@@ -8,6 +8,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import rigops
 from rigops import core
 from rigops import state as rigops_state
 from rigops.errors import RigopsError
@@ -103,13 +104,28 @@ def _session_start_line() -> str:
     return _stale_line(record, core.load_config())
 
 
+def _major_minor(version: str):
+    match = re.match(r"(\d+)\.(\d+)", version)
+    return (match.group(1), match.group(2)) if match else None
+
+
+def _version_line() -> str:
+    plugin = _major_minor(os.environ.get("RIGOPS_PLUGIN_VERSION", ""))
+    cli = _major_minor(rigops.__version__)
+    if plugin is None or cli is None or plugin == cli:
+        return ""
+    return (f"rigops: plugin {'.'.join(plugin)} and CLI {'.'.join(cli)} differ; "
+            "upgrade the older one (see docs/INSTALL.md#upgrade)")
+
+
 def _session_start() -> str:
     try:
-        return _session_start_line()
+        line = _session_start_line()
     except RigopsError as exc:
-        return f"rigops: config unreadable: {exc}"
+        line = f"rigops: config unreadable: {exc}"
     except Exception as exc:
-        return f"rigops: session-start hook failed ({type(exc).__name__})"
+        line = f"rigops: session-start hook failed ({type(exc).__name__})"
+    return "\n".join(part for part in (line, _version_line()) if part)
 
 
 def _valid_int(value) -> bool:

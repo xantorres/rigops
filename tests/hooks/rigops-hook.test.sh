@@ -8,7 +8,7 @@ HOOK="$ROOT/plugin/hooks/rigops-hook.sh"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-mkdir -p "$WORK/ok" "$WORK/fail" "$WORK/home" "$WORK/local-home/.local/bin"
+mkdir -p "$WORK/version" "$WORK/ok" "$WORK/fail" "$WORK/home" "$WORK/local-home/.local/bin"
 cat >"$WORK/ok/rigops" <<'RIGOPS_EOF'
 #!/usr/bin/env bash
 [ "$1" = "hook" ] || exit 1
@@ -19,7 +19,11 @@ cat >"$WORK/fail/rigops" <<'RIGOPS_EOF'
 echo "error: unknown command 'hook'" >&2
 exit 2
 RIGOPS_EOF
-chmod +x "$WORK/ok/rigops" "$WORK/fail/rigops"
+cat >"$WORK/version/rigops" <<'RIGOPS_EOF'
+#!/usr/bin/env bash
+printf '%s' "${RIGOPS_PLUGIN_VERSION-unset}"
+RIGOPS_EOF
+chmod +x "$WORK/version/rigops" "$WORK/ok/rigops" "$WORK/fail/rigops"
 cp "$WORK/ok/rigops" "$WORK/local-home/.local/bin/rigops"
 
 PAYLOAD='{"session_id":"sess-hook-test"}'
@@ -53,6 +57,9 @@ check 'prompt event forwarded' "hook user-prompt-submit: $PAYLOAD" "$WORK/ok:/us
 check 'rigops only in ~/.local/bin: still found' "hook session-start: $PAYLOAD" "/usr/bin:/bin" "$WORK/local-home" session-start
 check 'no rigops CLI: silent, exit 0' "" "/usr/bin:/bin" "$WORK/home" session-start
 check 'older CLI exiting 2 with stderr: silent, exit 0' "" "$WORK/fail:/usr/bin:/bin" "$WORK/home" session-start
+
+plugin_version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT/plugin/.claude-plugin/plugin.json")"
+check 'plugin version exported to the CLI' "$plugin_version" "$WORK/version:/usr/bin:/bin" "$WORK/home" session-start
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

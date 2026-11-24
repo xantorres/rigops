@@ -29,6 +29,7 @@ State directory (where `ledger.jsonl`, `ledger.md`, `interventions.jsonl`, `eval
 | `RIGOPS_CONFIG` | The CLI's config loader (every command) | Overrides the config file path entirely, skipping XDG resolution. |
 | `RIGOPS_STATE_DIR` | The CLI's state helper (every command that touches the ledger or logs) | Overrides the state directory entirely. |
 | `RIGOPS_RUN_DEADLINE_S` | `rigops reap` only | Wall-clock budget in seconds for one reap run across every configured repo (default 3600). Scanning stops at the deadline; whatever's left is picked up next run. |
+| `RIGOPS_PLUGIN_VERSION` | `rigops hook session-start` only | Set by the plugin's hook script from its own `plugin.json`; not meant to be set by hand. When its major.minor differs from the CLI's, the session line adds a pointer to the upgrade steps. |
 
 `XDG_CONFIG_HOME` and `XDG_STATE_HOME` feed the two resolution formulas above but aren't `RIGOPS_`-prefixed themselves.
 

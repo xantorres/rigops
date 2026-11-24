@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
+import rigops
 from rigops import core, hook
 
 from tests.support import RIGOPS, cli_argv
@@ -131,6 +132,56 @@ class SessionStartTests(HookCase):
     def test_systemexit_from_a_handler_still_exits_0(self):
         with mock.patch.object(hook, "_user_prompt_submit", side_effect=SystemExit(2)):
             self.assertEqual(self.run_hook("user-prompt-submit", {}), "")
+
+
+class PluginVersionTests(HookCase):
+    MISMATCH = ("rigops: plugin {p} and CLI {c} differ; upgrade the older one "
+                "(see docs/INSTALL.md#upgrade)\n")
+
+    def hook_with(self, plugin, cli="0.12.0", event="session-start", payload=None):
+        env = {} if plugin is None else {"RIGOPS_PLUGIN_VERSION": plugin}
+        with mock.patch.dict(os.environ, env), mock.patch.object(rigops, "__version__", cli):
+            if plugin is None:
+                os.environ.pop("RIGOPS_PLUGIN_VERSION", None)
+            return self.run_hook(event, payload)
+
+    def test_different_major_minor_prints_one_line_after_the_session_line(self):
+        self.assertEqual(self.hook_with("1.0.0"),
+                         "rigops: no doctor gates recorded yet (run rigops doctor)\n"
+                         + self.MISMATCH.format(p="1.0", c="0.12"))
+
+    def test_mismatch_alone_when_the_session_line_is_empty(self):
+        path = core.local_state_path(core.GATES_STATE_NAME)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"ts": _stamp(), "gates": []}))
+        self.assertEqual(self.hook_with("1.0.0"), self.MISMATCH.format(p="1.0", c="0.12"))
+
+    def test_same_major_minor_adds_nothing(self):
+        base = self.hook_with(None)
+        for plugin in ("0.12.3", "0.12.0rc1", "0.12.0"):
+            with self.subTest(plugin=plugin):
+                self.assertEqual(self.hook_with(plugin), base)
+
+    def test_unset_empty_or_garbage_adds_nothing(self):
+        base = self.hook_with(None)
+        for plugin in (None, "", "garbage", "1", "v1.0.0", " "):
+            with self.subTest(plugin=plugin):
+                self.assertEqual(self.hook_with(plugin), base)
+
+    def test_unparseable_cli_version_adds_nothing(self):
+        self.assertEqual(self.hook_with("1.0.0", cli="dev"), self.hook_with(None, cli="dev"))
+
+    def test_user_prompt_submit_never_prints_it(self):
+        self.assertEqual(self.hook_with("1.0.0", event="user-prompt-submit",
+                                        payload={"session_id": "s"}), "")
+
+    def test_mismatch_line_goes_through_the_cap(self):
+        gates = [{"kind": "check", "name": "é" * 600, "status": "failing"}]
+        path = core.local_state_path(core.GATES_STATE_NAME)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"ts": _stamp(), "gates": gates}))
+        out = self.hook_with("1.0.0")
+        self.assertLessEqual(len(out.rstrip("\n").encode("utf-8")), hook.MAX_OUTPUT_BYTES)
 
 
 class UserPromptSubmitTests(HookCase):

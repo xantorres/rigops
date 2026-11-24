@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scheduled jobs run the `rigops` found on `PATH` by absolute path; `jobs install` refuses (exit 2) when there is none, when it is not the running one, or when it lives in an ephemeral runner's cache.
 - `jobs status` and `doctor` fail when a scheduled job's program is missing or `<path> version` fails.
 - On Linux `jobs install` prints crontab lines.
+- The plugin hook passes its version to the CLI, and the session line says when plugin and CLI major.minor differ.
 
 ### Changed
 
