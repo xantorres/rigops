@@ -227,6 +227,32 @@ class ReleaseCheckTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
         self.assertIn("lib/rigops/__init__.py", proc.stderr)
 
+    def test_an_added_line_that_looks_like_a_file_header_is_still_checked(self):
+        init = self.repo / "lib/rigops/__init__.py"
+        proc = self._final_after_candidate(lambda: init.write_text(
+            init.read_text(encoding="utf-8") + "++ 0\nimport os\nY = os.getcwd()\n",
+            encoding="utf-8"))
+
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn("lib/rigops/__init__.py", proc.stderr)
+
+    def test_a_removed_line_that_looks_like_a_file_header_is_still_checked(self):
+        init = self.repo / "lib/rigops/__init__.py"
+        self._commit("0.13.0rc1")
+        init.write_text(init.read_text(encoding="utf-8")
+                        + "KEPT = 1\n-- 0\nimport os\nY = os.getcwd()\n", encoding="utf-8")
+        _git(self.repo, "commit", "-q", "-am", "extra")
+        self._tag("v0.13.0rc1")
+        self._commit("0.13.0", heading="0.13.0")
+        init.write_text(init.read_text(encoding="utf-8") + "KEPT = 1\n", encoding="utf-8")
+        _git(self.repo, "commit", "-q", "-am", "kept")
+        self._tag("v0.13.0")
+
+        proc = self._check("v0.13.0")
+
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn("lib/rigops/__init__.py", proc.stderr)
+
     def test_a_directory_that_is_not_a_repository_exits_2(self):
         with tempfile.TemporaryDirectory() as other:
             proc = self._check("v0.13.0", repo=Path(other))

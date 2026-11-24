@@ -84,15 +84,19 @@ def diff_problems(repo: Path, candidate: str, tag: str, version: str) -> list[st
     added: dict[str, list[tuple[int, str]]] = {}
     path = ""
     old_no = new_no = 0
+    in_header = False
     found, textual = raw_problems(repo, candidate, tag)
     diff = git(repo, "diff", "--unified=0", "--no-color", "--no-ext-diff", "--no-renames",
                candidate, tag)
     for line in diff.splitlines():
-        if line.startswith("+++ "):
+        if line.startswith("diff --git "):
+            in_header = True
+        elif in_header and line.startswith("+++ "):
             path = line[4:].removeprefix("b/") if line != "+++ /dev/null" else path
-        elif line.startswith("--- "):
+        elif in_header and line.startswith("--- "):
             path = line[4:].removeprefix("a/") if line != "--- /dev/null" else path
         elif m := HUNK.match(line):
+            in_header = False
             old_no, new_no = int(m.group(1)), int(m.group(2))
         elif line.startswith("-"):
             removed.setdefault(path, []).append((old_no, line[1:]))
