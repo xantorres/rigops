@@ -1,17 +1,85 @@
 # Install
 
-How to get rigops running: as a Claude Code plugin, as installed scripts and launchd jobs, or both.
+How to get rigops running: the `rigops` package (a command plus optional scheduled jobs), the Claude Code plugin, or both.
 
-## Two halves
+rigops ships in two independent pieces that read the same JSON config ([CONFIG.md](CONFIG.md)):
 
-rigops ships in two independent pieces that read the same JSON config:
+- **Package** - the `rigops` command (`ledger`, `doctor`, `reap`, and the rest) and `rigops jobs`, which schedules `doctor` and `ledger` (and on request `janitor` and `reap`) on a timer.
+- **Plugin** - slash commands, skills and hooks inside Claude Code. It degrades gracefully when the command is missing, and the command works without the plugin.
 
-- **Plugin half** - a Claude Code marketplace plugin: five slash commands, two skills, and two hook entries. Zero daemons; nothing runs on a schedule, everything fires from inside a Claude Code session.
-- **Script half** - `install.sh` copies the `rigops` CLI and its libraries onto disk, symlinks it onto your PATH, and (optionally) installs launchd jobs on macOS: `doctor` and `ledger` by default, `janitor` and `reap` on request. This is what gives you `rigops ledger`, `rigops doctor`, `rigops reap`, and the rest outside of a Claude Code session, plus scheduled runs.
+## Requirements
 
-Install either half alone, or both. The plugin degrades gracefully when the CLI isn't present (below); the CLI works with the plugin absent.
+macOS or Linux, Python 3.11 or newer. No runtime dependencies.
 
-See [CONFIG.md](CONFIG.md) for the config file both halves read.
+## Install
+
+```
+pipx install rigops
+```
+
+or `uv tool install rigops`, or `python3 -m pip install --user rigops`. Then check it:
+
+```
+rigops version
+rigops config check
+```
+
+## Scheduled jobs
+
+`rigops jobs install` prints what it would do and changes nothing. Add `--apply` to write the launchd plists and load them:
+
+```
+rigops jobs install
+rigops jobs install --apply
+```
+
+- `doctor` (every 30 minutes) and `ledger write` (Monday 09:05) are the default. `--jobs doctor,ledger,janitor,reap` picks others; `janitor` and `reap` run with `--apply` on schedule (Sunday 10:00, daily 08:30).
+- `--heal` lets the scheduled `doctor` kill hung jobs and kickstart stale ones. Without it the job only reports.
+- The plist holds the absolute path of the `rigops` on `PATH`, because launchd has no shell `PATH` to search. `jobs install` refuses (exit 2) when that `rigops` is not the one running, so `python -m rigops jobs install` is always refused: run the installed command.
+- `uvx rigops ...` and `pipx run rigops ...` are for trying the tool, not for scheduling it. `jobs install` refuses under them because it recognises their default cache locations; with a custom cache directory it cannot, and `rigops jobs status` and `doctor` flag the job once that cache is cleaned.
+- Re-running is safe: an unchanged plist that is loaded is left alone, a changed one is rewritten and reloaded.
+
+```
+rigops jobs status
+```
+
+`jobs status` lists each `com.rigops.*` job as installed or not, loaded or not, and whether its program still runs; it exits 1 on a problem.
+
+## Linux
+
+launchd is macOS-only. On Linux `rigops jobs install` prints crontab lines with the absolute path of your `rigops`; create the log directory it names and add the lines with `crontab -e`. The lines never heal: there is no launchd to inspect for hung processes, so `doctor` runs with `--supervisor none`. They are **unverified**; read them before use, and see [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md) for what CI does and does not exercise on Linux. A template with the same lines ships at `lib/rigops/templates/cron/crontab.example`.
+
+## Upgrade
+
+Upgrade the package with the tool that installed it (`pipx upgrade rigops`, `uv tool upgrade rigops`, or `python3 -m pip install --user --upgrade rigops`). The plists keep working because they name the stable console-script path, not the package files. After an interpreter upgrade the console script can break; run `rigops jobs status`, and re-run `rigops jobs install --apply` if it reports a problem.
+
+## Uninstall
+
+Jobs first, then the package:
+
+```
+rigops jobs uninstall
+rigops jobs uninstall --apply
+pipx uninstall rigops
+```
+
+`jobs uninstall --apply` boots out and removes the four `com.rigops.*` plists and nothing else. Remove the package with the tool that installed it (`uv tool uninstall rigops`, or `python3 -m pip uninstall rigops`). Config (`~/.config/rigops/`), state (`~/.local/state/rigops/`) and logs (`~/Library/Logs/rigops/`) are left in place; delete them by hand if you want them gone.
+
+## Moving from an install.sh install
+
+Versions 0.10 to 0.12 installed from a checkout with `install.sh` into a prefix (`~/.local/share/rigops` by default). That script is gone. Use the one from tag `v0.12.0`, which handles every prefix install from 0.10 to 0.12:
+
+```
+git clone https://github.com/xantorres/rigops
+git -C rigops checkout v0.12.0
+cd rigops
+./install.sh --uninstall
+./install.sh --uninstall --apply
+```
+
+The first run shows the plan. The second removes the prefix and its jobs and restores the `statusLine` in `~/.claude/settings.json` that `--statusline` replaced. Then install the package as above and run `rigops jobs install --apply`.
+
+A hand-written LaunchAgent that already schedules a rigops command under another label is no longer skipped: remove it or expect a duplicate.
 
 ## Plugin install
 
@@ -29,142 +97,10 @@ What lands:
 - **2 skills** - `ops-loop` (the measure/intervene/note/diff weekly loop, see [LEDGER.md](LEDGER.md)) and `fleet-triage` (reading a `doctor` report, see [REGISTRY.md](REGISTRY.md)).
 - **2 hook entries**, from `plugin/hooks/hooks.json`: one `SessionStart` hook (on startup, resume and compact) and one `UserPromptSubmit` hook, both running `rigops hook <event>` through `rigops-hook.sh`. Two hooks left the plugin for the user's own dispatcher: the `rg -r`/`-rn`/`-rl` guard (`-r` means `--replace` in ripgrep, not recursive, and the mistake fails silently) and the skill-forcing gate.
 
-The plugin works standalone. Hooks need no `jq`. `rigops-hook.sh` looks for a `rigops` binary on PATH or at `~/.local/bin/rigops`; without it, or with a CLI too old to know `rigops hook`, the hooks print nothing.
-
-## Script install
-
-```
-git clone https://github.com/xantorres/rigops
-cd rigops
-bash install.sh
-```
-
-Plan-by-default: with no `--apply`, `install.sh` prints exactly what it would do and changes nothing, exit 0. On a clean `$HOME`, that plan looks like this:
-
-```text
-rigops install: plan for ~ (dry run; re-run with --apply to act)
-1. plan: preflight
-     payload dirs OK under ~/rigops
-     python /opt/homebrew/opt/python@3.14/bin/python3.14 (>=3.9 OK)
-     sha256 tool: shasum -a 256
-     launchd jobs enabled: doctor ledger
-2. plan: copy tree -> ~/.local/share/rigops
-     installed ~/.local/share/rigops/bin/rigops
-     installed ~/.local/share/rigops/libexec/rigops-authprobe
-     installed ~/.local/share/rigops/libexec/rigops-backlog
-     installed ~/.local/share/rigops/libexec/rigops-config
-     installed ~/.local/share/rigops/libexec/rigops-doctor
-     installed ~/.local/share/rigops/libexec/rigops-eit
-     installed ~/.local/share/rigops/libexec/rigops-janitor
-     installed ~/.local/share/rigops/libexec/rigops-ledger
-     installed ~/.local/share/rigops/libexec/rigops-reap
-     installed ~/.local/share/rigops/libexec/rigops-tax
-     installed ~/.local/share/rigops/lib/rigops/__init__.py
-     installed ~/.local/share/rigops/lib/rigops/authprobe.py
-     installed ~/.local/share/rigops/lib/rigops/backlog.py
-     installed ~/.local/share/rigops/lib/rigops/config.py
-     installed ~/.local/share/rigops/lib/rigops/fmt.py
-     installed ~/.local/share/rigops/lib/rigops/janitor.py
-     installed ~/.local/share/rigops/lib/rigops/judge.py
-     installed ~/.local/share/rigops/lib/rigops/launchd.py
-     installed ~/.local/share/rigops/lib/rigops/levers.py
-     installed ~/.local/share/rigops/lib/rigops/reap.py
-     installed ~/.local/share/rigops/lib/rigops/registry.py
-     installed ~/.local/share/rigops/lib/rigops/sources/__init__.py
-     installed ~/.local/share/rigops/lib/rigops/sources/ccusage.py
-     installed ~/.local/share/rigops/lib/rigops/sources/command.py
-     installed ~/.local/share/rigops/lib/rigops/state.py
-     installed ~/.local/share/rigops/lib/rigops/transcripts.py
-     installed ~/.local/share/rigops/templates/cron/crontab.example
-     installed ~/.local/share/rigops/templates/launchd/doctor.plist.in
-     installed ~/.local/share/rigops/templates/launchd/janitor.plist.in
-     installed ~/.local/share/rigops/templates/launchd/ledger.plist.in
-     installed ~/.local/share/rigops/templates/launchd/reap.plist.in
-     installed ~/.local/share/rigops/LICENSE
-3. plan: symlink ~/.local/bin/rigops -> ~/.local/share/rigops/bin/rigops
-     installed ~/.local/bin/rigops
-note: ~/.local/bin is not on PATH
-4. plan: scaffold config + registry under ~/.config/rigops
-     scaffolded ~/.config/rigops/config.json
-     scaffolded ~/.config/rigops/registry.md
-5. plan: jobs under ~/Library/LaunchAgents
-     installed loaded    label=com.rigops.doctor plist=~/Library/LaunchAgents/com.rigops.doctor.plist
-     installed loaded    label=com.rigops.ledger plist=~/Library/LaunchAgents/com.rigops.ledger.plist
-6. plan: write manifest -> ~/.local/share/rigops/install.manifest.json
-     would write ~/.local/share/rigops/install.manifest.json
-7. plan: summary
-     installed=35 updated=0 unchanged=0 jobs_loaded=2
-     next: add ~/.local/bin to PATH if needed, then run "rigops help"
-```
-
-Re-run with `--apply` to actually do it:
-
-```
-bash install.sh --apply
-```
-
-The two installed jobs: `doctor` runs `rigops-doctor --exit-zero` every 30 minutes, so a failing finding never makes the job itself exit 1, and only reports, unless you install with `--heal`, which adds `--heal` to the scheduled command so it may kill hung jobs and kickstart stale ones; `ledger` runs `rigops-ledger write` weekly, Monday 09:05 local time.
-
-### Flags
-
-From `bash install.sh --help`:
-
-| Flag | Meaning |
-|---|---|
-| `--apply` | Perform the actions. Without it, every run is plan-only, regardless of any other flag. |
-| `--plugin-only` | Install the CLI tree and symlink only; skip jobs and templates. Config and registry are still scaffolded. |
-| `--no-jobs` | Skip launchd job installation. Conflicts with `--jobs`. |
-| `--jobs a,b` | Comma-separated job list to install. Available jobs: `doctor` (every 30 minutes), `ledger` (Monday 09:05), `janitor` (Sunday 10:00) and `reap` (daily 08:30). Without `--jobs`, a first install gets `doctor` and `ledger`, and a later run keeps the job set the manifest recorded. `janitor` and `reap` run with `--apply`, so they delete on schedule and only `--jobs` installs them. Naming anything else is a usage error. A job the previous install recorded but the list leaves out is booted out and its plist removed, the same way `--uninstall` does it. install.sh is the one scheduler of these jobs: a job that another LaunchAgent in `~/Library/LaunchAgents` already runs (its `ProgramArguments` run `rigops <job>` or `rigops-<job>`) is skipped, and one this install placed earlier is booted out, so no job runs twice. The output names that plist; remove it and re-run with `--jobs` to schedule the job here. |
-| `--prefix DIR` | Install prefix (default `$HOME/.local/share/rigops`). |
-| `--python PATH` | `python3` interpreter to use (default: first `python3` on PATH). Must be >= 3.9. |
-| `--heal` | Schedule the `doctor` job with `--heal`. Off by default, so the scheduled doctor only reports. Like the other options it applies to this run only: a later `--apply` without `--heal` installs the report-only job again. A usage error when the run does not install `doctor` (`--no-jobs`, `--plugin-only`, a `--jobs` list without `doctor`, `--uninstall`). |
-| `--uninstall` | Remove a previous install, driven entirely by its manifest. |
-| `--purge` | With `--uninstall`, also delete the config/state/log directories. Requires `--uninstall`. |
-| `--yes` | Skip the confirmation prompt before a `--purge` deletion. |
-| `--home DIR` | Override home for every derived path (used by the test suite; also usable to install into another account's home). |
-| `-h`, `--help` | Show help. |
-
-Env: `RIGOPS_INSTALL_LABEL_PREFIX` - launchd label prefix for the jobs it installs, default `com.rigops`. Read only by `install.sh`, mainly so smoke tests never collide with a real install's jobs.
-
-### Idempotency
-
-Every installed file is hashed (SHA-256, `shasum -a 256` if present, else `sha256sum`) and recorded in `install.manifest.json` under the install prefix. A re-run hashes the source tree again and compares: a file whose hash already matches is left alone (`unchanged`). A genuine no-op re-run reports `installed=0 updated=0` in the final summary line - the unchanged count carries the rest.
-
-A re-run also removes files the previous manifest recorded that this version no longer ships, naming each one. A file edited since install is kept with a warning, and a file neither manifest lists is never touched.
-
-launchd jobs follow the same idea: if the rendered plist's hash matches what's on disk *and* the job is currently loaded, it's left alone. Otherwise the plist is written and reloaded through `launchctl bootout` then `launchctl bootstrap`, in that order (trying the `gui/<uid>` domain first, falling back to `user/<uid>`) - this covers both a brand-new job and a changed one.
-
-Config and registry are scaffolded **only if the destination doesn't already exist** - `install.sh` never overwrites a config file you've edited. The scaffold is minimal: `config.json` is an empty object (every key takes its built-in default) and `registry.md` lists no jobs. `config/config.example.json` and `config/registry.example.md` stay in the checkout as examples and are never copied as live files.
-
-### Statusline
-
-The statusline is an example, not an installed component: see [../patterns/statusline.md](../patterns/statusline.md) for wiring it by hand. `--statusline`, which earlier versions used to edit `~/.claude/settings.json`, now exits 2. Re-applying this version over an install that used it restores the `statusLine` it replaced (or drops the key) and prints a note, before the copied script is removed.
-
-### Uninstall and purge
-
-`--uninstall` reads `install.manifest.json` and undoes exactly what it recorded - nothing else:
-
-- Each job is booted out of launchd. If its on-disk plist still matches the manifest's recorded hash, the plist is removed; if it's been edited since install, it's renamed to `<plist>.rigops-disabled` instead (with a printed restore command) - never silently deleted, never silently left live.
-- A `statusLine` wired by an earlier version's `--statusline` is reverted: the value it replaced comes back, or the key is dropped if there was none. A timestamped backup of `settings.json` is written first. If `statusLine` no longer runs the script that install copied, it's left alone. The script itself is removed with the other recorded files.
-- Each file is removed if its hash still matches what was installed; a file modified since install is left in place with a warning, never overwritten or deleted out from under you.
-- `__pycache__` directories under the prefix are swept (they're not in the manifest - Python writes them lazily) and the now-empty prefix tree is removed.
-
-`--purge` (requires `--uninstall`) additionally deletes the config, state, and log directories. It prompts for confirmation unless `--yes` is passed. Declining the prompt keeps the manifest, so a later `--uninstall --purge` can still finish the job. Before deleting anything, each target passes a `purge_safe` check: it must be an absolute, non-symlink, existing directory named exactly `rigops`, distinct from `/` and from `$HOME` - checked both as given and after resolving any symlinked ancestor, so a bad manifest or an env override can only refuse the purge, never widen it. A refused target is reported with the exact `rm -rf` command to run by hand if you're sure.
-
-If `RIGOPS_CONFIG` or `RIGOPS_STATE_DIR` pointed outside anything this installer created, that path is recorded as "managed externally," and `--purge` skips it, printing a note instead of touching it.
-
-### PATH
-
-The symlink lands at `~/.local/bin/rigops`. If `~/.local/bin` isn't already on your PATH, `install.sh` prints a note; add it yourself (`export PATH="$HOME/.local/bin:$PATH"`).
-
-## Linux
-
-`install.sh` runs anywhere Python 3.9+ and a POSIX shell exist, but launchd jobs are macOS-only. When `launchctl` isn't found, the installer automatically behaves as `--no-jobs` and prints `note: launchd not found; jobs skipped (Linux: see templates/cron/crontab.example)`.
-
-A cron fallback template ships at `templates/cron/crontab.example` - install with `install.sh --apply --no-jobs`, then add lines from that template yourself via `crontab -e`. It is **unverified**: read it before use. See [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md) for exactly what is and isn't exercised by CI on Linux.
+The plugin works standalone. Hooks need no `jq`. `rigops-hook.sh` looks for a `rigops` command on PATH or at `~/.local/bin/rigops`; without it, or with a CLI too old to know `rigops hook`, the hooks print nothing.
 
 ## See also
 
-- [CONFIG.md](CONFIG.md) - every key both halves read.
+- [CONFIG.md](CONFIG.md) - every key both pieces read.
 - [SAFETY.md](SAFETY.md) - what's destructive, what's opt-in, and the caps on each.
 - [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md) - platform coverage and what's unverified.

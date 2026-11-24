@@ -225,31 +225,11 @@ This installs the commands, skills, and hooks. It degrades gracefully if the CLI
 ### Full install
 
 ```bash
-git clone https://github.com/xantorres/rigops
-cd rigops
-bash install.sh
+pipx install rigops
+rigops jobs install --apply
 ```
 
-`install.sh` is plan-by-default: it prints what it would do and changes nothing. Running it blind is safe by construction. Re-run with `--apply` to actually install.
-
-```text
-rigops install: plan for ~ (dry run; re-run with --apply to act)
-1. plan: preflight
-     payload dirs OK under ~/rigops
-     python /opt/homebrew/opt/python@3.14/bin/python3.14 (>=3.9 OK)
-     sha256 tool: shasum -a 256
-     launchd jobs enabled: doctor ledger
-...
-     installed=35 updated=0 unchanged=0 jobs_loaded=2
-     next: add ~/.local/bin to PATH if needed, then run "rigops help"
-```
-
-A few flags worth knowing up front:
-
-- `--no-jobs` - install the CLI without touching launchd.
-- `--uninstall --purge` - remove a previous install, including its config and state.
-
-`rigops help` lists the commands; `rigops version` (or `rigops --version`) prints the installed version, which is what a bug report needs.
+`rigops jobs install` without `--apply` prints the plan and changes nothing. Upgrade, uninstall and the move from an `install.sh` install are in [docs/INSTALL.md](docs/INSTALL.md). `rigops help` lists the commands; `rigops version` (or `rigops --version`) prints the installed version, which is what a bug report needs.
 
 ### First-week ritual
 
@@ -267,7 +247,7 @@ Two halves, one config.
 
 **Plugin half** - a Claude Code marketplace plugin: five commands (`/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:backlog`, `/rigops:week`), two skills (`ops-loop`, `fleet-triage`), and two hooks (`rigops hook session-start` prints one stale-gates line, `rigops hook user-prompt-submit` nudges on context size). The statusline is an example in `patterns/statusline/`, not an installed part. The `rg -r`/`-rn`/`-rl` guard and the skill-forcing gate that used to ship here now live in the user's own dispatcher: which workflow a prompt must go through is rig policy, and two copies of one gate is one copy too many. Zero daemons. No agents - deliberately; which subagent handles a task is a decision that belongs to the rig, not to rigops.
 
-**Script half** - the `rigops` CLI (`eit`, `ledger`, `eval`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`, `mine`, `jobs`, `hook`, `version`), plus hardened launchd templates for the `doctor`, `ledger`, `janitor` and `reap` jobs, and a cron template for Linux hosts (unverified).
+**Package half** - the `rigops` CLI (`eit`, `ledger`, `eval`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`, `mine`, `jobs`, `hook`, `version`), plus hardened launchd templates for the `doctor`, `ledger`, `janitor` and `reap` jobs, and crontab lines for Linux hosts (unverified).
 
 Both halves read the same `~/.config/rigops/config.json` (keys: [docs/CONFIG.md](docs/CONFIG.md)). Runtime state lives under `~/.local/state/rigops/`.
 
@@ -289,7 +269,7 @@ These patterns ran daily in a private agent rig for months before this repositor
 | Platform | Support |
 |---|---|
 | macOS | First-class: launchd jobs, `doctor`, everything. |
-| Linux | CLI commands work; `doctor --supervisor none` skips `launchctl`; a cron template is provided but unverified; the installer auto-skips launchd. |
+| Linux | CLI commands work; `doctor --supervisor none` skips `launchctl`; `rigops jobs install` prints crontab lines (unverified) instead of writing launchd plists. |
 
 Python 3.11+, stdlib only. Full matrix: [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MATRIX.md).
 

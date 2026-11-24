@@ -4,6 +4,8 @@
 
 After cloning, run `make hooks` once to enable the commit-message and pre-push redaction gates.
 
+From a checkout, `make check` runs everything (the Makefile exports `PYTHONPATH`). To get the `rigops` command, create a virtualenv and run `python3 -m pip install -e .` in it. There is no install script.
+
 ## Commits
 
 Format: `<type>: <description>`
@@ -16,11 +18,11 @@ No tracker-style keys anywhere - code, comments, commit messages, PR text. The r
 
 ## Before pushing
 
-`make check` must pass: redaction gate (tree + history), shellcheck, ruff, unit tests, hook tests, the install smoke test, manifest validation, plugin validation.
+`make check` must pass: redaction gate (tree + history), shellcheck, ruff, unit tests, hook tests, the smoke test, manifest validation, plugin validation.
 
 CI on a fork runs the public redaction patterns only; the private layer is required on pushes to the upstream repository.
 
-`make smoke-launchd` stays out of `make check` and has to be run by hand. It loads and unloads real launchd jobs, so it is macOS-only and mutates the machine it runs on; `make smoke` covers the installer end to end without it, on a throwaway `HOME` with `--no-jobs`.
+`make smoke` runs the CLI end to end in a throwaway `HOME` and never touches launchd; the jobs migration test (`tests/test_migration.py`) drives a stateful fake `launchctl` placed first on `PATH`.
 
 ## Tests
 
