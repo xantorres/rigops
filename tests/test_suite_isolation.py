@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import os
 import pwd
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from rigops import config, state
+from rigops import config, launchd, state
+
+import tests
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -44,6 +47,22 @@ class SuiteIsolationInProcess(unittest.TestCase):
 
     def test_config_override_is_removed(self):
         self.assertFalse("RIGOPS_CONFIG" in os.environ)
+
+
+class LaunchctlFakeTests(unittest.TestCase):
+    def test_mutating_call_through_launchd_lands_in_the_fake_log(self):
+        before = tests.LAUNCHCTL_LOG.read_text() if tests.LAUNCHCTL_LOG.exists() else ""
+
+        ok = launchd.kickstart("com.rigops.isolation-probe")
+
+        self.assertFalse(ok)
+        after = tests.LAUNCHCTL_LOG.read_text()
+        self.assertEqual(
+            after[len(before):], f"kickstart gui/{os.getuid()}/com.rigops.isolation-probe\n"
+        )
+
+    def test_launchctl_on_path_is_the_fake(self):
+        self.assertEqual(shutil.which("launchctl"), str(tests._bin / "launchctl"))
 
 
 class SuiteIsolationSubprocess(unittest.TestCase):
