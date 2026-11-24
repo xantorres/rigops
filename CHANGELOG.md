@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- RigOps is a Python package with a `rigops` console script and no runtime dependencies; `python -m rigops` runs the same entry point.
+- `rigops help` gives a one-line description per command and marks the experimental ones: `authprobe`, `backlog`, `eit`, `mine`.
+- Every command takes `-h` and prints its usage as `usage: rigops <command>`; the config and eval parsers no longer print `rigops-config` and `rigops-eval`.
+
+### Changed
+
+- Python 3.11 or newer is required.
+
 ### Removed
 
 - `install.sh` and its launchd smoke test. The command scripts now live in the `rigops.cli` package, and the install docs follow in a later release note.

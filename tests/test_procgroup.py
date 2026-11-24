@@ -4,18 +4,15 @@ import os
 import shlex
 import signal
 import subprocess
-import sys
 import tempfile
 import time
 import unittest
 import unittest.mock
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import procgroup
 
-from rigops import procgroup  # noqa: E402
-
-from tests.test_doctor import doctor  # noqa: E402
+from tests.test_doctor import doctor
 
 
 def pid_is_gone(pid: int, wait_s: float = 5.0) -> bool:

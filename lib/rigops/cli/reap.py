@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -8,15 +7,15 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from rigops import cli  # noqa: E402
-from rigops import config as rigops_config  # noqa: E402
-from rigops import reap  # noqa: E402
-from rigops import reap_guards  # noqa: E402
-from rigops import reap_selftest  # noqa: E402
-from rigops import state  # noqa: E402
+from rigops import cli
+from rigops import config as rigops_config
+from rigops import reap
+from rigops import reap_guards
+from rigops import reap_selftest
+from rigops import state
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     # Per-fetch timeouts alone let a run crawl: three slow remotes stretched one
     # run to 2h41m. Scanning stops at the deadline and the run reports what it
     # got; whatever is left is reaped next run.
@@ -26,7 +25,8 @@ def main() -> int:
         deadline_s = 3600
 
     parser = argparse.ArgumentParser(
-        description="Reap merged, unused git worktrees.",
+        prog="rigops reap",
+        description=cli.COMMANDS["reap"],
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--selftest", action="store_true",
@@ -47,7 +47,7 @@ def main() -> int:
                         help="an unmerged branch becomes eligible once its last commit is older "
                              "than this and it has no unpushed commits "
                              "(default: config reaper.grace_days, else 14)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     cfg = rigops_config.load()
     if args.grace_days is None:
@@ -108,6 +108,3 @@ def main() -> int:
             return reap.run(args)
     return reap.run(args)
 
-
-if __name__ == "__main__":
-    sys.exit(cli.run(main))

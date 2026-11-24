@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import sys
 import unittest
-from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import launchd  # noqa: E402
-from rigops.judge import ACTIONS, STATUSES, _judge_launchd_item, judge_job  # noqa: E402
+from rigops import launchd
+from rigops.judge import ACTIONS, STATUSES, _judge_launchd_item, judge_job
 
 # (name, runtime_h, max_h, last_exit_status, evidence_age_h, expected_interval_h,
 #  heal_cooldown_active, expected_status, expected_action)

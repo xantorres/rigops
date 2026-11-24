@@ -3,14 +3,12 @@ from __future__ import annotations
 
 import re
 import shlex
-import sys
 import unittest
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT / "lib"))
+from rigops import config_spec
 
-from rigops import config_spec  # noqa: E402
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 README = REPO_ROOT / "README.md"
 PLUGIN_COMMANDS = REPO_ROOT / "plugin" / "commands"

@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import sys
 import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import core  # noqa: E402
+from rigops import core
 
 
 class ShortTests(unittest.TestCase):

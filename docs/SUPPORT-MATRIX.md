@@ -6,7 +6,7 @@ What's first-class on which platform, the version floors, and exactly what CI co
 
 | Feature | macOS | Linux |
 |---|---|---|
-| CLI (`rigops <cmd>`) | First-class. | Runs - every subcommand is plain Python 3.9+ stdlib. |
+| CLI (`rigops <cmd>`) | First-class. | Runs - every subcommand is plain Python 3.11+ stdlib. |
 | `rigops doctor` | `--supervisor launchd` (default) - full runtime/exit-code judgment via `launchctl`. | `--supervisor none` (default off macOS) - evidence-file-age judgment, no runtime/exit-code signal (no `launchctl` to ask). |
 | Scheduled jobs | `install.sh` installs launchd jobs: `doctor` (passes `--exit-zero`; report-only unless installed with `--heal`) every 30 min and `ledger write` weekly Monday 09:05 by default; `janitor --apply` (Sunday 10:00) and `reap --apply` (daily 08:30) only through `--jobs`. | No installer-managed scheduler. `lib/rigops/templates/cron/crontab.example` ships as a starting point - **unverified**, read it before use. |
 | Plugin hooks | Full. | Full - pure bash, no `jq`, nothing macOS-specific. |
@@ -25,7 +25,7 @@ So: the Python 3.9 floor is exercised on Linux; launchd-specific behavior is exe
 
 ## Floors
 
-- **Python** - 3.9+, stdlib only, for every shipped script (`bin/`, `lib/rigops/`). Dev tooling (`ruff`, `shellcheck`) is exempt - it isn't shipped to installs.
+- **Python** - 3.11+, stdlib only, for the shipped package (`lib/rigops/`). Dev tooling (`ruff`, `shellcheck`) is exempt - it isn't shipped to installs.
 - **Shell** - bash 3.2 / BSD userland compatible for everything shipped (`install.sh`, `plugin/hooks/*.sh`, `patterns/statusline/*.sh`). No GNU-only flags assumed; where GNU and BSD tools diverge (for example `stat`), the script tries GNU's flags first and falls back to BSD's.
 - **jq** - optional, not a hard dependency. The hooks no longer need it. The statusline example in `patterns/statusline/` degrades per-segment without `jq`: both its context and EIT segments go blank, but it still prints (empty) and exits `0`.
 

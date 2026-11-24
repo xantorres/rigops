@@ -1,14 +1,10 @@
 from __future__ import annotations
 
 import os
-import sys
 import unittest
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import reap_guards  # noqa: E402
-from rigops.reap_procs import orphan_daemons  # noqa: E402
+from rigops import reap_guards
+from rigops.reap_procs import orphan_daemons
 
 LIST_CASES = [
     ("list_of_strings", ["a", "b"], None),

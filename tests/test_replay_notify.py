@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import os
-import sys
 import time
 import unittest
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 TOOL = Path(__file__).resolve().parent.parent / "tools" / "replay-notify.py"
 spec = importlib.util.spec_from_file_location("replay_notify", TOOL)

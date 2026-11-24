@@ -14,9 +14,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import procgroup, reap, reap_procs, state  # noqa: E402
+from rigops import procgroup, reap, reap_procs, state
 
 # Resolved before any test rewrites the environment: the log the operator's own
 # reaper runs append to, which no test may touch.

@@ -12,12 +12,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import cost, levers, state
+from rigops.cli import ledger as ledger_cli
 
-from rigops import cost, levers, state  # noqa: E402
-from rigops.cli import ledger as ledger_cli  # noqa: E402
-
-from tests.support import cli_argv, no_external_sources, path_with_failing_sources  # noqa: E402
+from tests.support import cli_argv, no_external_sources, path_with_failing_sources
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_TRANSCRIPTS = Path(__file__).resolve().parent / "fixtures" / "transcripts"

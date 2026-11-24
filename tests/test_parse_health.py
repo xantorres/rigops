@@ -4,21 +4,18 @@ import builtins
 import datetime as dt
 import json
 import os
-import sys
 import tempfile
 import unittest
 from collections import Counter
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import ledger_row, levers
+from rigops.doctor import check_levers
+from rigops.errors import RigopsError
 
-from rigops import ledger_row, levers  # noqa: E402
-from rigops.doctor import check_levers  # noqa: E402
-from rigops.errors import RigopsError  # noqa: E402
-
-from tests.support import no_external_sources, path_with_failing_sources  # noqa: E402
-from tests.test_state_contract import Sandbox  # noqa: E402
+from tests.support import no_external_sources, path_with_failing_sources
+from tests.test_state_contract import Sandbox
 
 CFG = {"ledger": {"watch_projects": {}}, "fixed_tax": {"paths": [], "globs": []}}
 AT = dt.date(2026, 8, 15)

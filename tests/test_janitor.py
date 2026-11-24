@@ -5,7 +5,6 @@ import io
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import time
 import unittest
@@ -13,9 +12,9 @@ import unittest.mock
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import backlog, janitor, watermarks
 
-from rigops import backlog, janitor, watermarks  # noqa: E402
+from tests.support import RIGOPS
 
 
 def _settle(path: Path, now: float) -> None:
@@ -392,7 +391,7 @@ class TruncateSkipOutputTests(unittest.TestCase):
         env = {**os.environ, "HOME": str(root), "RIGOPS_CONFIG": str(config),
                "RIGOPS_STATE_DIR": str(root / "state")}
         return subprocess.run(
-            [str(Path(__file__).resolve().parent.parent / "bin" / "rigops"), "janitor", *flags],
+            [*RIGOPS, "janitor", *flags],
             capture_output=True, text=True, check=False, timeout=60, env=env,
         )
 

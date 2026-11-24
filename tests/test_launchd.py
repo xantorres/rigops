@@ -5,11 +5,8 @@ import subprocess
 import sys
 import time
 import unittest
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import launchd  # noqa: E402
+from rigops import launchd
 
 # Real child processes, no mocks: these guards signal actual pids/pgids, so
 # the only trustworthy check is that a real process does or doesn't die.

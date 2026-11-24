@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import sys
 import unittest
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from tests.support import es_detector  # noqa: E402
+from tests.support import es_detector
 
 ORDINARY = (
     "no hiciste nada mal", "no has hecho nada mal, sigue asi", "no hiciste nada raro con el commit",

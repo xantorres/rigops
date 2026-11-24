@@ -1,24 +1,21 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
 import json
 import sys
 
-from rigops import cli  # noqa: E402
-from rigops import authprobe  # noqa: E402
-from rigops import config as rigops_config  # noqa: E402
+from rigops import cli
+from rigops import authprobe
+from rigops import config as rigops_config
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(
-        description="Probe whether the headless `claude -p` credential still works."
-    )
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="rigops authprobe", description=cli.COMMANDS["authprobe"])
     ap.add_argument("--json", action="store_true")
     ap.add_argument(
         "--force", action="store_true", help="run even when authprobe.enabled is false"
     )
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     cfg = rigops_config.load()
     defaults = rigops_config.DEFAULTS["authprobe"]
@@ -48,6 +45,3 @@ def main() -> int:
 
     return 0 if ok else 1
 
-
-if __name__ == "__main__":
-    sys.exit(cli.run(main))

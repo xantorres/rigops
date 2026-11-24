@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops.cause import (  # noqa: E402
+from rigops.cause import (
     CAUSES,
     classify,
     clean_holds,

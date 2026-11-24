@@ -4,16 +4,13 @@ import datetime as dt
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import levers, starts
 
-from rigops import levers, starts  # noqa: E402
-
-from tests.support import cli_argv, no_external_sources  # noqa: E402
+from tests.support import cli_argv, no_external_sources
 
 UTC = dt.timezone.utc
 

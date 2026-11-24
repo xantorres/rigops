@@ -3,7 +3,6 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import sys
 import tempfile
 import time
 import unittest
@@ -11,10 +10,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import core, doctor  # noqa: E402
-from rigops.doctor import (  # noqa: E402
+from rigops import core, doctor
+from rigops.doctor import (
     check_agents,
     check_budget,
     check_levers,

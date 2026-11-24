@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import guard_state  # noqa: E402
+from rigops import guard_state
 
 
 class LoadGuardStateTests(unittest.TestCase):

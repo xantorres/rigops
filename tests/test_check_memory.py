@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops.doctor import check_memory  # noqa: E402
+from rigops.doctor import check_memory
 
 
 def _store(root, index, notes):

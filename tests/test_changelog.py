@@ -4,14 +4,12 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import sys
 import unittest
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT / "lib"))
+from rigops import config
 
-from rigops import config  # noqa: E402
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 FIXTURES = REPO_ROOT / "tests" / "fixtures" / "config"
 

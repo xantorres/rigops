@@ -5,17 +5,14 @@ import io
 import json
 import os
 import subprocess
-import sys
 import types
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import config, reap, reap_guards
 
-from rigops import config, reap, reap_guards  # noqa: E402
-
-from tests.support import cli_argv  # noqa: E402
-from tests.test_reap import GitFixtureTestCase, _init_repo, _rev_parse, _run_git  # noqa: E402
+from tests.support import cli_argv
+from tests.test_reap import GitFixtureTestCase, _init_repo, _rev_parse, _run_git
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

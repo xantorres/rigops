@@ -3,17 +3,14 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
-import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import levers, transcripts
 
-from rigops import levers, transcripts  # noqa: E402
-
-from tests.support import no_external_sources  # noqa: E402
+from tests.support import no_external_sources
 
 UTC = dt.timezone.utc
 CFG = {"ledger": {"watch_projects": {}}, "fixed_tax": {"paths": [], "globs": []}}

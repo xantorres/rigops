@@ -2,15 +2,12 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import config  # noqa: E402
-from rigops.errors import RigopsError  # noqa: E402
+from rigops import config
+from rigops.errors import RigopsError
 
 
 class DeepMergeTests(unittest.TestCase):

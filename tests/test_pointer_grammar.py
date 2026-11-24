@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-import sys
 import unittest
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import core  # noqa: E402
-from rigops.doctor.pointer_grammar import AGENT_RE, MCP_RE, PATH_RE, SKILL_RE  # noqa: E402
+from rigops import core
+from rigops.doctor.pointer_grammar import AGENT_RE, MCP_RE, PATH_RE, SKILL_RE
 
 
 def captures(patterns, text):

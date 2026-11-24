@@ -8,15 +8,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / "lib"))
+from rigops import config, state
 
-from rigops import config, state  # noqa: E402
+REPO = Path(__file__).resolve().parent.parent
 
 CHILD = """
 import os, sys
 import tests
-sys.path.insert(0, "lib")
 from pathlib import Path
 from rigops import config, state
 root = Path(os.environ["HOME"]).resolve().parent

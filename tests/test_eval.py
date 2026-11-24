@@ -2,15 +2,12 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops.eval import cases, checks, diff, score  # noqa: E402
+from rigops.eval import cases, checks, diff, score
 
 SHIPPED_CASES_DIR = Path(__file__).resolve().parent.parent / "examples" / "eval" / "cases"
 

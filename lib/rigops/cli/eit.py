@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -8,12 +7,12 @@ import statistics
 import sys
 from collections import Counter, defaultdict
 
-from rigops import cli  # noqa: E402
-from rigops import config as rigops_config  # noqa: E402
-from rigops import cost  # noqa: E402
-from rigops import fmt  # noqa: E402
-from rigops import rebuilds  # noqa: E402
-from rigops import transcripts  # noqa: E402
+from rigops import cli
+from rigops import config as rigops_config
+from rigops import cost
+from rigops import fmt
+from rigops import rebuilds
+from rigops import transcripts
 
 
 def group_of(path: str, groups: dict, transcripts_dir) -> str:
@@ -168,8 +167,8 @@ def print_rebuilds(summary: dict, found: list, since, top_n: int) -> None:
     ))
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="EIT usage report for session transcripts.")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="rigops eit", description=cli.COMMANDS["eit"])
     parser.add_argument("--since", default="-7d", help="ISO date/time, 'today', or '-Nd'")
     parser.add_argument("--until", default=None, help="ISO date/time")
     parser.add_argument("--json", action="store_true")
@@ -186,7 +185,7 @@ def main() -> int:
         "--dir", dest="transcripts_dir", default=None,
         help="transcripts root directory (default: config transcripts_dir)",
     )
-    args = parser.parse_args(transcripts.attach_dash_values(sys.argv[1:]))
+    args = parser.parse_args(transcripts.attach_dash_values(sys.argv[1:] if argv is None else argv))
 
     transcripts_dir = None
     if args.transcripts_dir is not None:
@@ -224,6 +223,3 @@ def main() -> int:
 
     return 0
 
-
-if __name__ == "__main__":
-    sys.exit(cli.run(main))

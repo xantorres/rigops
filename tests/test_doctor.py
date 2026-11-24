@@ -13,11 +13,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import core, guard_state, launchd  # noqa: E402
-from rigops import notify as rigops_notify  # noqa: E402
-from rigops.cli import doctor  # noqa: E402
+from rigops import core, guard_state, launchd
+from rigops import notify as rigops_notify
+from rigops.cli import doctor
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 def pin_launchd_supervisor(case: unittest.TestCase) -> None:

@@ -3,17 +3,15 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from tests.support import cli_argv  # noqa: E402
+from rigops import config
+
+from tests.support import cli_argv
 
 REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / "lib"))
-
-from rigops import config  # noqa: E402
 
 
 class DefaultsTests(unittest.TestCase):

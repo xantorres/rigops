@@ -1,14 +1,13 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
 import json
 import sys
 
-from rigops import cli  # noqa: E402
-from rigops import config as rigops_config  # noqa: E402
-from rigops import config_spec  # noqa: E402
-from rigops.errors import RigopsError  # noqa: E402
+from rigops import cli
+from rigops import config as rigops_config
+from rigops import config_spec
+from rigops.errors import RigopsError
 
 _MISSING = object()
 
@@ -43,8 +42,8 @@ def cmd_check(_args) -> int:
     return 0
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(prog="rigops-config")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="rigops config", description=cli.COMMANDS["config"])
     sub = parser.add_subparsers(dest="command", required=True)
 
     get_parser = sub.add_parser("get", help="print a dotted config key")
@@ -57,9 +56,6 @@ def main() -> int:
     check_parser = sub.add_parser("check", help="load config and report status")
     check_parser.set_defaults(func=cmd_check)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     return args.func(args)
 
-
-if __name__ == "__main__":
-    sys.exit(cli.run(main))

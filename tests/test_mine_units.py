@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 import datetime as dt
-import sys
 import unittest
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import mine_group
 
-from rigops import mine_group  # noqa: E402
-
-from tests.test_mine import NOW  # noqa: E402
+from tests.test_mine import NOW
 
 LINT = "no, always run the lint step before opening a pull request"
 

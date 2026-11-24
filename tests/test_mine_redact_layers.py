@@ -2,15 +2,12 @@ from __future__ import annotations
 
 import base64
 import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import mine_redact  # noqa: E402
+from rigops import mine_redact
 
 LAYER_ENV = ("RIGOPS_REDACTION_PATTERNS", "RIGOPS_REDACTION_PATTERNS_B64")
 

@@ -3,19 +3,16 @@ from __future__ import annotations
 import hashlib
 import json
 import plistlib
-import sys
 import time
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import cause as rigops_cause
+from rigops import guard_state
+from rigops.errors import RigopsError
 
-from rigops import cause as rigops_cause  # noqa: E402
-from rigops import guard_state  # noqa: E402
-from rigops.errors import RigopsError  # noqa: E402
-
-from tests.test_doctor import FAILING_ITEM, REPO_ROOT, _write_registry  # noqa: E402
-from tests.test_doctor_pages import H, PagingBase  # noqa: E402
+from tests.test_doctor import FAILING_ITEM, REPO_ROOT, _write_registry
+from tests.test_doctor_pages import H, PagingBase
 
 
 def _item(job_id: str, plist: Path, extra: str = "") -> str:

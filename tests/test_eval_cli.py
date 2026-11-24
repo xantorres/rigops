@@ -6,7 +6,6 @@ import os
 import socket
 import socketserver
 import subprocess
-import sys
 import tempfile
 import threading
 import time
@@ -14,13 +13,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import state
+from rigops.errors import RigopsError
+from rigops.eval import client
 
-from rigops import state  # noqa: E402
-from rigops.errors import RigopsError  # noqa: E402
-from rigops.eval import client  # noqa: E402
-
-from tests.support import cli_argv  # noqa: E402
+from tests.support import cli_argv
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

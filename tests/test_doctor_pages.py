@@ -4,16 +4,13 @@ import json
 import os
 import plistlib
 import subprocess
-import sys
 import time
 import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import guard_state, launchd  # noqa: E402
-from rigops import notify as rigops_notify  # noqa: E402
+from rigops import guard_state, launchd
+from rigops import notify as rigops_notify
 
 from tests.test_doctor import (
     FAILING_ITEM,

@@ -291,7 +291,7 @@ These patterns ran daily in a private agent rig for months before this repositor
 | macOS | First-class: launchd jobs, `doctor`, everything. |
 | Linux | CLI commands work; `doctor --supervisor none` skips `launchctl`; a cron template is provided but unverified; the installer auto-skips launchd. |
 
-Python 3.9+, stdlib only. Full matrix: [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MATRIX.md).
+Python 3.11+, stdlib only. Full matrix: [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MATRIX.md).
 
 ## Docs
 

@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import sys
 import tempfile
 import time
 import unittest
 import warnings
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import mine, mine_redact  # noqa: E402
+from rigops import mine, mine_redact
 
 
 def _out(text):

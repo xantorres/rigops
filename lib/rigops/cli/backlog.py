@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -7,9 +6,9 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from rigops import cli  # noqa: E402
-from rigops import backlog as rigops_backlog  # noqa: E402
-from rigops import config as rigops_config  # noqa: E402
+from rigops import cli
+from rigops import backlog as rigops_backlog
+from rigops import config as rigops_config
 
 
 def _backlog_path(cfg, arg_file) -> Path:
@@ -72,8 +71,8 @@ def cmd_add(args, cfg) -> int:
     return 0
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Governed one-line backlog.")
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="rigops backlog", description=cli.COMMANDS["backlog"])
     sub = ap.add_subparsers(dest="command", required=True)
 
     lint_parser = sub.add_parser("lint", help="check backlog grammar and areas")
@@ -88,10 +87,7 @@ def main() -> int:
     add_parser.add_argument("--file", help="backlog file path (default: config backlog.path)")
     add_parser.set_defaults(func=cmd_add)
 
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     cfg = rigops_config.load()
     return args.func(args, cfg)
 
-
-if __name__ == "__main__":
-    sys.exit(cli.run(main))

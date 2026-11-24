@@ -5,19 +5,16 @@ import io
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import cli, launchd
+from rigops.errors import RigopsError
 
-from rigops import cli, launchd  # noqa: E402
-from rigops.errors import RigopsError  # noqa: E402
-
-from tests.support import path_with_failing_sources  # noqa: E402
-from tests.test_doctor import (  # noqa: E402
+from tests.support import RIGOPS, path_with_failing_sources
+from tests.test_doctor import (
     FAILING_ITEM,
     HUNG_ITEM,
     OK_ITEM,
@@ -27,7 +24,6 @@ from tests.test_doctor import (  # noqa: E402
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-RIGOPS = REPO_ROOT / "bin" / "rigops"
 
 OWN_ITEM = FAILING_ITEM.replace("job-failing", "doctor-watchdog").replace(
     "entry_point: x", "entry_point: /usr/local/bin/rigops doctor --exit-zero",
@@ -69,7 +65,7 @@ class SubprocessExitCodes(unittest.TestCase):
             if mode is not None:
                 os.chmod(self.config, mode)
         return subprocess.run(
-            [str(RIGOPS), *args], capture_output=True, text=True, check=False, timeout=60,
+            [*RIGOPS, *args], capture_output=True, text=True, check=False, timeout=60,
             env=env, stdin=subprocess.DEVNULL,
         )
 
@@ -90,7 +86,7 @@ class SubprocessExitCodes(unittest.TestCase):
             "    return _real(name, package)\n"
             "importlib.import_module = _fake\n"
         )
-        return {"PYTHONPATH": str(hook)}
+        return {"PYTHONPATH": os.pathsep.join([str(hook), str(REPO_ROOT / "lib")])}
 
     def _unreadable_rule(self) -> None:
         rules = self.home / ".claude" / "rules"

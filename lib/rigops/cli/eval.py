@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -12,11 +11,11 @@ import urllib.parse
 import uuid
 from pathlib import Path
 
-from rigops import cli  # noqa: E402
-from rigops import config as rigops_config  # noqa: E402
-from rigops import core, fmt, state  # noqa: E402
-from rigops import eval as rigops_eval  # noqa: E402
-from rigops.errors import RigopsError  # noqa: E402
+from rigops import cli
+from rigops import config as rigops_config
+from rigops import core, fmt, state
+from rigops import eval as rigops_eval
+from rigops.errors import RigopsError
 
 SETTINGS = (
     ("cases_dir", "cases"),
@@ -319,11 +318,10 @@ def cmd_list(args) -> int:
     return 0
 
 
-def main(argv=None) -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        prog="rigops-eval",
-        description="Run versioned eval cases against an OpenAI-compatible endpoint, "
-        "record each run, and diff two runs.",
+        prog="rigops eval",
+        description=cli.COMMANDS["eval"],
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -370,6 +368,3 @@ def main(argv=None) -> int:
     except Exception as exc:  # noqa: BLE001 - exit 1 is reserved for a real regression
         return _fail(f"{type(exc).__name__}: {exc}")
 
-
-if __name__ == "__main__":
-    sys.exit(cli.run(main))

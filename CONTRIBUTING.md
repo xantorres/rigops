@@ -24,7 +24,7 @@ CI on a fork runs the public redaction patterns only; the private layer is requi
 
 ## Tests
 
-`make test` runs the whole suite. A single module runs either way: `python3 -m unittest tests.test_reap` or `python3 -m unittest discover -s tests -t . -p test_reap.py`.
+`make test` runs the whole suite. A single module runs either way: `PYTHONPATH="$PWD/lib" python3 -m unittest tests.test_reap` or `PYTHONPATH="$PWD/lib" python3 -m unittest discover -s tests -t . -p test_reap.py`. The path must be absolute: some tests run children from other directories.
 
 The suite points home, state and config at a throwaway directory itself (`tests/__init__.py`), so a run never writes into the state a real job owns.
 
@@ -36,4 +36,4 @@ Every example output block in README, docs/, or patterns/ is generated on a thro
 
 ## Runtime
 
-Python 3.9 floor, stdlib only for shipped scripts. Dev tooling (`ruff`, `shellcheck`) is exempt.
+Python 3.11 floor, stdlib only for the shipped package (`lib/rigops/`). Dev tooling (`ruff`, `shellcheck`) is exempt.

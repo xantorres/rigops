@@ -3,18 +3,16 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import config
+from rigops.errors import RigopsError
 
-from rigops import config  # noqa: E402
-from rigops.errors import RigopsError  # noqa: E402
+from tests.support import RIGOPS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-RIGOPS = REPO_ROOT / "bin" / "rigops"
 
 
 class RequirePrivateTests(unittest.TestCase):
@@ -80,7 +78,7 @@ class CommandPathsRefuseTests(unittest.TestCase):
             "XDG_STATE_HOME": str(self.home / "xdg-state"),
         }
         return subprocess.run(
-            [str(RIGOPS), *args], capture_output=True, text=True, check=False, timeout=60,
+            [*RIGOPS, *args], capture_output=True, text=True, check=False, timeout=60,
             env=env, stdin=subprocess.DEVNULL,
         )
 

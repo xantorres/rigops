@@ -1,14 +1,10 @@
 from __future__ import annotations
 
 import datetime as dt
-import sys
 import unittest
-from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops.sources import ccusage, command  # noqa: E402
+from rigops.sources import ccusage, command
 
 
 class RunJsonTests(unittest.TestCase):

@@ -3,17 +3,14 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import ledger_row, levers
 
-from rigops import ledger_row, levers  # noqa: E402
-
-from tests.test_ledger import (  # noqa: E402
+from tests.test_ledger import (
     FIXTURE_FIXED_TAX,
     FIXTURE_TRANSCRIPTS,
     ROW_DATE,

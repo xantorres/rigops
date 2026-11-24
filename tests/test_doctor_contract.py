@@ -15,14 +15,12 @@ from datetime import date
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import core
+from rigops import doctor as checks
+from rigops.doctor import check_budget, check_levers, ids
 
-from rigops import core  # noqa: E402
-from rigops import doctor as checks  # noqa: E402
-from rigops.doctor import check_budget, check_levers, ids  # noqa: E402
-
-from tests.test_doctor import OK_ITEM, _write_registry, doctor  # noqa: E402
-from tests.test_state_contract import Sandbox  # noqa: E402
+from tests.test_doctor import OK_ITEM, _write_registry, doctor
+from tests.test_state_contract import Sandbox
 
 DOCTOR_DIR = Path(checks.__file__).parent
 ERROR = core.Finding(check="budget", area="docs", symptom="cannot read", evidence="e",

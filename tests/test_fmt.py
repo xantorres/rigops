@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import sys
 import unittest
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import fmt  # noqa: E402
+from rigops import fmt
 
 
 class SparklineTests(unittest.TestCase):

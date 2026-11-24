@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fresh-HOME smoke test of the repo's own bin/rigops: help, config, doctor,
+# Fresh-HOME smoke test of `python3 -m rigops` from the repo: help, config, doctor,
 # mine, and every command that runs against repo fixtures (eit, tax, ledger,
 # authprobe, eval, backlog, janitor, reap, reap --selftest). Runs on macOS and
 # Linux in a temp HOME; never touches the real home or launchd.
@@ -7,7 +7,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-RIGOPS_LINK="$REPO_ROOT/bin/rigops"
+export PYTHONPATH="$REPO_ROOT/lib"
+RIGOPS=(python3 -m rigops)
 
 fail() {
     echo "smoke FAIL: $*" >&2
@@ -37,7 +38,7 @@ trap cleanup EXIT
 unset RIGOPS_CONFIG RIGOPS_STATE_DIR XDG_CONFIG_HOME XDG_STATE_HOME
 export HOME="$SMOKE_HOME"
 
-run "$RIGOPS_LINK" help
+run "${RIGOPS[@]}" help
 [ "$RC" -eq 0 ] || fail "rigops help exit $RC: $OUT"
 for cmd in config doctor eit eval ledger tax; do
     case "$OUT" in
@@ -48,7 +49,7 @@ done
 
 echo "smoke: help and mine without a registry"
 mkdir -p "$SMOKE_HOME/mine-transcripts"
-run "$RIGOPS_LINK" mine --dry-run --transcripts-dir "$SMOKE_HOME/mine-transcripts"
+run "${RIGOPS[@]}" mine --dry-run --transcripts-dir "$SMOKE_HOME/mine-transcripts"
 [ "$RC" -eq 0 ] || fail "mine --dry-run exit $RC: $OUT"
 case "$OUT" in
     *"# rigops mine --dry-run"*) : ;;
@@ -59,12 +60,12 @@ CONFIG_JSON="$SMOKE_HOME/.config/rigops/config.json"
 mkdir -p "$SMOKE_HOME/.config/rigops"
 printf '{}' > "$CONFIG_JSON"
 
-run "$RIGOPS_LINK" config check
+run "${RIGOPS[@]}" config check
 [ "$RC" -eq 0 ] || fail "fresh config check exit $RC: $OUT"
 case "$OUT" in
     *warn*) fail "fresh config check warns: $OUT" ;;
 esac
-run "$RIGOPS_LINK" doctor --report --supervisor=none
+run "${RIGOPS[@]}" doctor --report --supervisor=none
 [ "$RC" -eq 0 ] || fail "fresh doctor exit $RC: $OUT"
 case "$OUT" in
     *"no registry items"*) : ;;
@@ -89,36 +90,36 @@ with open(cfg_path, "w", encoding="utf-8") as fh:
     json.dump(data, fh)
 PYEOF
 
-run "$RIGOPS_LINK" eit --since=-3650d --json
+run "${RIGOPS[@]}" eit --since=-3650d --json
 [ "$RC" -eq 0 ] || fail "rigops eit exit $RC: $OUT"
 assert_json "$OUT" "rigops eit --json"
 
-run "$RIGOPS_LINK" tax --json
+run "${RIGOPS[@]}" tax --json
 [ "$RC" -eq 0 ] || fail "rigops tax exit $RC: $OUT"
 assert_json "$OUT" "rigops tax --json"
 
 # Fresh ledger: 0-1 rows still emit JSON (empty deltas) under --json.
-run "$RIGOPS_LINK" ledger diff --json
+run "${RIGOPS[@]}" ledger diff --json
 [ "$RC" -eq 0 ] || fail "rigops ledger diff exit $RC: $OUT"
 assert_json "$OUT" "rigops ledger diff --json"
 
 REGISTRY_EXAMPLE="$REPO_ROOT/config/registry.example.md"
-run "$RIGOPS_LINK" doctor --report --supervisor=none --registry="$REGISTRY_EXAMPLE"
+run "${RIGOPS[@]}" doctor --report --supervisor=none --registry="$REGISTRY_EXAMPLE"
 [ "$RC" -eq 0 ] || fail "rigops doctor exit $RC: $OUT"
 
-run "$RIGOPS_LINK" config get doctor.kill_grace_s
+run "${RIGOPS[@]}" config get doctor.kill_grace_s
 [ "$RC" -eq 0 ] || fail "rigops config get exit $RC: $OUT"
 [ "$OUT" = "5" ] || fail "expected doctor.kill_grace_s=5, got: $OUT"
 
 echo "smoke: authprobe ships disabled"
-run "$RIGOPS_LINK" authprobe
+run "${RIGOPS[@]}" authprobe
 [ "$RC" -eq 0 ] || fail "rigops authprobe exit $RC: $OUT"
 case "$OUT" in
     *"disabled"*) : ;;
     *) fail "rigops authprobe missing 'disabled': $OUT" ;;
 esac
 
-run "$RIGOPS_LINK" authprobe --json
+run "${RIGOPS[@]}" authprobe --json
 [ "$RC" -eq 0 ] || fail "rigops authprobe --json exit $RC: $OUT"
 assert_json "$OUT" "rigops authprobe --json"
 case "$OUT" in
@@ -129,7 +130,7 @@ esac
 echo "smoke: ledger dry-run row carries sources"
 # stdout only: the empty-window warning goes to stderr and would break the JSON.
 set +e
-OUT="$("$RIGOPS_LINK" ledger --dry-run --json 2>/dev/null)"
+OUT="$("${RIGOPS[@]}" ledger --dry-run --json 2>/dev/null)"
 RC=$?
 set -e
 [ "$RC" -eq 0 ] || fail "rigops ledger --dry-run --json exit $RC: $OUT"
@@ -142,7 +143,7 @@ esac
 echo "smoke: eval records every case as an error against an unreachable endpoint"
 # stdout only: the per-case progress lines go to stderr and would break the JSON.
 set +e
-OUT="$("$RIGOPS_LINK" eval run --cases "$REPO_ROOT/examples/eval/cases" \
+OUT="$("${RIGOPS[@]}" eval run --cases "$REPO_ROOT/examples/eval/cases" \
     --endpoint http://127.0.0.1:9/v1 --model none --dry-run --json 2>/dev/null)"
 RC=$?
 set -e
@@ -152,20 +153,20 @@ case "$OUT" in
     *'"status": "error"'*) : ;;
     *) fail "rigops eval run against a dead endpoint recorded no error: $OUT" ;;
 esac
-run "$RIGOPS_LINK" eval diff
+run "${RIGOPS[@]}" eval diff
 [ "$RC" -eq 2 ] || fail "rigops eval diff with no runs expected exit 2, got $RC: $OUT"
 
 echo "smoke: backlog lint/add on a scratch file"
 BACKLOG_MD="$SMOKE_HOME/backlog-scratch.md"
-run "$RIGOPS_LINK" backlog add --file "$BACKLOG_MD" "hooks: smoke entry lands. Fix: nothing."
+run "${RIGOPS[@]}" backlog add --file "$BACKLOG_MD" "hooks: smoke entry lands. Fix: nothing."
 [ "$RC" -eq 0 ] || fail "backlog add exit $RC: $OUT"
 [ -f "$BACKLOG_MD" ] || fail "backlog add did not scaffold $BACKLOG_MD"
-run "$RIGOPS_LINK" backlog lint --file "$BACKLOG_MD" --json
+run "${RIGOPS[@]}" backlog lint --file "$BACKLOG_MD" --json
 [ "$RC" -eq 0 ] || fail "backlog lint exit $RC: $OUT"
 assert_json "$OUT" "rigops backlog lint --json"
-run "$RIGOPS_LINK" backlog lint --file "$REPO_ROOT/config/backlog.example.md"
+run "${RIGOPS[@]}" backlog lint --file "$REPO_ROOT/config/backlog.example.md"
 [ "$RC" -eq 0 ] || fail "backlog.example.md does not lint clean: $OUT"
-run "$RIGOPS_LINK" backlog add --file "$BACKLOG_MD" "notanarea: rejected entry"
+run "${RIGOPS[@]}" backlog add --file "$BACKLOG_MD" "notanarea: rejected entry"
 [ "$RC" -eq 2 ] || fail "backlog add unknown area expected exit 2, got $RC: $OUT"
 
 echo "smoke: janitor dry-run leaves files, apply deletes"
@@ -200,13 +201,13 @@ data = {
 with open(cfg_path, "w", encoding="utf-8") as fh:
     json.dump(data, fh)
 PYEOF
-run env RIGOPS_CONFIG="$JANITOR_CFG" "$RIGOPS_LINK" janitor
+run env RIGOPS_CONFIG="$JANITOR_CFG" "${RIGOPS[@]}" janitor
 [ "$RC" -eq 0 ] || fail "janitor dry-run exit $RC: $OUT"
 [ -f "$JANITOR_TREE/spool/old.json" ] || fail "janitor dry-run deleted a file"
-run env RIGOPS_CONFIG="$JANITOR_CFG" "$RIGOPS_LINK" janitor --json
+run env RIGOPS_CONFIG="$JANITOR_CFG" "${RIGOPS[@]}" janitor --json
 [ "$RC" -eq 0 ] || fail "janitor --json exit $RC: $OUT"
 assert_json "$OUT" "rigops janitor --json"
-run env RIGOPS_CONFIG="$JANITOR_CFG" "$RIGOPS_LINK" janitor --apply
+run env RIGOPS_CONFIG="$JANITOR_CFG" "${RIGOPS[@]}" janitor --apply
 [ "$RC" -eq 0 ] || fail "janitor --apply exit $RC: $OUT"
 [ ! -f "$JANITOR_TREE/spool/old.json" ] || fail "janitor --apply did not delete aged file"
 
@@ -222,7 +223,7 @@ printf 'demo\n' > "$REAP_REPO/README.md"
 git -C "$REAP_REPO" add README.md
 git -C "$REAP_REPO" commit -qm 'initial'
 git -C "$REAP_REPO" worktree add -q -b merged-branch "$REAP_REPO/.claude/worktrees/merged-wt"
-run env RIGOPS_RUN_DEADLINE_S=60 "$RIGOPS_LINK" reap --root "$REAP_ROOT" --no-fetch --json
+run env RIGOPS_RUN_DEADLINE_S=60 "${RIGOPS[@]}" reap --root "$REAP_ROOT" --no-fetch --json
 [ "$RC" -eq 0 ] || fail "reap --json exit $RC: $OUT"
 assert_json "$OUT" "rigops reap --json"
 case "$OUT" in
@@ -234,7 +235,7 @@ unset GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM
 
 if command -v lsof >/dev/null 2>&1; then
     echo "smoke: reap --selftest (bystander isolation)"
-    run "$RIGOPS_LINK" reap --selftest
+    run "${RIGOPS[@]}" reap --selftest
     [ "$RC" -eq 0 ] || fail "reap --selftest exit $RC: $OUT"
     case "$OUT" in
         *"PASS selftest"*) : ;;

@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import mine, mine_redact
+from rigops.detector import BUILTIN
 
-from rigops import mine, mine_redact  # noqa: E402
-from rigops.detector import BUILTIN  # noqa: E402
-
-from tests.support import es_detector  # noqa: E402
-from tests.test_mine import NOW, _excluded, _user, _write  # noqa: E402
+from tests.support import es_detector
+from tests.test_mine import NOW, _excluded, _user, _write
 
 _ES = es_detector()
 

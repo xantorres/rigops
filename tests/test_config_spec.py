@@ -4,19 +4,17 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import config, config_spec
+from rigops.doctor import check_budget, check_levers, check_memory
+from rigops.errors import RigopsError
 
-from rigops import config, config_spec  # noqa: E402
-from rigops.doctor import check_budget, check_levers, check_memory  # noqa: E402
-from rigops.errors import RigopsError  # noqa: E402
+from tests.support import RIGOPS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-RIGOPS = REPO_ROOT / "bin" / "rigops"
 
 BAD_SHAPES = [
     ("string for a number", {"doctor": {"heal_cooldown_h": "12"}}, "doctor.heal_cooldown_h"),
@@ -71,7 +69,7 @@ class CliCase(unittest.TestCase):
         if config_value is not None:
             self.config.write_text(json.dumps(config_value))
         return subprocess.run(
-            [str(RIGOPS), *args], capture_output=True, text=True, check=False, timeout=60,
+            [*RIGOPS, *args], capture_output=True, text=True, check=False, timeout=60,
             env=env, stdin=subprocess.DEVNULL,
         )
 

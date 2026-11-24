@@ -3,18 +3,14 @@ from __future__ import annotations
 import datetime as dt
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
-from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import authprobe, levers
+from rigops import config as rigops_config
 
-from rigops import authprobe, levers  # noqa: E402
-from rigops import config as rigops_config  # noqa: E402
-
-from tests.support import no_external_sources  # noqa: E402
+from tests.support import no_external_sources
 
 CFG = {
     "authprobe": {

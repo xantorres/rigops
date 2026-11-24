@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import core, levers  # noqa: E402
-from rigops.doctor import check_budget  # noqa: E402
+from rigops import core, levers
+from rigops.doctor import check_budget
 
 RULES = {
     "scoped.md": ("---\npaths:\n  - 'src/**'\n---\nscoped\n", False),

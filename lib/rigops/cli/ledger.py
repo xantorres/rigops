@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -8,14 +7,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-from rigops import cli  # noqa: E402
-from rigops import config as rigops_config  # noqa: E402
-from rigops import fmt  # noqa: E402
-from rigops import ledger_row  # noqa: E402
-from rigops import levers  # noqa: E402
-from rigops import state  # noqa: E402
-from rigops.doctor import check_levers  # noqa: E402
-from rigops.errors import RigopsError  # noqa: E402
+from rigops import cli
+from rigops import config as rigops_config
+from rigops import fmt
+from rigops import ledger_row
+from rigops import levers
+from rigops import state
+from rigops.doctor import check_levers
+from rigops.errors import RigopsError
 
 
 def _rewrite_jsonl(path: Path, rows: list) -> None:
@@ -304,10 +303,8 @@ def cmd_diff(args) -> int:
     return 0
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(
-        description="Write a ledger row (default), note an intervention, or diff two rows."
-    )
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="rigops ledger", description=cli.COMMANDS["ledger"])
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     write_p = sub.add_parser("write", help="append one ledger row (default)")
@@ -334,7 +331,7 @@ def main() -> int:
     diff_p.add_argument("--since", help="baseline = latest row on/before this date YYYY-MM-DD")
     diff_p.add_argument("--json", action="store_true")
 
-    argv = sys.argv[1:]
+    argv = sys.argv[1:] if argv is None else argv
     if not argv:
         argv = ["write"]
     elif argv[0] not in {"note", "diff", "write", "-h", "--help"}:
@@ -351,6 +348,3 @@ def main() -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-
-if __name__ == "__main__":
-    sys.exit(cli.run(main))

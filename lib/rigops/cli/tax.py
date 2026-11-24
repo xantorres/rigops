@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -6,13 +5,13 @@ import datetime as dt
 import json
 import sys
 
-from rigops import cli  # noqa: E402
-from rigops import config as rigops_config  # noqa: E402
-from rigops import fmt  # noqa: E402
-from rigops import levers  # noqa: E402
-from rigops import starts  # noqa: E402
-from rigops import state  # noqa: E402
-from rigops import transcripts  # noqa: E402
+from rigops import cli
+from rigops import config as rigops_config
+from rigops import fmt
+from rigops import levers
+from rigops import starts
+from rigops import state
+from rigops import transcripts
 
 
 def cmd_current(cfg, as_json: bool) -> int:
@@ -190,8 +189,8 @@ def cmd_dead(args) -> int:
     return 0
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Fixed context tax: always-loaded config bytes.")
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="rigops tax", description=cli.COMMANDS["tax"])
     ap.add_argument("--history", action="store_true", help="fixed_tax_b trend across the ledger")
     ap.add_argument(
         "--starts", action="store_true",
@@ -216,7 +215,7 @@ def main() -> int:
     ap.add_argument("--top", type=int, default=15, help="rows per ranked table")
     ap.add_argument("--dir", dest="transcripts_dir", default=None, help="transcripts root")
     ap.add_argument("--json", action="store_true")
-    args = ap.parse_args(transcripts.attach_dash_values(sys.argv[1:]))
+    args = ap.parse_args(transcripts.attach_dash_values(sys.argv[1:] if argv is None else argv))
 
     if args.transcripts_dir is not None:
         resolved = rigops_config.expand(args.transcripts_dir)
@@ -237,6 +236,3 @@ def main() -> int:
             return 2
     return cmd_current(cfg, args.json)
 
-
-if __name__ == "__main__":
-    sys.exit(cli.run(main))

@@ -4,17 +4,14 @@ import datetime as dt
 import json
 import os
 import re
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import transcripts
+from rigops.detector import BUILTIN, Detector
 
-from rigops import transcripts  # noqa: E402
-from rigops.detector import BUILTIN, Detector  # noqa: E402
-
-from tests.support import es_detector  # noqa: E402
+from tests.support import es_detector
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "transcripts"
 

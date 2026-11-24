@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -13,15 +12,15 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from rigops import cause as rigops_cause  # noqa: E402
-from rigops import cli  # noqa: E402
-from rigops import config as rigops_config  # noqa: E402
-from rigops import core as rigops_core  # noqa: E402
-from rigops import doctor as config_checks  # noqa: E402
-from rigops import fmt, guard_state, launchd, procgroup, state  # noqa: E402
-from rigops import notify as rigops_notify  # noqa: E402
-from rigops import registry as rigops_registry  # noqa: E402
-from rigops.judge import (  # noqa: E402,F401
+from rigops import cause as rigops_cause
+from rigops import cli
+from rigops import config as rigops_config
+from rigops import core as rigops_core
+from rigops import doctor as config_checks
+from rigops import fmt, guard_state, launchd, procgroup, state
+from rigops import notify as rigops_notify
+from rigops import registry as rigops_registry
+from rigops.judge import (  # noqa: F401
     _judge_evidence_only_item,
     _judge_launchd_item,
     _label_for_item,
@@ -341,8 +340,8 @@ def _red_for(since: str, ts: str) -> str:
     return f"{int(hours // 24)}d" if hours >= 24 else f"{int(hours)}h"
 
 
-def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="Health watchdog for the rigops job fleet.")
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="rigops doctor", description=cli.COMMANDS["doctor"])
     ap.add_argument("--report", action="store_true", help="print the full report to stdout")
     ap.add_argument("--json", action="store_true", help="emit JSON instead of text")
     ap.add_argument("--list", action="store_true", help="list registry items and exit")
@@ -665,6 +664,3 @@ def _fleet_run(args, cfg: dict, items: list) -> int:
         return 2
     return exit_code(findings, verdict, args.exit_zero)
 
-
-if __name__ == "__main__":
-    sys.exit(cli.run(main))

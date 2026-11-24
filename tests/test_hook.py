@@ -15,14 +15,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import core, hook
 
-from rigops import core, hook  # noqa: E402
-
-from tests.support import cli_argv  # noqa: E402
+from tests.support import RIGOPS, cli_argv
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-BIN = REPO_ROOT / "bin" / "rigops"
 
 
 def _stamp(hours_ago=0):
@@ -389,7 +386,7 @@ class SubprocessTests(unittest.TestCase):
         for event in ("session-start", "user-prompt-submit"):
             with self.subTest(event=event):
                 payload = json.dumps({"transcript_path": str(transcript), "session_id": event})
-                cmd = [str(BIN), "hook", event]
+                cmd = [*RIGOPS, "hook", event]
                 subprocess.run(cmd, input=payload, capture_output=True, text=True,
                                timeout=30, env=self.env)
                 times = []
@@ -408,12 +405,14 @@ class SubprocessTests(unittest.TestCase):
         self.assertIn("usage", proc.stdout)
 
     def test_hook_is_hidden_from_help_but_dispatches(self):
-        listing = subprocess.run([str(BIN), "help"], capture_output=True, text=True,
+        listing = subprocess.run([*RIGOPS, "help"], capture_output=True, text=True,
                                  timeout=30, env=self.env)
         self.assertEqual(listing.returncode, 0)
-        self.assertNotIn("  hook", listing.stdout.splitlines())
-        self.assertIn("  mine", listing.stdout.splitlines())
-        proc = subprocess.run([str(BIN), "hook", "--help"], capture_output=True, text=True,
+        body = listing.stdout.split("commands:\n", 1)[1].split("\n\n", 1)[0]
+        names = [line.split()[0] for line in body.splitlines()]
+        self.assertNotIn("hook", names)
+        self.assertIn("mine", names)
+        proc = subprocess.run([*RIGOPS, "hook", "--help"], capture_output=True, text=True,
                               timeout=30, env=self.env)
         self.assertEqual(proc.returncode, 0)
 

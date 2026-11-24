@@ -1,13 +1,11 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 
-from rigops import cli  # noqa: E402
-from rigops import config as rigops_config  # noqa: E402
-from rigops import janitor as rigops_janitor  # noqa: E402
+from rigops import cli
+from rigops import config as rigops_config
+from rigops import janitor as rigops_janitor
 
 MAX_LISTED_PATHS = 20
 
@@ -32,12 +30,12 @@ def _print_rule(rule_result: dict, apply: bool, max_delete: int) -> None:
             print(f"  ... {overflow_count} more")
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Declarative hygiene engine for rigops-managed state.")
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="rigops janitor", description=cli.COMMANDS["janitor"])
     ap.add_argument("--apply", action="store_true", help="perform mutations; default is dry-run")
     ap.add_argument("--max-delete", type=int, help="override config janitor.max_delete")
     ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     cfg = rigops_config.load()
     if args.apply:
@@ -88,6 +86,3 @@ def main() -> int:
     print(f"total deleted: {report['total_deleted']} (files, directory contents included)")
     return 2 if had_errors else 0
 
-
-if __name__ == "__main__":
-    sys.exit(cli.run(main))

@@ -2,17 +2,14 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import levers, modelmix
+from rigops.doctor import check_levers
 
-from rigops import levers, modelmix  # noqa: E402
-from rigops.doctor import check_levers  # noqa: E402
-
-from tests.support import no_external_sources  # noqa: E402
+from tests.support import no_external_sources
 
 
 def turn(mid: str, minutes: int, model: str, created: int) -> dict:

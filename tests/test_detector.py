@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 import copy
-import sys
 import unittest
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import config  # noqa: E402
-from rigops.detector import BUILTIN, Detector  # noqa: E402
-from rigops.errors import RigopsError  # noqa: E402
+from rigops import config
+from rigops.detector import BUILTIN, Detector
+from rigops.errors import RigopsError
 
 
 def _cfg(**ledger) -> dict:

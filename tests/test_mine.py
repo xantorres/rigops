@@ -4,19 +4,15 @@ import datetime as dt
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import mine
 
-from rigops import mine  # noqa: E402
-
-from tests.support import es_detector  # noqa: E402
+from tests.support import RIGOPS, es_detector
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-MINE = REPO_ROOT / "bin" / "rigops"
 NOW = dt.datetime(2026, 11, 3, 12, 0, tzinfo=dt.timezone.utc)
 
 
@@ -191,13 +187,13 @@ class HardeningTests(unittest.TestCase):
 class CliGuardTests(unittest.TestCase):
     def test_registry_flag_is_rejected(self):
         proc = subprocess.run(
-            [str(MINE), "mine", "--dry-run", "--registry", "/nonexistent/roots.json"],
+            [*RIGOPS, "mine", "--dry-run", "--registry", "/nonexistent/roots.json"],
             capture_output=True, text=True, check=False, timeout=60)
         self.assertEqual(proc.returncode, 2)
         self.assertIn("unrecognized arguments", proc.stderr)
 
     def test_absurd_since_is_an_error(self):
-        proc = subprocess.run([str(MINE), "mine", "--dry-run", "--since", "99999999999d"],
+        proc = subprocess.run([*RIGOPS, "mine", "--dry-run", "--since", "99999999999d"],
                               capture_output=True, text=True, check=False, timeout=60)
         self.assertEqual(proc.returncode, 2)
 
@@ -214,7 +210,7 @@ class SinceTests(unittest.TestCase):
 
 class CliTests(unittest.TestCase):
     def _run(self, *args, env=None):
-        return subprocess.run([str(MINE), "mine", *args], capture_output=True, text=True,
+        return subprocess.run([*RIGOPS, "mine", *args], capture_output=True, text=True,
                               check=False, timeout=60, env=env)
 
     def test_without_dry_run_is_a_clear_error(self):

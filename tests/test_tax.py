@@ -3,16 +3,13 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import state
 
-from rigops import state  # noqa: E402
-
-from tests.support import cli_argv  # noqa: E402
+from tests.support import cli_argv
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURE_FIXED_TAX = Path(__file__).resolve().parent / "fixtures" / "fixed_tax"

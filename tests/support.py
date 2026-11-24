@@ -8,11 +8,9 @@ import tempfile
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import config as rigops_config  # noqa: E402
-from rigops.detector import Detector  # noqa: E402
-from rigops.sources import ccusage  # noqa: E402
+from rigops import config as rigops_config
+from rigops.detector import Detector
+from rigops.sources import ccusage
 
 _ADAPTERS = (ccusage,)
 _stub_dir = None
@@ -39,8 +37,11 @@ def path_with_failing_sources(path: str) -> str:
     return f"{_stub_dir}{os.pathsep}{path}"
 
 
+RIGOPS = [sys.executable, "-m", "rigops"]
+
+
 def cli_argv(cmd: str) -> list[str]:
-    return [sys.executable, "-m", f"rigops.cli.{cmd}"]
+    return [*RIGOPS, cmd]
 
 
 ES_OVERLAY = Path(__file__).resolve().parent / "fixtures" / "corrections" / "es.json"

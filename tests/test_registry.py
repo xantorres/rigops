@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-
-from rigops import registry  # noqa: E402
-from rigops.errors import RigopsError  # noqa: E402
+from rigops import registry
+from rigops.errors import RigopsError
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EXAMPLE_REGISTRY = REPO_ROOT / "config" / "registry.example.md"

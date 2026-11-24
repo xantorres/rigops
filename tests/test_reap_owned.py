@@ -4,16 +4,13 @@ import contextlib
 import io
 import json
 import os
-import sys
 import types
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import reap, reap_owned, reap_procs
 
-from rigops import reap, reap_owned, reap_procs  # noqa: E402
-
-from tests.test_reap import GitFixtureTestCase, _init_repo, _run_git  # noqa: E402
+from tests.test_reap import GitFixtureTestCase, _init_repo, _run_git
 
 
 def proc(ppid, tty="??", command="node server.js"):

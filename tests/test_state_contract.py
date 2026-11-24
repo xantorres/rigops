@@ -14,14 +14,13 @@ from datetime import date
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from rigops import config as rigops_config
+from rigops import guard_state, hook, state
+from rigops.doctor import check_levers
 
-from rigops import config as rigops_config  # noqa: E402
-from rigops import guard_state, hook, state  # noqa: E402
-from rigops.doctor import check_levers  # noqa: E402
+from tests.support import RIGOPS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-RIGOPS = REPO_ROOT / "bin" / "rigops"
 FIXTURE = REPO_ROOT / "tests" / "fixtures" / "state-0.10"
 NEWER = '{"version": 99, "date": "2026-01-25", "ts": "2026-01-25T00:00:00+00:00"}\n'
 TORN = '{"date": "2026-01-2\n'
@@ -49,13 +48,13 @@ class Sandbox(unittest.TestCase):
 
     def spawn(self, args) -> subprocess.Popen:
         return subprocess.Popen(
-            [str(RIGOPS), *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            [*RIGOPS, *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             env=self.env, stdin=subprocess.DEVNULL,
         )
 
     def run_cmd(self, args) -> subprocess.CompletedProcess:
         return subprocess.run(
-            [str(RIGOPS), *args], capture_output=True, text=True, check=False, timeout=90,
+            [*RIGOPS, *args], capture_output=True, text=True, check=False, timeout=90,
             env=self.env, stdin=subprocess.DEVNULL,
         )
 
