@@ -49,3 +49,13 @@ ES_OVERLAY = Path(__file__).resolve().parent / "fixtures" / "corrections" / "es.
 
 def es_detector() -> Detector:
     return Detector.from_config(rigops_config.load(ES_OVERLAY))
+
+
+def wrapper(bin_dir: Path) -> Path:
+    """A console-script-shaped `rigops` executable in bin_dir."""
+    path = bin_dir / "rigops"
+    path.write_text(
+        f"#!{sys.executable}\nimport sys\nfrom rigops.cli import main\nsys.exit(main())\n"
+    )
+    path.chmod(0o755)
+    return path

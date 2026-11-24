@@ -16,6 +16,8 @@ from rigops import jobs
 from rigops.cli import jobs as jobs_cli
 from rigops.errors import RigopsError
 
+from tests.support import wrapper
+
 REPO = Path(__file__).resolve().parent.parent
 LABELS = [f"com.rigops.{name}" for name in ("doctor", "ledger", "janitor", "reap")]
 
@@ -498,15 +500,6 @@ class StatusTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(len(out.splitlines()), 1)
         self.assertIn("not inspected", out)
-
-
-def wrapper(bin_dir: Path) -> Path:
-    path = bin_dir / "rigops"
-    path.write_text(
-        f"#!{sys.executable}\nimport sys\nfrom rigops.cli import main\nsys.exit(main())\n"
-    )
-    path.chmod(0o755)
-    return path
 
 
 MODULE_INSTALL = [sys.executable, "-m", "rigops", "jobs", "install", "--apply"]
