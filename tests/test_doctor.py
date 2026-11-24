@@ -36,6 +36,13 @@ def _load_doctor_module():
 
 doctor = _load_doctor_module()
 
+
+def pin_launchd_supervisor(case: unittest.TestCase) -> None:
+    # The heal tests mock launchd; the default supervisor follows the host platform.
+    patcher = mock.patch.object(doctor, "default_supervisor", return_value="launchd")
+    patcher.start()
+    case.addCleanup(patcher.stop)
+
 HUNG_ITEM = """\
   - id: job-hung
     domain: x
@@ -163,6 +170,7 @@ class CheckSelectionTests(unittest.TestCase):
 
 class EnvIsolatedTestCase(unittest.TestCase):
     def setUp(self):
+        pin_launchd_supervisor(self)
         self._env = dict(os.environ)
         self._tmpdir = tempfile.TemporaryDirectory()
         self.tmp = self._tmpdir.name

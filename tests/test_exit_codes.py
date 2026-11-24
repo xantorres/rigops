@@ -23,6 +23,7 @@ from tests.test_doctor import (  # noqa: E402
     OK_ITEM,
     _write_registry,
     doctor,
+    pin_launchd_supervisor,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -278,6 +279,7 @@ class RunnerTests(unittest.TestCase):
 
 class DoctorExitTests(unittest.TestCase):
     def setUp(self):
+        pin_launchd_supervisor(self)
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.tmp = tmp.name
