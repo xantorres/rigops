@@ -252,9 +252,11 @@ class ProgramProblemTests(unittest.TestCase):
             broken.write_text("not a plist")
             absent = home / "Library" / "LaunchAgents" / "com.rigops.janitor.plist"
 
-            for plist in (empty, missing, broken, absent):
+            for plist in (empty, missing, broken):
                 with self.subTest(plist=plist.name):
                     self.assertIsNotNone(jobs.program_problem(plist))
+            with self.assertRaisesRegex(RigopsError, "cannot read"):
+                jobs.program_problem(absent)
 
 
 class CronTests(unittest.TestCase):
@@ -517,6 +519,33 @@ class StatusTests(unittest.TestCase):
 
         self.assertEqual(code, 1)
         self.assertIn(f"program={home}/gone", out)
+
+    def test_a_launchctl_timeout_exits_2(self):
+        timeout = subprocess.TimeoutExpired("launchctl", 10)
+        with home_dir() as home, mock.patch("rigops.launchd.subprocess.run", side_effect=timeout):
+            self.good(home, "doctor")
+            code, _, err = run_cli(["status"])
+
+        self.assertEqual(code, 2)
+        self.assertIn("error: cannot ask launchd about com.rigops.doctor", err)
+
+    def test_a_plist_that_cannot_be_read_exits_2(self):
+        denied = PermissionError(13, "Permission denied")
+        with home_dir() as home, mock.patch("rigops.launchd.is_loaded", return_value=True):
+            self.good(home, "doctor")
+            with mock.patch.object(Path, "read_bytes", side_effect=denied):
+                code, _, err = run_cli(["status"])
+
+        self.assertEqual(code, 2)
+        self.assertIn("error: cannot read", err)
+
+    def test_a_malformed_plist_exits_1(self):
+        with home_dir() as home, mock.patch("rigops.launchd.is_loaded", return_value=True):
+            self.good(home, "doctor").write_text("not a plist")
+            code, out, _ = run_cli(["status"])
+
+        self.assertEqual(code, 1)
+        self.assertIn("is unreadable", out)
 
     def test_linux_does_not_inspect_cron(self):
         with home_dir(), mock.patch("rigops.launchd.subprocess.run") as launchctl:

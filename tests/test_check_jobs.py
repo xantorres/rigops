@@ -30,6 +30,17 @@ class DoctorCheckTests(unittest.TestCase):
         self.assertIn(str(plist), found[0].evidence)
         self.assertEqual(found[0].fix, "rigops jobs install --apply")
 
+    def test_a_plist_that_cannot_be_read_is_a_finding_not_a_crash(self):
+        denied = PermissionError(13, "Permission denied")
+        with home_dir() as home:
+            plist = write_plist(home, "doctor", [str(home / "gone"), "doctor"])
+            with mock.patch.object(Path, "read_bytes", side_effect=denied):
+                found = self.findings("darwin")
+
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].severity, "fail")
+        self.assertIn(str(plist), found[0].evidence)
+
     def test_a_working_plist_and_no_plist_are_clean(self):
         with home_dir() as home:
             self.assertEqual(self.findings("darwin"), [])

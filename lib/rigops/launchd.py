@@ -15,17 +15,20 @@ def _uid() -> str:
     return str(os.getuid())
 
 
-def _launchctl_list_output(label: str):
+def _launchctl_list_output(label: str, strict: bool = False):
     """One `launchctl list <label>` call, parsed into (loaded, pid, exit_status).
 
     loaded is False (pid, exit_status both None) when the label isn't
-    loaded, the command errors, or it times out.
+    loaded, the command errors, or it times out. With strict, a launchctl
+    that cannot run or times out raises RigopsError instead.
     """
     try:
         out = subprocess.run(
             ["launchctl", "list", label], capture_output=True, text=True, timeout=10,
         )
-    except (subprocess.TimeoutExpired, OSError):
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        if strict:
+            raise RigopsError(f"cannot ask launchd about {label}: {exc}") from exc
         return False, None, None
     if out.returncode != 0:
         return False, None, None
@@ -36,9 +39,9 @@ def _launchctl_list_output(label: str):
     return True, pid, exit_status
 
 
-def is_loaded(label: str) -> bool:
+def is_loaded(label: str, strict: bool = False) -> bool:
     """Whether label is currently loaded in launchd, regardless of run state."""
-    loaded, _, _ = _launchctl_list_output(label)
+    loaded, _, _ = _launchctl_list_output(label, strict)
     return loaded
 
 

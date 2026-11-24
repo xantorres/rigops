@@ -140,8 +140,12 @@ def render_plist(name: str, rigops_path: str, heal: bool) -> bytes:
 
 def program_problem(path: Path) -> str | None:
     try:
-        data = plistlib.loads(Path(path).read_bytes())
-    except (OSError, ValueError, ExpatError) as exc:
+        raw = Path(path).read_bytes()
+    except OSError as exc:
+        raise RigopsError(f"cannot read {path}: {exc}") from exc
+    try:
+        data = plistlib.loads(raw)
+    except (ValueError, ExpatError) as exc:
         return f"{path} is unreadable: {exc}"
     args = data.get("ProgramArguments") if isinstance(data, dict) else None
     if not isinstance(args, list) or not args or not isinstance(args[0], str):
@@ -169,7 +173,10 @@ def installed_problems() -> list[tuple[Path, str]]:
     for name in JOBS:
         path = plist_path(name)
         if path.is_file():
-            problem = program_problem(path)
+            try:
+                problem = program_problem(path)
+            except RigopsError as exc:
+                problem = str(exc)
             if problem is not None:
                 found.append((path, problem))
     return found

@@ -86,7 +86,7 @@ def _status(args: argparse.Namespace) -> int:
     failing = False
     for name in jobs.JOBS:
         path, job_label = jobs.plist_path(name), jobs.label(name)
-        installed, loaded = path.exists(), launchd.is_loaded(job_label)
+        installed, loaded = path.exists(), launchd.is_loaded(job_label, strict=True)
         row = f"{job_label}  installed={'yes' if installed else 'no'}  loaded={'yes' if loaded else 'no'}"
         if installed:
             problem = jobs.program_problem(path)
