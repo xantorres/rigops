@@ -220,6 +220,22 @@ class ProgramProblemTests(unittest.TestCase):
 
             self.assertIsNone(jobs.program_problem(plist))
 
+    def test_the_version_probe_does_not_run_a_file_from_the_callers_cwd(self):
+        with home_dir() as home:
+            work = home / "work"
+            marker = work / "ran"
+            script(work / "version", f"touch {marker}")
+            plist = write_plist(home, "doctor", ["/bin/sh", "doctor"])
+            cwd = os.getcwd()
+            os.chdir(work)
+            try:
+                problem = jobs.program_problem(plist)
+            finally:
+                os.chdir(cwd)
+
+            self.assertFalse(marker.exists())
+            self.assertIsNotNone(problem)
+
     def test_legacy_interpreter_and_script_plist_is_a_problem(self):
         with home_dir() as home:
             legacy = script(home / "libexec" / "rigops-doctor")
@@ -325,6 +341,16 @@ class InstallPlanTests(unittest.TestCase):
                 [c.args[0] for c in boot.call_args_list], ["com.rigops.doctor", "com.rigops.ledger"]
             )
             self.assertIn(f"installed {plist} (com.rigops.doctor) gui/501", out)
+
+    def test_a_failing_write_is_exit_2_with_an_error_line(self):
+        with home_dir(), mock.patch("rigops.launchd.is_loaded", return_value=False), \
+                mock.patch.object(jobs, "write_atomic", side_effect=OSError("disk full")), \
+                mock.patch("rigops.launchd.bootstrap") as boot:
+            code, _, err = run_cli(["install", "--apply"])
+
+        self.assertEqual(code, 2)
+        self.assertEqual(err, "error: disk full\n")
+        boot.assert_not_called()
 
     def test_actions_updated_loaded_and_unchanged(self):
         with home_dir() as home:
@@ -497,7 +523,7 @@ class StatusTests(unittest.TestCase):
             code, out, _ = run_cli(["status"], platform="linux")
 
         launchctl.assert_not_called()
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 2)
         self.assertEqual(len(out.splitlines()), 1)
         self.assertIn("not inspected", out)
 

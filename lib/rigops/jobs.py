@@ -152,7 +152,9 @@ def program_problem(path: Path) -> str | None:
     if not os.access(program, os.X_OK):
         return f"{program} is not executable"
     try:
-        done = procgroup.run_group([program, "version"], timeout=VERSION_TIMEOUT_S)
+        done = procgroup.run_group(
+            [program, "version"], timeout=VERSION_TIMEOUT_S, cwd="/"
+        )
     except subprocess.TimeoutExpired:
         return f"`{program} version` timed out after {VERSION_TIMEOUT_S}s"
     except OSError as exc:

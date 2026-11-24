@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 
 from rigops import cli, jobs, launchd
+from rigops.errors import RigopsError
 
 CRON_HEADER = "add these lines with `crontab -e` (create {logs} first):"
 HEAL_NOTE = "note: --heal applies to launchd jobs only; the cron lines never heal"
@@ -81,7 +82,7 @@ def _uninstall(args: argparse.Namespace) -> int:
 def _status(args: argparse.Namespace) -> int:
     if not jobs.is_macos():
         print("cron entries are user-managed and not inspected")
-        return 0
+        return 2
     failing = False
     for name in jobs.JOBS:
         path, job_label = jobs.plist_path(name), jobs.label(name)
@@ -115,4 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     status_p.set_defaults(func=_status)
 
     args = ap.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except OSError as exc:
+        raise RigopsError(str(exc)) from exc
