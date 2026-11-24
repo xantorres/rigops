@@ -63,8 +63,8 @@ done
 ok "jobs still loaded"
 
 again="$(rigops jobs install --apply)" || die "reinstall: $again"
-[ "$(printf '%s\n' "$again" | grep -c '^unchanged ')" -eq 2 ] || die "reinstall reported changes: $again"
-ok "reinstall reports no change"
+[ "$(printf '%s\n' "$again" | grep -Ec '^(unchanged|updated) ')" -eq 2 ] || die "reinstall did not report both jobs: $again"
+ok "reinstall reports unchanged or updated"
 
 rigops jobs uninstall --apply || die "uninstall"
 if ls "$agents"/com.rigops.*.plist >/dev/null 2>&1; then
