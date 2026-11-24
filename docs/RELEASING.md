@@ -38,7 +38,7 @@ The workflow does the rest. A version with an `a`, `b` or `rc` suffix is publish
 
 ## Cut the final from its last candidate
 
-Between the last candidate and the final, only the version strings and the changelog heading change: set `1.2.0` in the three version files and rename the heading to `## [1.2.0] - YYYY-MM-DD`. Nothing else, not even a typo; fix those in a new candidate. Commit it and wait for green CI before tagging.
+Between the last candidate and the final, only the version strings and the changelog heading change: set `1.2.0` in the three version files and rename the heading to `## [1.2.0] - YYYY-MM-DD`. Nothing else, not even a typo; fix those in a new candidate. Renaming the candidate heading to the final is the one permitted edit of a released changelog heading. Commit it and wait for green CI before tagging.
 
 Check it before tagging, with the same annotated tag the push will carry:
 
