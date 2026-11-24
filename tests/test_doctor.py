@@ -706,7 +706,7 @@ class NotifyCommandTests(EnvIsolatedTestCase):
         )
         for error, message in cases:
             with self.subTest(error=type(error).__name__):
-                with mock.patch.object(subprocess, "run", side_effect=error):
+                with mock.patch.object(doctor.procgroup, "run_group", side_effect=error):
                     self.assertEqual(self._notify("anything"), message)
 
     def test_failing_notify_command_lands_an_event_after_the_run_event(self):

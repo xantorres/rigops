@@ -789,7 +789,7 @@ def run(opts: Any) -> int:
         log(f"SKIP-CHANGED tree={tree} verdict={fresh}")
         return True
 
-    removed = 0
+    removed = failed = 0
     for res in results:
         repo = Path(res["repo"])
         res["kills"] = []
@@ -840,8 +840,8 @@ def run(opts: Any) -> int:
                 prefix = "would run" if opts.dry_run else ("ok" if ok else "FAILED")
                 if not opts.json:
                     print(f"{prefix}: {Path(wt['path']).name} -- {detail}")
-                if ok and not opts.dry_run:
-                    removed += 1
+                if not opts.dry_run:
+                    removed, failed = removed + ok, failed + (not ok)
 
         if not res.get("listing_ok", True):
             continue
@@ -914,4 +914,4 @@ def run(opts: Any) -> int:
     else:
         print(render(results, apply_mode=opts.apply and not opts.dry_run, cap=cap))
 
-    return 0
+    return 2 if failed else 0

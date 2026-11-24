@@ -62,6 +62,7 @@ def _save_entries(path: Path, entries) -> None:
     _save_json(path, guard_state.wrap(entries))
 
 
+NOTIFY_TIMEOUT_S = 60
 KILL_PREFIX = "kill:"
 
 
@@ -139,9 +140,9 @@ def _notify(command: str, report_path: Path) -> str:
         return ""
     cmd = f"{command} {shlex.quote(str(report_path))}"
     try:
-        proc = subprocess.run(cmd, shell=True, capture_output=True, timeout=60)
+        proc = procgroup.run_group(cmd, shell=True, timeout=NOTIFY_TIMEOUT_S)
     except subprocess.TimeoutExpired:
-        return "notify command timed out after 60s"
+        return f"notify command timed out after {NOTIFY_TIMEOUT_S}s"
     except OSError as exc:
         return f"notify command failed: {exc}"
     if proc.returncode != 0:

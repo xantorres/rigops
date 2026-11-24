@@ -12,6 +12,7 @@ import time
 import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
@@ -1227,6 +1228,52 @@ class RunApplyJsonPurityTests(GitFixtureTestCase):
         self.assertEqual(target["verdict"], reap.REAP)
         self.assertTrue(target["applied"]["removed"])
         self.assertFalse(wt_path.exists())
+
+
+class RunRemovalExitCodeTests(GitFixtureTestCase):
+    def _run(self, removal, **flags):
+        self.stub_process_observation()
+        repo = self.tmp / "repo"
+        _init_repo(repo)
+        _run_git(["worktree", "add", "-b", "feature-merged", str(self.tmp / "wt-merged")], repo)
+        sessions_dir = self.tmp / "sessions"
+        sessions_dir.mkdir()
+        opts = types.SimpleNamespace(
+            selftest=False, apply=True, dry_run=False, json=False,
+            repo=[repo], roots=[], no_fetch=True, grace_days=14,
+            sessions_dir=sessions_dir, deadline_s=60,
+            max_kills_per_tree=20, orphan_min_age_s=172800, kill_grace_s=5,
+            ignored_untracked_dirs=set(), ignored_untracked_prefixes=(),
+        )
+        for name, value in flags.items():
+            setattr(opts, name, value)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            if removal is None:
+                rc = reap.run(opts)
+            else:
+                with mock.patch.object(reap, "reap", return_value=removal):
+                    rc = reap.run(opts)
+        return rc, buf.getvalue()
+
+    def test_a_failed_removal_exits_2_after_printing_the_failure(self):
+        rc, out = self._run((False, "git worktree remove failed"))
+        self.assertEqual(rc, 2)
+        self.assertIn("FAILED: wt-merged -- git worktree remove failed", out)
+
+    def test_a_failed_removal_exits_2_with_json_output_intact(self):
+        rc, out = self._run((False, "boom"), json=True)
+        self.assertEqual(rc, 2)
+        self.assertEqual(json.loads(out)["version"], 1)
+
+    def test_successful_removal_exits_0(self):
+        rc, out = self._run(None)
+        self.assertEqual(rc, 0)
+        self.assertNotIn("FAILED", out)
+
+    def test_dry_run_exits_0_even_when_the_removal_would_fail(self):
+        rc, out = self._run((False, "boom"), dry_run=True)
+        self.assertEqual(rc, 0)
 
 
 class RunOrphanSweepTests(GitFixtureTestCase):

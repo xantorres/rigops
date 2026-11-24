@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Two fixes to the 0.12 exit-code and process-group contract.
+- `reap --apply` now exits 2 when a removal fails, as the 0.12 exit-code contract says; it exited 0.
+- `doctor.notify_command` and `cause_probe_command` now run in their own process group and are killed whole on timeout, like custom checks and janitor commands.
+
 ## [0.12.0] - 2026-11-21
 
 ### Changed

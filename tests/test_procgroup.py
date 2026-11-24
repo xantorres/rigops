@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import os
+import shlex
 import signal
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+import unittest.mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
@@ -126,3 +128,43 @@ class JanitorCommandTimeoutTests(unittest.TestCase):
             self.assertIsNotNone(pid)
             self.assertTrue(pid_is_gone(pid), f"pid {pid} survived the timeout")
 
+
+
+class NotifyCommandTimeoutTests(unittest.TestCase):
+    def test_a_notify_command_that_forks_a_sleeper_leaves_no_process_after_timeout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pid_file = Path(tmp) / "pid"
+            SleeperCleanup().track(self, pid_file)
+            command = f"sh -c {shlex.quote(sleeper_command(pid_file))}"
+            with unittest.mock.patch.object(doctor, "NOTIFY_TIMEOUT_S", 1):
+                message = doctor._notify(command, Path(tmp) / "report.txt")
+            self.assertEqual(message, "notify command timed out after 1s")
+            pid = wait_for_pid(pid_file)
+            self.assertIsNotNone(pid)
+            self.assertTrue(pid_is_gone(pid), f"pid {pid} survived the timeout")
+
+
+class CauseProbeTimeoutTests(unittest.TestCase):
+    def test_a_probe_that_forks_a_sleeper_leaves_no_process_after_timeout(self):
+        from rigops import judge
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pid_file = Path(tmp) / "pid"
+            SleeperCleanup().track(self, pid_file)
+            warnings: list = []
+            command = f"sh -c {shlex.quote(sleeper_command(pid_file))}"
+            with unittest.mock.patch.object(judge, "PROBE_TIMEOUT_S", 1):
+                passed = judge._run_probe(command, warnings)()
+            self.assertFalse(passed)
+            self.assertEqual(warnings, ["cause probe could not run: TimeoutExpired"])
+            pid = wait_for_pid(pid_file)
+            self.assertIsNotNone(pid)
+            self.assertTrue(pid_is_gone(pid), f"pid {pid} survived the timeout")
+
+    def test_exit_status_decides_the_probe(self):
+        from rigops import judge
+
+        warnings: list = []
+        self.assertTrue(judge._run_probe("true", warnings)())
+        self.assertFalse(judge._run_probe("sh -c 'exit 1'", warnings)())
+        self.assertEqual(warnings, [])

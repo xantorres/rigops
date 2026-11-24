@@ -414,20 +414,20 @@ class ProbeRunnerTests(unittest.TestCase):
         ):
             with self.subTest(exc=type(exc).__name__):
                 warnings = []
-                with mock.patch.object(subprocess, "run", side_effect=exc):
+                with mock.patch.object(doctor.procgroup, "run_group", side_effect=exc):
                     self.assertFalse(doctor._run_probe("p arg", warnings)())
                 self.assertEqual(len(warnings), 1)
 
     def test_a_nonzero_exit_is_not_a_warning(self):
         warnings = []
         done = subprocess.CompletedProcess([], 1)
-        with mock.patch.object(subprocess, "run", return_value=done):
+        with mock.patch.object(doctor.procgroup, "run_group", return_value=done):
             self.assertFalse(doctor._run_probe("p", warnings)())
         self.assertEqual(warnings, [])
 
     def test_result_is_memoized(self):
         done = subprocess.CompletedProcess([], 0)
-        with mock.patch.object(subprocess, "run", return_value=done) as run:
+        with mock.patch.object(doctor.procgroup, "run_group", return_value=done) as run:
             probe = doctor._run_probe("p", [])
             self.assertTrue(probe())
             self.assertTrue(probe())

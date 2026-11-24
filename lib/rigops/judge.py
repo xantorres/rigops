@@ -6,7 +6,6 @@ import hashlib
 import os
 import re
 import shlex
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -14,9 +13,10 @@ from pathlib import Path
 from rigops import cause as rigops_cause
 from rigops import config as rigops_config
 from rigops import core as rigops_core
-from rigops import launchd
+from rigops import launchd, procgroup
 
 STATUSES = ("ok", "stale", "hung", "failing", "unknown")
+PROBE_TIMEOUT_S = 120
 ACTIONS = ("none", "kill", "kickstart", "notify", "hold")
 
 CADENCE_EVENT_RE = re.compile(r"\bevent\b", re.IGNORECASE)
@@ -333,10 +333,8 @@ def _run_probe(command: str, warnings: list):
     def probe() -> bool:
         if not outcome:
             try:
-                outcome.append(subprocess.run(
-                    shlex.split(command), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    timeout=120,
-                ).returncode == 0)
+                proc = procgroup.run_group(shlex.split(command), timeout=PROBE_TIMEOUT_S)
+                outcome.append(proc.returncode == 0)
             except Exception as exc:
                 warnings.append(f"cause probe could not run: {type(exc).__name__}")
                 outcome.append(False)
