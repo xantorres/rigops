@@ -182,6 +182,51 @@ class ReleaseCheckTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("note: no release candidate for 0.13.0; diff check skipped", proc.stdout)
 
+    def _final_after_candidate(self, change) -> object:
+        self._commit("0.13.0rc1")
+        self._tag("v0.13.0rc1")
+        self._commit("0.13.0", heading="0.13.0")
+        change()
+        _git(self.repo, "add", "-A")
+        _git(self.repo, "commit", "-q", "--allow-empty", "-m", "extra")
+        self._tag("v0.13.0")
+        return self._check("v0.13.0")
+
+    def test_final_that_renames_a_source_file_fails(self):
+        proc = self._final_after_candidate(
+            lambda: _git(self.repo, "mv", "src/app.py", "src/lib.py"))
+
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn("src/", proc.stderr)
+
+    def test_final_that_changes_a_file_mode_fails(self):
+        proc = self._final_after_candidate(lambda: (self.repo / "src/app.py").chmod(0o755))
+
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn("src/app.py", proc.stderr)
+
+    def test_final_that_adds_an_empty_file_fails(self):
+        proc = self._final_after_candidate(lambda: (self.repo / "empty.txt").write_text(""))
+
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn("empty.txt", proc.stderr)
+
+    def test_final_that_changes_a_binary_file_fails(self):
+        self._write("data.bin", "a")
+        (self.repo / "data.bin").write_bytes(b"\x00\x01")
+        proc = self._final_after_candidate(
+            lambda: (self.repo / "data.bin").write_bytes(b"\x00\x02"))
+
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn("data.bin", proc.stderr)
+
+    def test_final_that_changes_the_mode_of_a_version_file_fails(self):
+        proc = self._final_after_candidate(
+            lambda: (self.repo / "lib/rigops/__init__.py").chmod(0o755))
+
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn("lib/rigops/__init__.py", proc.stderr)
+
     def test_a_directory_that_is_not_a_repository_exits_2(self):
         with tempfile.TemporaryDirectory() as other:
             proc = self._check("v0.13.0", repo=Path(other))

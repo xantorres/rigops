@@ -18,6 +18,7 @@ PLUGIN = "plugin/.claude-plugin/plugin.json"
 MARKETPLACE = ".claude-plugin/marketplace.json"
 CHANGELOG = "CHANGELOG.md"
 VERSION_FILES = (INIT, PLUGIN, MARKETPLACE)
+ALLOWED = {*VERSION_FILES, CHANGELOG}
 TAG_SHAPE = re.compile(r"^v\d+(\.\d+)*((a|b|rc)\d+)?$")
 PRERELEASE = re.compile(r"(a|b|rc)\d+$")
 VERSION_LINE = re.compile(r"""^__version__\s*=\s*["']([^"']+)["']\s*$""", re.MULTILINE)
@@ -62,13 +63,30 @@ def last_candidate(repo: Path, version: str) -> str | None:
     return max(found)[1] if found else None
 
 
+def raw_problems(repo: Path, candidate: str, tag: str) -> tuple[list[str], set[str]]:
+    found: list[str] = []
+    textual: set[str] = set()
+    raw = git(repo, "diff", "--raw", "--no-renames", "-z", candidate, tag).split("\0")
+    for meta, path in zip(raw[0::2], raw[1::2]):
+        old_mode, new_mode, old_sha, new_sha, status = meta.lstrip(":").split(" ")
+        if path not in ALLOWED:
+            found.append(f"{path}: not a version file or the changelog")
+        elif status != "M" or old_mode != new_mode:
+            found.append(f"{path}: file added, removed or its mode changed")
+        elif old_sha != new_sha:
+            textual.add(path)
+    return found, textual
+
+
 def diff_problems(repo: Path, candidate: str, tag: str, version: str) -> list[str]:
     candidate_version = candidate.removeprefix("v")
     removed: dict[str, list[tuple[int, str]]] = {}
     added: dict[str, list[tuple[int, str]]] = {}
     path = ""
     old_no = new_no = 0
-    diff = git(repo, "diff", "--unified=0", "--no-color", "--no-ext-diff", candidate, tag)
+    found, textual = raw_problems(repo, candidate, tag)
+    diff = git(repo, "diff", "--unified=0", "--no-color", "--no-ext-diff", "--no-renames",
+               candidate, tag)
     for line in diff.splitlines():
         if line.startswith("+++ "):
             path = line[4:].removeprefix("b/") if line != "+++ /dev/null" else path
@@ -82,8 +100,9 @@ def diff_problems(repo: Path, candidate: str, tag: str, version: str) -> list[st
         elif line.startswith("+"):
             added.setdefault(path, []).append((new_no, line[1:]))
             new_no += 1
-    found: list[str] = []
-    for file in sorted(set(removed) | set(added)):
+    for file in sorted(textual - set(removed) - set(added)):
+        found.append(f"{file}: content changed without changed lines")
+    for file in sorted((set(removed) | set(added)) & ALLOWED):
         old, new = removed.get(file, []), added.get(file, [])
         if file == CHANGELOG:
             for number, text in old + new:
@@ -96,9 +115,6 @@ def diff_problems(repo: Path, candidate: str, tag: str, version: str) -> list[st
                     found.append(f"{file}:{number}: line without a counterpart")
                 elif old[index][1].replace(candidate_version, version) != new[index][1]:
                     found.append(f"{file}:{new[index][0]}: changes more than the version string")
-        else:
-            number = (new or old)[0][0]
-            found.append(f"{file}:{number}: not a version file or the changelog")
     return found
 
 
