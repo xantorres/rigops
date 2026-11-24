@@ -2,27 +2,30 @@ name: ci
 
 on:
   push:
+    branches: ['**']
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
   lint:
-    # ubuntu-latest moved to 26.04, which has no python 3.9 build; the 3.9 floor needs 24.04
-    runs-on: ubuntu-24.04
-    strategy:
-      matrix:
-        python-version: ["3.9", "3.13"]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
-      - name: set up python ${{ matrix.python-version }}
-        uses: actions/setup-python@v7
+      - name: set up python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.x"
 
       - name: guard secret
         if: github.event_name == 'push' && !github.event.repository.fork
@@ -37,8 +40,8 @@ jobs:
       - name: install ruff
         run: pipx install ruff==0.16.4
 
-      - name: install claude code
-        run: npm install -g @anthropic-ai/claude-code
+      - name: install the plugin validator CLI
+        run: npm install -g @anthropic-ai/claude-code@2.1.331
 
       - name: check
         env:
@@ -56,17 +59,105 @@ jobs:
           ln -sf "$mawk_bin" "$RUNNER_TEMP/mawk/awk"
           PATH="$RUNNER_TEMP/mawk:$PATH" python3 -m unittest -v tests.test_tool_flavours tests.test_redaction_gate
 
-  smoke:
-    runs-on: macos-latest
+  test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.11", "3.x"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: set up python ${{ matrix.python-version }}
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - run: make test test-hooks smoke
+
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: set up python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          # py3.9 floor is covered by the lint job; darwin-arm64 lacks 3.9 builds
           python-version: "3.11"
 
-      - run: make test
+      - name: build sdist and wheel
+        run: |
+          python -m pip install build==1.6.1
+          python -m build
 
-      - run: make smoke
+      - name: check the wheel
+        run: python tools/check-wheel.py dist/*.whl
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  runners:
+    needs: package
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: set up python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.x"
+
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+
+      - name: runner versions
+        run: |
+          pipx --version
+          uvx --version
+
+      - name: wheel under uvx, pipx run and a venv
+        run: bash tests/ci/runners.sh dist/*.whl
+
+  jobs-roundtrip:
+    needs: package
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: set up python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.x"
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+
+      - name: build the previous release wheel
+        run: |
+          previous="$(bash tests/ci/previous-wheel.sh "$RUNNER_TEMP/previous")"
+          echo "PREVIOUS_WHEEL=$previous" >> "$GITHUB_ENV"
+
+      - name: install, upgrade and uninstall the scheduled jobs
+        run: bash tests/ci/jobs-roundtrip.sh "$PREVIOUS_WHEEL" dist/*.whl

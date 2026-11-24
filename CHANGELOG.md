@@ -18,12 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `jobs status` and `doctor` fail when a scheduled job's program is missing or `<path> version` fails.
 - On Linux `jobs install` prints crontab lines.
 - The plugin hook passes its version to the CLI, and the session line says when plugin and CLI major.minor differ.
+- Releases are published to PyPI from a pushed tag, with attestations, after the test matrix, a tag and version check, and a wheel check; a final tag may differ from its last release candidate only in the version strings and the changelog heading. `docs/RELEASING.md` has the procedure.
 
 ### Changed
 
 - A job already scheduled by a hand-written LaunchAgent under another label is no longer skipped when installing; remove that agent or the duplicate.
 - Python 3.11 or newer is required.
 - The plugin and the package share one version string, checked by tests.
+- CI covers macOS and Linux on Python 3.11 and the latest release, runs the built wheel under `uvx`, `pipx run` and a venv, and checks on macOS that an upgrade leaves the scheduled jobs installed and loaded.
 
 ### Removed
 

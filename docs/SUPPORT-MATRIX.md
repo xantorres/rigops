@@ -16,12 +16,15 @@ What's first-class on which platform, the version floors, and exactly what CI co
 
 ## CI coverage
 
-From `.github/workflows/ci.yml`:
+From `.github/workflows/ci.yml`, which also runs as the first stage of the release workflow:
 
-- **lint job** - `ubuntu-latest` only, Python 3.9 and 3.13 matrix. Runs `make check` (redaction gate over the tree and full history, shellcheck, ruff, unit tests, hook tests, manifest validation, strict plugin validation), then re-runs the redaction gate unit tests with `mawk` as `awk` under GNU grep, and fails if either tool is another flavour.
-- **smoke job** - `ubuntu-latest` on Python 3.9, and `macos-latest` on Python 3.11. Runs `make smoke` (`tests/smoke.sh`) on both. `make smoke-launchd` (`tests/smoke-launchd.sh`) runs on the macOS leg only.
+- `lint` - `ubuntu-latest`, Python latest. Runs `make check` (redaction gate over the tree and full history, shellcheck, ruff, unit tests, hook tests, manifest validation, strict plugin validation), then re-runs the redaction gate unit tests with `mawk` as `awk` under GNU grep, and fails if either tool is another flavour.
+- `test` - `ubuntu-latest` and `macos-latest`, each on Python 3.11 (the floor) and latest. Runs the unit tests, the hook tests and `make smoke`.
+- `package` - builds the sdist and wheel on Python 3.11 and checks the wheel against the repo: every shipped file, the `rigops` entry point, the Python floor and no runtime dependencies.
+- `runners` - the built wheel under `uvx`, `pipx run` and a plain venv on `ubuntu-latest` and `macos-latest`. Each reports the wheel's version; `jobs install --apply` exits 2 and writes no plist under `uvx`, `pipx run` and with an empty `PATH`; the venv holds the templates.
+- `jobs-roundtrip` - `macos-latest` only. Installs the previous release's wheel, schedules the jobs with `rigops jobs install --apply`, checks both are loaded, upgrades with `pipx install --force` and checks the plists are byte-identical and still loaded, then `rigops jobs uninstall --apply` leaves no plist. Until a package release exists the previous wheel is a copy of the current tree at version 0.0.0.
 
-So: the Python 3.9 floor is exercised on Linux; launchd-specific behavior is exercised on macOS; there is no Windows leg anywhere, and cron is templated but never actually executed by CI on Linux.
+So: launchd is exercised on macOS only, and only against the runner's own throwaway launchd; cron is templated but never executed by CI on Linux; there is no Windows leg anywhere. Python versions between 3.11 and latest are not run.
 
 ## Floors
 
