@@ -79,6 +79,8 @@ cd rigops
 
 The first run shows the plan. The second removes the prefix and its jobs and restores the `statusLine` in `~/.claude/settings.json` that `--statusline` replaced. Then install the package as above and run `rigops jobs install --apply`.
 
+Run the old uninstaller first. It boots out every job its manifest records and renames any plist at those paths that it did not write to `.rigops-disabled`, so jobs the package installed before it would end up unloaded and disabled.
+
 A hand-written LaunchAgent that already schedules a rigops command under another label is no longer skipped: remove it or expect a duplicate.
 
 ## Plugin install
