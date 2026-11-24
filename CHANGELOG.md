@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- `install.sh` and its launchd smoke test. The command scripts now live in the `rigops.cli` package, and the install docs follow in a later release note.
+
 ### Fixed
 
 - Two fixes to the 0.12 exit-code and process-group contract.
