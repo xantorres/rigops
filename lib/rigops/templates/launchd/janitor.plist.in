@@ -5,7 +5,7 @@
   Runs in apply mode, bounded by janitor.max_delete; with no rules or
   watermarks configured it does nothing.
   Cadence: weekly, Sunday 10:00 local time.
-  rendered by install.sh
+  rendered by rigops jobs install
 -->
 <plist version="1.0">
 <dict>
@@ -13,8 +13,8 @@
 	<string>@LABEL@</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>@PYTHON@</string>
-		<string>@PREFIX@/libexec/rigops-janitor</string>
+		<string>@RIGOPS@</string>
+		<string>janitor</string>
 		<string>--apply</string>
 	</array>
 	<key>StartCalendarInterval</key>

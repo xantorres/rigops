@@ -13,8 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rigops help` gives a one-line description per command and marks the experimental ones: `authprobe`, `backlog`, `eit`, `mine`.
 - Every command takes `-h` and prints its usage as `usage: rigops <command>`; the config and eval parsers no longer print `rigops-config` and `rigops-eval`.
 
+- `rigops jobs install|uninstall|status` schedules the launchd jobs (dry run by default, `--apply`, `--heal`, `--jobs`; janitor and reap only when named) and replaces the installer's job wiring, with the same `com.rigops.*` labels so installing replaces an existing job set.
+- Scheduled jobs run the `rigops` found on `PATH` by absolute path; `jobs install` refuses (exit 2) when there is none, when it is not the running one, or when it lives in an ephemeral runner's cache.
+- `jobs status` and `doctor` fail when a scheduled job's program is missing or `<path> version` fails.
+- On Linux `jobs install` prints crontab lines.
+
 ### Changed
 
+- A job already scheduled by a hand-written LaunchAgent under another label is no longer skipped when installing; remove that agent or the duplicate.
 - Python 3.11 or newer is required.
 
 ### Removed

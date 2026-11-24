@@ -5,7 +5,7 @@
   configured reaper.roots. Runs in apply mode; reaper.grace_days and
   reaper.max_kills_per_tree still gate what it removes.
   Cadence: daily, 08:30 local time.
-  rendered by install.sh
+  rendered by rigops jobs install
 -->
 <plist version="1.0">
 <dict>
@@ -13,8 +13,8 @@
 	<string>@LABEL@</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>@PYTHON@</string>
-		<string>@PREFIX@/libexec/rigops-reap</string>
+		<string>@RIGOPS@</string>
+		<string>reap</string>
 		<string>--apply</string>
 	</array>
 	<key>StartCalendarInterval</key>

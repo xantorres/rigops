@@ -33,7 +33,7 @@ Read this before the loop docs below. Several of these commands change or delete
 - `rigops doctor --heal` can `SIGTERM`/`SIGKILL` an entire hung-job process group. Without `--heal`, `doctor` only reports. Plain `doctor` exits `1` when a job is failing or hung or a check fails, `2` when it cannot run or a config check cannot measure, and `0` otherwise; `--exit-zero` turns `1` into `0` and never hides a `2`.
 - `rigops reap --apply` removes git worktrees. Without `--apply`, `reap` only lists what it would remove.
 - `rigops janitor --apply` deletes files that match your retention rules. Without `--apply`, `janitor` is a dry run.
-- `install.sh` changes nothing on your machine unless you pass `--apply`.
+- `rigops jobs install --apply` writes and loads launchd jobs, and `rigops jobs uninstall --apply` removes them; without `--apply` both only print a plan. `rigops jobs install --heal` lets the scheduled doctor kill hung jobs, and `rigops jobs install --jobs` picks which jobs to install.
 
 Everything else is read-only, report-only, or plan-only by default, and the destructive paths carry their own caps on top of that: `reaper.max_kills_per_tree` refuses to touch a worktree once too many processes match under it, `janitor.max_delete` bounds how much a single run can remove, and both fail closed rather than guess. `rigops reap --selftest` exercises the kill path against disposable processes it spawns itself, so you can confirm process-group isolation before pointing it at anything real.
 
@@ -267,7 +267,7 @@ Two halves, one config.
 
 **Plugin half** - a Claude Code marketplace plugin: five commands (`/rigops:doctor`, `/rigops:ledger`, `/rigops:tax`, `/rigops:backlog`, `/rigops:week`), two skills (`ops-loop`, `fleet-triage`), and two hooks (`rigops hook session-start` prints one stale-gates line, `rigops hook user-prompt-submit` nudges on context size). The statusline is an example in `patterns/statusline/`, not an installed part. The `rg -r`/`-rn`/`-rl` guard and the skill-forcing gate that used to ship here now live in the user's own dispatcher: which workflow a prompt must go through is rig policy, and two copies of one gate is one copy too many. Zero daemons. No agents - deliberately; which subagent handles a task is a decision that belongs to the rig, not to rigops.
 
-**Script half** - the `rigops` CLI (`eit`, `ledger`, `eval`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`, `mine`, `hook`, `version`), plus hardened launchd templates for the `doctor`, `ledger`, `janitor` and `reap` jobs, and a cron template for Linux hosts (unverified).
+**Script half** - the `rigops` CLI (`eit`, `ledger`, `eval`, `tax`, `doctor`, `reap`, `janitor`, `backlog`, `config`, `authprobe`, `mine`, `jobs`, `hook`, `version`), plus hardened launchd templates for the `doctor`, `ledger`, `janitor` and `reap` jobs, and a cron template for Linux hosts (unverified).
 
 Both halves read the same `~/.config/rigops/config.json` (keys: [docs/CONFIG.md](docs/CONFIG.md)). Runtime state lives under `~/.local/state/rigops/`.
 

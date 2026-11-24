@@ -10,7 +10,7 @@ from tests.support import cli_argv
 
 VISIBLE = [
     "authprobe", "backlog", "config", "doctor", "eit", "eval", "janitor",
-    "ledger", "mine", "reap", "tax", "version",
+    "jobs", "ledger", "mine", "reap", "tax", "version",
 ]
 EXPERIMENTAL = {"authprobe", "backlog", "eit", "mine"}
 SUBCOMMAND = {"backlog": "lint", "config": "get", "eval": "run", "ledger": "write"}

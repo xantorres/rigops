@@ -15,6 +15,7 @@ COMMANDS: dict[str, str] = {
     "eit": "EIT usage report for session transcripts.",
     "eval": "Run versioned eval cases and diff two runs.",
     "janitor": "Declarative hygiene for rigops-managed state.",
+    "jobs": "Schedule, remove or check the launchd jobs.",
     "ledger": "Write a ledger row, note an intervention, or diff two rows.",
     "mine": "Mine repeated corrections.",
     "reap": "Reap merged, unused git worktrees.",

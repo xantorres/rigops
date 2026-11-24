@@ -3,7 +3,7 @@
 <!--
   rigops ledger: appends the weekly ledger row from transcript history.
   Cadence: weekly, Monday 09:05 local time.
-  rendered by install.sh
+  rendered by rigops jobs install
 -->
 <plist version="1.0">
 <dict>
@@ -11,8 +11,8 @@
 	<string>@LABEL@</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>@PYTHON@</string>
-		<string>@PREFIX@/libexec/rigops-ledger</string>
+		<string>@RIGOPS@</string>
+		<string>ledger</string>
 		<string>write</string>
 	</array>
 	<key>StartCalendarInterval</key>

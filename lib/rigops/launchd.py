@@ -6,6 +6,8 @@ import signal
 import subprocess
 import time
 
+from rigops.errors import RigopsError
+
 _ETIME_RE = re.compile(r"^(?:(?:(\d+)-)?(\d+):)?(\d+):(\d+)$")
 
 
@@ -72,6 +74,39 @@ def kickstart(label: str) -> bool:
         return out.returncode == 0
     except (subprocess.TimeoutExpired, OSError):
         return False
+
+
+def _launchctl(*args: str) -> bool:
+    try:
+        out = subprocess.run(
+            ["launchctl", *args], capture_output=True, text=True, timeout=15,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    return out.returncode == 0
+
+
+def bootstrap(label: str, plist_path) -> str:
+    """Load a job, replacing any loaded copy; returns the domain that took it.
+
+    A `launchctl disable`d label persists across bootout and bootstrap of a
+    disabled label fails silently, so enable runs before the bootstrap too.
+    """
+    domains = (f"gui/{_uid()}", f"user/{_uid()}")
+    for domain in domains:
+        _launchctl("bootout", f"{domain}/{label}")
+        _launchctl("enable", f"{domain}/{label}")
+        if _launchctl("bootstrap", domain, str(plist_path)):
+            _launchctl("enable", f"{domain}/{label}")
+            return domain
+    raise RigopsError(
+        f"failed to bootstrap launchd job {label} (tried {domains[0]} and {domains[1]})"
+    )
+
+
+def bootout(label: str) -> None:
+    for domain in (f"gui/{_uid()}", f"user/{_uid()}"):
+        _launchctl("bootout", f"{domain}/{label}")
 
 
 def runtime_hours(pid: int):
