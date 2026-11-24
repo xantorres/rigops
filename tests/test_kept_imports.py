@@ -65,8 +65,10 @@ def _violations(rel: str) -> list:
 def _kept_modules() -> list:
     rels = [str(p.relative_to(ROOT)) for p in sorted((ROOT / "lib" / "rigops").rglob("*.py"))]
     for script in sorted((ROOT / "libexec").iterdir()):
+        if not script.is_file():
+            continue
         head = script.read_bytes()[:64].split(b"\n", 1)[0]
-        if script.is_file() and head.startswith(b"#!") and b"python" in head:
+        if head.startswith(b"#!") and b"python" in head:
             rels.append(str(script.relative_to(ROOT)))
     return rels
 
