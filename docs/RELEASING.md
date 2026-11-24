@@ -38,18 +38,18 @@ The workflow does the rest. A version with an `a`, `b` or `rc` suffix is publish
 
 ## Cut the final from its last candidate
 
-Between the last candidate and the final, only the version strings and the changelog heading change: set `1.2.0` in the three version files and rename the heading to `## [1.2.0] - YYYY-MM-DD`. Nothing else, not even a typo; fix those in a new candidate.
+Between the last candidate and the final, only the version strings and the changelog heading change: set `1.2.0` in the three version files and rename the heading to `## [1.2.0] - YYYY-MM-DD`. Nothing else, not even a typo; fix those in a new candidate. Commit it and wait for green CI before tagging.
 
-Check it before tagging:
+Check it before tagging, with the same annotated tag the push will carry:
 
 ```sh
-git tag v1.2.0
+git tag -a v1.2.0 -m v1.2.0
 python3 tools/release-check.py v1.2.0
 ```
 
-Delete the local tag if the check fails (`git tag -d v1.2.0`), fix the diff and tag again. The release workflow runs the same check and refuses to publish a final that differs from its highest candidate in anything else. With no candidate for that version it passes with a note.
+If the check fails, delete the tag (`git tag -d v1.2.0`), fix the diff and tag again. The release workflow runs the same check and refuses to publish a final that differs from its highest candidate in anything else, including renamed or re-moded files. With no candidate for that version it passes with a note.
 
-Then tag and push as above: `git tag -a v1.2.0 -m v1.2.0` and `git push --atomic origin main v1.2.0`.
+When the check passes, the tag is already in place; push it: `git push --atomic origin main v1.2.0`.
 
 ## After a release
 
