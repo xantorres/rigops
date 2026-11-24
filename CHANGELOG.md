@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0rc1] - 2026-11-24
+
 ### Added
 
 - RigOps is a Python package with a `rigops` console script and no runtime dependencies; `python -m rigops` runs the same entry point.
@@ -15,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rigops jobs install|uninstall|status` schedules the launchd jobs (dry run by default, `--apply`, `--heal`, `--jobs`; janitor and reap only when named) and replaces the installer's job wiring, with the same `com.rigops.*` labels so installing replaces an existing job set.
 - Scheduled jobs run the `rigops` found on `PATH` by absolute path; `jobs install` refuses (exit 2) when there is none, when it is not the running one, or when it lives in an ephemeral runner's cache.
 - `jobs status` and `doctor` fail when a scheduled job's program is missing or `<path> version` fails.
+- `jobs status` exits 1 when an installed job is not loaded or its program fails that check, and 2 when it cannot ask launchd or read a plist.
 - On Linux `jobs install` prints crontab lines.
 - The plugin hook passes its version to the CLI, and the session line says when plugin and CLI major.minor differ.
 - Releases are published to PyPI from a pushed tag, with attestations, after the test matrix, a tag and version check, and a wheel check; a final tag may differ from its last release candidate only in the version strings and the changelog heading. `docs/RELEASING.md` has the procedure.
