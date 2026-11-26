@@ -40,7 +40,10 @@ def _install(args: argparse.Namespace) -> int:
     if not args.apply:
         for name, _, action in plans:
             print(f"plan: {action} {jobs.plist_path(name)} ({jobs.label(name)})")
-        print("re-run with --apply to make these changes")
+        if all(action == "unchanged" for _, _, action in plans):
+            print("nothing to change")
+        else:
+            print("re-run with --apply to make these changes")
         return 0
     jobs.launch_agents_dir().mkdir(parents=True, exist_ok=True)
     jobs.log_dir().mkdir(parents=True, exist_ok=True)

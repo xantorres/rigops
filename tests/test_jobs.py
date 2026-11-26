@@ -370,6 +370,28 @@ class InstallPlanTests(unittest.TestCase):
                     self.assertIn("plan: updated", out)
                     self.assertIn(f"plan: {expected} {agents}/com.rigops.ledger.plist", out)
 
+    def test_dry_run_with_every_job_unchanged_asks_for_no_apply(self):
+        with home_dir(), mock.patch("rigops.launchd.is_loaded", return_value=True), \
+                mock.patch("rigops.launchd.bootstrap", return_value="gui/501"):
+            run_cli(["install", "--apply"])
+            code, out, _ = run_cli(["install"])
+
+        self.assertEqual(code, 0)
+        self.assertNotIn("re-run with --apply", out)
+        self.assertEqual(out.splitlines()[-1], "nothing to change")
+
+    def test_dry_run_with_one_changed_job_still_asks_for_apply(self):
+        with home_dir() as home, mock.patch("rigops.launchd.is_loaded", return_value=True):
+            agents = home / "Library" / "LaunchAgents"
+            agents.mkdir(parents=True)
+            (agents / "com.rigops.ledger.plist").write_bytes(
+                jobs.render_plist("ledger", "/home/alice/bin/rigops", False)
+            )
+            _, out, _ = run_cli(["install"])
+
+        self.assertIn("plan: unchanged", out)
+        self.assertEqual(out.splitlines()[-1], "re-run with --apply to make these changes")
+
     def test_unchanged_job_is_not_bootstrapped(self):
         with home_dir(), mock.patch("rigops.launchd.is_loaded", return_value=True), \
                 mock.patch("rigops.launchd.bootstrap", return_value="gui/501") as boot:
