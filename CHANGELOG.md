@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `doctor` reports a scheduled job's plist that it cannot read as an `error` finding (key `unreadable:<plist>`) and exits `2`, as `jobs status` does; it used to be a failing finding with exit `1`.
 - `jobs install` without `--apply` ends with `nothing to change` when every job is already installed, current and loaded, instead of asking for a re-run with `--apply`.
+- The release check fails a final tag that has no release candidate for its version; it used to pass with a note.
 
 ## [0.13.0] - 2026-11-25
 

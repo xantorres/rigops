@@ -173,14 +173,26 @@ class ReleaseCheckTests(unittest.TestCase):
 
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
 
-    def test_final_without_a_candidate_passes_with_a_note(self):
+    def test_final_without_a_candidate_fails(self):
         self._commit("0.13.0")
         self._tag("v0.13.0")
 
         proc = self._check("v0.13.0")
 
-        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        self.assertIn("note: no release candidate for 0.13.0; diff check skipped", proc.stdout)
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn("error: no release candidate for 0.13.0; tag v0.13.0rc1 first",
+                      proc.stderr)
+
+    def test_a_candidate_of_another_version_does_not_count(self):
+        self._commit("0.12.0rc1")
+        self._tag("v0.12.0rc1")
+        self._commit("0.13.0")
+        self._tag("v0.13.0")
+
+        proc = self._check("v0.13.0")
+
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn("no release candidate for 0.13.0", proc.stderr)
 
     def _final_after_candidate(self, change) -> object:
         self._commit("0.13.0rc1")

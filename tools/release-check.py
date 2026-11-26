@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check a release tag: versions agree; a final differs from its last candidate only by version.
+"""Check a release tag: versions agree; a final has a candidate and differs from it only by version.
 
 usage: release-check.py TAG [--repo DIR]
 Exit 0 pass, 1 with one `error:` line per problem, 2 when the check cannot run.
@@ -122,9 +122,8 @@ def diff_problems(repo: Path, candidate: str, tag: str, version: str) -> list[st
     return found
 
 
-def check(repo: Path, tag: str) -> tuple[list[str], list[str]]:
+def check(repo: Path, tag: str) -> list[str]:
     errors: list[str] = []
-    notes: list[str] = []
     version, plugin, market = tree_versions(repo, tag)
     if tag != f"v{version}":
         errors.append(f"tag {tag} does not match __version__ {version}")
@@ -133,13 +132,11 @@ def check(repo: Path, tag: str) -> tuple[list[str], list[str]]:
     if market != version:
         errors.append(f"marketplace.json version {market} does not match __version__ {version}")
     if errors or PRERELEASE.search(version):
-        return errors, notes
+        return errors
     candidate = last_candidate(repo, version)
     if candidate is None:
-        notes.append(f"note: no release candidate for {version}; diff check skipped")
-        return errors, notes
-    errors += diff_problems(repo, candidate, tag, version)
-    return errors, notes
+        return [f"no release candidate for {version}; tag v{version}rc1 first"]
+    return diff_problems(repo, candidate, tag, version)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -151,12 +148,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {args.tag} is not a version tag (v1.2.3, v1.2.3rc1)", file=sys.stderr)
         return 2
     try:
-        errors, notes = check(Path(args.repo), args.tag)
+        errors = check(Path(args.repo), args.tag)
     except CannotRun as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    for note in notes:
-        print(note)
     for error in errors:
         print(f"error: {error}", file=sys.stderr)
     return 1 if errors else 0

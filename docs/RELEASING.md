@@ -47,7 +47,7 @@ git tag -a v1.2.0 -m v1.2.0
 python3 tools/release-check.py v1.2.0
 ```
 
-If the check fails, delete the tag (`git tag -d v1.2.0`), fix the diff and tag again. The release workflow runs the same check and refuses to publish a final that differs from its highest candidate in anything else, including renamed or re-moded files. With no candidate for that version it passes with a note.
+If the check fails, delete the tag (`git tag -d v1.2.0`), fix the diff and tag again. The release workflow runs the same check and refuses to publish a final that differs from its highest candidate in anything else, including renamed or re-moded files. A final with no candidate for that version fails: cut `1.2.0rc1` first, even for a patch release.
 
 When the check passes, the tag is already in place; push it: `git push --atomic origin main v1.2.0`.
 
@@ -63,7 +63,7 @@ When the check passes, the tag is already in place; push it: `git push --atomic 
 | Job | What it does |
 |---|---|
 | `test` | Runs `ci.yml` as a called workflow: lint and `make check`, the unit, hook and smoke tests on macOS and Linux with Python 3.11 and the latest release, the wheel under `uvx`, `pipx run` and a venv, and the scheduled-jobs install, upgrade and uninstall roundtrip on macOS. |
-| `verify` | `tools/release-check.py`: the tag, `__version__`, `plugin.json` and the marketplace entry agree, and a final differs from its last candidate only in version strings and changelog headings. |
+| `verify` | `tools/release-check.py`: the tag, `__version__`, `plugin.json` and the marketplace entry agree, and a final has a candidate for its version and differs from the highest one only in version strings and changelog headings. |
 | `build` | Builds the sdist and wheel with a pinned `build`, checks the wheel with `tools/check-wheel.py`, writes the release notes from the changelog with `tools/release-notes.py`, and uploads both as an artifact. Needs `test` and `verify`. |
 | `publish` | In the `pypi` environment, with the only `id-token: write` grant, uploads `dist/` to PyPI by trusted publishing with attestations. |
 | `github-release` | With the only `contents: write` grant, creates the GitHub release for the tag with the notes and the files, marked pre-release for `a`, `b` and `rc` versions. |
