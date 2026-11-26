@@ -75,7 +75,14 @@ A gate's exit code is the contract: `doctor`, `eval diff`, `jobs status`, `backl
 
 Every `--json` payload is one JSON object with `"version": 1`, printed on stdout. A list is wrapped under a name. Within 1.x, fields are only added: no key is removed, renamed or given a new meaning. Read the keys you need and ignore the rest.
 
-When a command exits `2` because of an error, stdout is empty and the message is on stderr. `eval diff` is the exception: when cases are unverified or dropped it still prints the full comparison, then exits `2`.
+When a command exits `2` because it could not run, stdout is empty and the message is on stderr. Four commands finish the run, print the full payload and then exit `2`:
+
+- `doctor`, on a finding with `error` severity or on unreadable or newer guard state.
+- `janitor`, on a rule or watermark error.
+- `reap`, when a removal failed under `--apply`.
+- `eval diff`, when cases are unverified or dropped.
+
+Read the payload for what went wrong and the exit code for whether it passed.
 
 | Form | Top-level keys |
 |---|---|
