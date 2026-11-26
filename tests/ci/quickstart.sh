@@ -1,7 +1,6 @@
 #!/bin/bash
-# Runs the README quickstart's bash fences as written, in a temp HOME, with the
-# built wheel in place of the index. Loads real launchd jobs on macOS, so it
-# refuses anywhere but GitHub Actions.
+# The README quickstart loads real launchd jobs on macOS, so this refuses to
+# run anywhere but GitHub Actions.
 set -eu
 
 if [ "${GITHUB_ACTIONS:-}" != "true" ] || [ -z "${RUNNER_TEMP:-}" ]; then

@@ -175,7 +175,6 @@ def program_problem(path: Path, *, unparseable_is_error: bool = False) -> str | 
 
 
 def installed_problems() -> list[tuple[Path, str, bool]]:
-    """Return (plist, problem, readable) for each installed job that cannot run."""
     found = []
     for name in JOBS:
         path = plist_path(name)
