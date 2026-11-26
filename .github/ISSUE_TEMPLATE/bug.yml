@@ -1,0 +1,71 @@
+name: Bug
+description: A command did something the docs say it shouldn't, or exited with a code the contract doesn't explain.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Leave out paths, transcripts, ledger values and config values from your own machine. Replace a path with a placeholder such as `/home/alice/...`. For a security problem, don't open an issue: follow SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: rigops version
+      description: Output of `rigops version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options:
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: Output of `python3 --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: method
+    attributes:
+      label: Install method
+      options:
+        - pipx
+        - uv tool
+        - venv and pip
+        - other
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      description: The full command line, for example `rigops doctor --report`.
+    validations:
+      required: true
+  - type: input
+    id: exit
+    attributes:
+      label: Exit code
+      description: Output of `echo $?` right after the command.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: Link the doc or contract row that says so, if there is one.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: The output, with paths and values replaced by placeholders.
+      render: text
+    validations:
+      required: true

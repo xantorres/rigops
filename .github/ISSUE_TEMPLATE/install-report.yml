@@ -1,0 +1,110 @@
+name: Install report
+description: You followed the README quickstart on a fresh machine. Tell us how each step went.
+labels: [install-report]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Follow the README alone, without editing any file. After each step, run `echo $?` and note the exit code.
+
+        Only the fields below. No paths, no ledger row values, no transcripts, no config.
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options:
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: os_version
+    attributes:
+      label: OS version
+      description: For example `macOS 15.2` or `Ubuntu 24.04`.
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: Output of `python3 --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: method
+    attributes:
+      label: Install method
+      options:
+        - pipx
+        - uv tool
+        - venv and pip
+        - other
+    validations:
+      required: true
+  - type: input
+    id: install_exit
+    attributes:
+      label: Install exit code
+    validations:
+      required: true
+  - type: input
+    id: config_check_exit
+    attributes:
+      label: "`rigops config check` exit code"
+    validations:
+      required: true
+  - type: input
+    id: doctor_exit
+    attributes:
+      label: "`rigops doctor` exit code"
+    validations:
+      required: true
+  - type: dropdown
+    id: doctor_traceback
+    attributes:
+      label: Did `rigops doctor` print a Python traceback?
+      options:
+        - "no"
+        - "yes"
+    validations:
+      required: true
+  - type: input
+    id: ledger_exit
+    attributes:
+      label: "`rigops ledger write` exit code"
+    validations:
+      required: true
+  - type: dropdown
+    id: ledger_parse
+    attributes:
+      label: Did `rigops ledger write` warn that transcript lines did not parse?
+      options:
+        - "no"
+        - "yes"
+    validations:
+      required: true
+  - type: dropdown
+    id: jobs_loaded
+    attributes:
+      label: "macOS only: does `rigops jobs status` show both jobs loaded?"
+      options:
+        - "not macOS"
+        - "yes"
+        - "no"
+    validations:
+      required: true
+  - type: dropdown
+    id: minutes
+    attributes:
+      label: How long did it take, from the first command to the last?
+      options:
+        - 15 minutes or less
+        - more than 15 minutes
+    validations:
+      required: true
+  - type: textarea
+    id: stuck
+    attributes:
+      label: Where you got stuck
+      description: The step and what the README didn't tell you. Leave empty if nothing.
