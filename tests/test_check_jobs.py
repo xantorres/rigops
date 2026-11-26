@@ -54,6 +54,20 @@ class DoctorCheckTests(unittest.TestCase):
         self.assertEqual(found[0].key, f"unreadable:{plist.name}")
         self.assertIn(str(plist), found[0].evidence)
 
+    def test_a_directory_or_fifo_at_the_plist_path_is_an_error_finding(self):
+        for kind, make in (("directory", os.mkdir), ("fifo", os.mkfifo)):
+            with self.subTest(kind=kind), home_dir() as home:
+                plist = home / "Library" / "LaunchAgents" / "com.rigops.doctor.plist"
+                plist.parent.mkdir(parents=True)
+                make(plist)
+
+                found = self.findings("darwin")
+
+                self.assertEqual(len(found), 1)
+                self.assertEqual(found[0].severity, "error")
+                self.assertEqual(found[0].key, f"unreadable:{plist.name}")
+                self.assertIn("not a regular file", found[0].symptom)
+
     @unittest.skipUnless(sys.platform == "darwin", "the check reports on macOS only")
     def test_doctor_config_only_exits_2_with_an_unreadable_plist(self):
         with tempfile.TemporaryDirectory() as tmp:

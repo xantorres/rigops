@@ -139,8 +139,12 @@ def render_plist(name: str, rigops_path: str, heal: bool) -> bytes:
 
 
 def program_problem(path: Path, *, unparseable_is_error: bool = False) -> str | None:
+    path = Path(path)
+    # Reading a FIFO would block until a writer appears.
+    if path.exists() and not path.is_file():
+        raise RigopsError(f"cannot read {path}: not a regular file")
     try:
-        raw = Path(path).read_bytes()
+        raw = path.read_bytes()
     except OSError as exc:
         raise RigopsError(f"cannot read {path}: {exc}") from exc
     try:
@@ -175,7 +179,7 @@ def installed_problems() -> list[tuple[Path, str, bool]]:
     found = []
     for name in JOBS:
         path = plist_path(name)
-        if path.is_file():
+        if path.exists():
             try:
                 problem = program_problem(path, unparseable_is_error=True)
             except RigopsError as exc:
