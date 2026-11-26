@@ -182,7 +182,7 @@ The config file is `RIGOPS_CONFIG`, or `${XDG_CONFIG_HOME:-~/.config}/rigops/con
 - A known key with the wrong type exits `2` with `config key <path>: expected <type>, got <kind>`.
 - An unknown key is never an error at run time. `rigops config check` warns about it and exits `0`, and `rigops doctor` prints one info line and lists it in `unknown_config_keys`. A key that 0.11 removed is reported as `removed in 0.11: <key>`.
 - Config is code. Anything that runs a command or deletes refuses a config or registry that group or others can write, with exit `2`. [SAFETY.md](SAFETY.md) lists which commands check.
-- The hooks never fail on config. `session-start` prints `rigops: config unreadable: ...` as its line; `user-prompt-submit` uses the defaults.
+- The hooks never fail on config. `session-start` prints `rigops: config unreadable: ...` in place of its gate line when a gate record exists and reads; `user-prompt-submit` uses the defaults.
 
 ## Environment
 
@@ -208,7 +208,7 @@ Internal, free to change: `RIGOPS_REDACTION_PATTERNS` and `RIGOPS_REDACTION_PATT
 - One process, no child processes.
 - At most 1000 bytes of output per event, trailing newline included, cut on a UTF-8 boundary with `…`.
 - A time budget of 1 second, checked in CI: the median of 3 runs under 1 second, and the 95th percentile of 20 runs at most 0.25 seconds in at least one of up to 3 samples, so one sample spoiled by a loaded runner does not fail the check. rigops does not enforce it at run time.
-- `session-start` prints one line: the stale doctor gates, why there is no gate record, a config error, or a version mismatch. `user-prompt-submit` prints the context-size nudge when the transcript crosses a tier, and nothing otherwise.
+- `session-start` prints at most two lines. The first names the stale doctor gates, or why there is no readable gate record, and is left out when the gates are fresh. The config is loaded only once a gate record has been read, so a config error replaces that first line only then. A second line follows when the plugin's major.minor differs from the CLI's. `user-prompt-submit` prints the context-size nudge when the transcript crosses a tier, and nothing otherwise.
 
 ## Extension points
 
