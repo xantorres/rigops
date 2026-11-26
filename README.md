@@ -1,18 +1,72 @@
 # rigops
 
-Ops layer for a long-running agent rig - the surrounding system of instructions, hooks, automation, tooling, and state that supports long-running coding agents.
+rigops tells you whether the changes you make to your Claude Code rig work. The rig is everything around the agent: instructions, hooks, scheduled jobs, tools and state. You change it all the time, with a leaner `CLAUDE.md`, a new hook or a stricter permission rule. rigops writes one ledger row a week from Claude Code's session transcripts, records what you changed, and shows how the numbers moved between weeks.
 
-You tweak that rig constantly: a leaner prompt, a new hook, a stricter permission gate. rigops exists to answer one question about every tweak - **did it actually work?**
+Around that loop it measures the always-loaded config every turn pays for, checks that your scheduled jobs ran, cleans up merged worktrees and old files, and gates prompt or model changes on an eval suite.
+
+> **Status:** 0.13, on the way to 1.0. [docs/CONTRACT.md](docs/CONTRACT.md) is what 1.x will keep stable.
+
+## Quickstart
+
+About five minutes. You need:
+
+- macOS or Linux.
+- Python 3.11 or newer, and [pipx](https://pipx.pypa.io/) (`uv tool install rigops` works too).
+- Claude Code, used in the past week, so `~/.claude/projects` holds session transcripts.
+
+Install the CLI and check it. With no config file every key has its default, so `config check` passes.
 
 ```bash
-rigops ledger                               # measure: weekly effort baseline
-rigops ledger note "trimmed system prompt"  # intervene: record what changed
-rigops ledger diff                          # judge: before vs. after
+pipx install rigops
+rigops version
+rigops config check
 ```
 
-Everything else in the repo - an eval gate for prompt and model changes, context-tax tracking, automation-fleet doctor, workspace hygiene - exists to support that loop.
+In Claude Code, install the plugin for the `/rigops:*` commands and the two session hooks:
 
-> **Status:** first public cut, extracted from a working rig.
+```text
+/plugin marketplace add xantorres/rigops
+/plugin install rigops@rigops
+```
+
+Write this week's ledger row, then note a change you made. The row covers the 7 full days before today and holds counts and token totals, never message text.
+
+```bash
+rigops ledger write
+rigops ledger note "trimmed the always-loaded rules"
+```
+
+Check the job fleet, then schedule `doctor` and `ledger write` to run on their own:
+
+```bash
+rigops doctor
+rigops jobs install
+rigops jobs install --apply
+```
+
+Without a job registry, `doctor` skips the job checks and still lints your config. `jobs install` prints its plan and changes nothing. With `--apply` it writes and loads two launchd jobs on macOS, which `rigops jobs status` then shows as loaded, and on Linux it prints the crontab lines to add. `rigops jobs uninstall --apply` removes them.
+
+A week later the scheduled job writes the next row, and `rigops ledger diff` shows what moved, with your notes listed between the two rows. `/rigops:week` in Claude Code runs the whole weekly review.
+
+`rigops help` lists the commands, and `rigops version` (or `rigops --version`) prints the version a bug report needs. Upgrade and uninstall are in [docs/INSTALL.md](docs/INSTALL.md); coming from 0.10, read [docs/UPGRADING.md](docs/UPGRADING.md).
+
+## Glossary
+
+- **EIT** (effective input tokens): `input + 1.25 × cache_creation + 0.1 × cache_read` for each turn. It is the ledger's cost proxy. Weighing cache writes and reads by what they cost lets a cache-heavy week compare fairly with a cache-cold one.
+- **Tax** (fixed context tax): the bytes of always-loaded config, such as `CLAUDE.md`, rules and always-on skill text, that every turn loads whether it needs them or not. `rigops tax` breaks it down by file, and the ledger records the total as `fixed_tax_b`.
+- **Lever**: a ledger column you want to hold or move one way, such as `eit_per_turn` or `fixed_tax_b`. `rigops doctor` warns when the newest row moves a lever past its rule (`doctor.levers.rules`), and never fails the run for it.
+- **Nudge**: the line the plugin's `user-prompt-submit` hook prints when a session's context crosses a size tier (`context.nudge_tiers`, by default 250k, 350k and 500k tokens), so you can restart or compact before the session gets expensive.
+- **Watermark**: a janitor size limit on a file or directory (`janitor.watermarks`). When one trips, `rigops janitor --apply` adds a line to the backlog instead of deleting anything.
+
+## Every week
+
+Run `/rigops:week` in Claude Code, or by hand:
+
+```bash
+rigops ledger && rigops ledger diff && rigops tax --history && rigops doctor --report
+```
+
+Note interventions as you make them: `rigops ledger note "<what you changed>"`.
 
 ## Positioning
 
@@ -46,7 +100,7 @@ How data moves from raw agent transcripts to a weekly decision:
 ```mermaid
 flowchart LR
     transcripts --> ledger
-    rtk["rtk (optional)"] --> ledger
+    custom["sources.custom (optional)"] --> ledger
     ccusage["ccusage (optional)"] --> ledger
     fixedcfg["always-loaded config"] --> tax
     tax --> ledger
@@ -209,38 +263,6 @@ Case format, regression rules and CI wiring: [docs/EVAL.md](docs/EVAL.md).
 
 `rigops mine --dry-run` calls no model and writes nothing: it reports the corrections that repeat across sessions over a window (`--since`, default 90d), with paths, amounts, domains, ids and addresses masked. `--min-sessions` sets how many sessions a group has to span (default 2; 1 lists one-off corrections too), and `--transcripts-dir` reads a tree other than `transcripts_dir`. It needs no registry or index; list your own client names in `~/.config/rigops/redaction-patterns.txt` to mask them.
 
-## Quickstart
-
-### Plugin only - thirty seconds, zero daemons
-
-In Claude Code:
-
-```text
-/plugin marketplace add xantorres/rigops
-/plugin install rigops@rigops
-```
-
-This installs the commands, skills, and hooks. It degrades gracefully if the CLI half below isn't installed - no ledger or doctor data yet, but nothing breaks.
-
-### Full install
-
-```bash
-pipx install rigops
-rigops jobs install --apply
-```
-
-`rigops jobs install` without `--apply` prints the plan and changes nothing. Upgrade, uninstall and the move from an `install.sh` install are in [docs/INSTALL.md](docs/INSTALL.md). `rigops help` lists the commands; `rigops version` (or `rigops --version`) prints the installed version, which is what a bug report needs.
-
-### First-week ritual
-
-After a week of normal use, run `/rigops:week` in Claude Code, or by hand:
-
-```bash
-rigops ledger && rigops ledger diff && rigops tax --history && rigops doctor --report
-```
-
-Note interventions as you make them: `rigops ledger note "<what you changed>"`.
-
 ## What ships
 
 Two halves, one config.
@@ -276,12 +298,15 @@ Python 3.11+, stdlib only. Full matrix: [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MA
 ## Docs
 
 - [docs/INSTALL.md](docs/INSTALL.md)
+- [docs/UPGRADING.md](docs/UPGRADING.md)
+- [docs/CONTRACT.md](docs/CONTRACT.md)
 - [docs/CONFIG.md](docs/CONFIG.md)
 - [docs/LEDGER.md](docs/LEDGER.md)
 - [docs/EVAL.md](docs/EVAL.md)
 - [docs/REGISTRY.md](docs/REGISTRY.md)
 - [docs/SAFETY.md](docs/SAFETY.md)
 - [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MATRIX.md)
+- [SECURITY.md](SECURITY.md)
 - [patterns/](patterns/) - the ideas, portable without the code: drift-ledger, context-tax, job-registry, hardened-launchd, tiered-refresh, auth-probe-gating, scope-gated-hooks, statusline.
 
 ## License
