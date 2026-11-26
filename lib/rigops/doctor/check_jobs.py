@@ -19,12 +19,26 @@ def run(cfg):
     if sys.platform != "darwin":
         return []
     return [
-        core.Finding(
-            check=CHECK, area=AREA, key=f"program:{path.name}",
-            symptom=f"scheduled job {path.stem} cannot run its program: {problem}",
-            evidence=str(path),
-            fix="rigops jobs install --apply",
-            extra={"paths": [str(path)]},
-        )
-        for path, problem in core.job_problems()
+        _program(path, problem) if readable else _unreadable(path, problem)
+        for path, problem, readable in core.job_problems()
     ]
+
+
+def _program(path, problem) -> core.Finding:
+    return core.Finding(
+        check=CHECK, area=AREA, key=f"program:{path.name}",
+        symptom=f"scheduled job {path.stem} cannot run its program: {problem}",
+        evidence=str(path),
+        fix="rigops jobs install --apply",
+        extra={"paths": [str(path)]},
+    )
+
+
+def _unreadable(path, problem) -> core.Finding:
+    return core.Finding(
+        check=CHECK, area=AREA, key=f"unreadable:{path.name}", severity="error",
+        symptom=f"scheduled job {path.stem} cannot be judged: {problem}",
+        evidence=str(path),
+        fix="make the plist readable, or reinstall it: rigops jobs install --apply",
+        extra={"paths": [str(path)]},
+    )

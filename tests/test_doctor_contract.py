@@ -263,6 +263,7 @@ class FrozenIdTests(unittest.TestCase):
             ("*", "crashed"),
             ("*", "import"),
             ("budget", "unreadable"),
+            ("jobs", "unreadable:*"),
         }))
 
     def test_no_check_builds_a_fail_finding_outside_the_frozen_set(self):

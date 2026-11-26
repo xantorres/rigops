@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `doctor` reports a scheduled job's plist that it cannot read as an `error` finding (key `unreadable:<plist>`) and exits `2`, as `jobs status` does; it used to be a failing finding with exit `1`.
+
 ## [0.13.0] - 2026-11-25
 
 ### Added

@@ -168,7 +168,8 @@ def program_problem(path: Path) -> str | None:
     return None
 
 
-def installed_problems() -> list[tuple[Path, str]]:
+def installed_problems() -> list[tuple[Path, str, bool]]:
+    """Return (plist, problem, readable) for each installed job that cannot run."""
     found = []
     for name in JOBS:
         path = plist_path(name)
@@ -176,9 +177,10 @@ def installed_problems() -> list[tuple[Path, str]]:
             try:
                 problem = program_problem(path)
             except RigopsError as exc:
-                problem = str(exc)
+                found.append((path, str(exc), False))
+                continue
             if problem is not None:
-                found.append((path, problem))
+                found.append((path, problem, True))
     return found
 
 

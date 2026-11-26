@@ -27,6 +27,7 @@ EXIT_2_FINDINGS = frozenset({
     ("*", "crashed"),
     ("*", "import"),
     ("budget", "unreadable"),
+    ("jobs", "unreadable:*"),
 })
 
 EXIT_1_STATUSES = ("failing", "hung", "fail")

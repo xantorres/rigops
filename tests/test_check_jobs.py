@@ -30,7 +30,7 @@ class DoctorCheckTests(unittest.TestCase):
         self.assertIn(str(plist), found[0].evidence)
         self.assertEqual(found[0].fix, "rigops jobs install --apply")
 
-    def test_a_plist_that_cannot_be_read_is_a_finding_not_a_crash(self):
+    def test_a_plist_that_cannot_be_read_is_an_error_finding_not_a_crash(self):
         denied = PermissionError(13, "Permission denied")
         with home_dir() as home:
             plist = write_plist(home, "doctor", [str(home / "gone"), "doctor"])
@@ -38,8 +38,28 @@ class DoctorCheckTests(unittest.TestCase):
                 found = self.findings("darwin")
 
         self.assertEqual(len(found), 1)
-        self.assertEqual(found[0].severity, "fail")
+        self.assertEqual(found[0].severity, "error")
+        self.assertEqual(found[0].key, f"unreadable:{plist.name}")
         self.assertIn(str(plist), found[0].evidence)
+
+    @unittest.skipUnless(sys.platform == "darwin", "the check reports on macOS only")
+    def test_doctor_config_only_exits_2_with_an_unreadable_plist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp).resolve()
+            plist = write_plist(home, "doctor", [str(home / "gone"), "doctor"])
+            plist.chmod(0)
+            env = {**os.environ, "HOME": str(home), "PYTHONPATH": str(REPO / "lib")}
+
+            codes = [
+                subprocess.run(
+                    [sys.executable, "-m", "rigops", "doctor", "--config-only", "--check",
+                     "jobs", *extra],
+                    capture_output=True, text=True, check=False, env=env, timeout=60,
+                ).returncode
+                for extra in ([], ["--exit-zero"])
+            ]
+
+        self.assertEqual(codes, [2, 2])
 
     def test_a_working_plist_and_no_plist_are_clean(self):
         with home_dir() as home:

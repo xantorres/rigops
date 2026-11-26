@@ -20,7 +20,7 @@ Config and registry are code. A custom check, notify command, probe, janitor `co
 
 `doctor --heal` fails closed on its own state: if `heal-stamps.json` (or `holds.json`, when `cause_policy` reads it) is unreadable, not a JSON object, or holds a non-numeric stamp, the run kickstarts nothing and releases no hold, moves the file aside as `<name>.corrupt-<timestamp>`, and raises a failing finding. A run that cannot heal reports the finding and leaves the file where it is.
 
-A doctor check that cannot measure fails closed too. A check module that fails to import, a check that crashes, or an always-on file the `budget` check cannot read is an `error` finding: the run exits `2` and `--exit-zero` does not hide it. The other checks still run.
+A doctor check that cannot measure fails closed too. A check module that fails to import, a check that crashes, an always-on file the `budget` check cannot read, or a scheduled job's plist the `jobs` check cannot read is an `error` finding: the run exits `2` and `--exit-zero` does not hide it. The other checks still run.
 
 ## State files
 
