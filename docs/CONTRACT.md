@@ -177,7 +177,7 @@ Every 1.x release reads 0.10 state and state from any earlier 1.x. There is no m
 
 ## Config
 
-The config file is `RIGOPS_CONFIG`, or `${XDG_CONFIG_HOME:-~/.config}/rigops/config.json`. The job registry defaults to `registry.md` in the same directory. Every key, its type and its default are in [CONFIG.md](CONFIG.md#key-reference), which a test holds equal to the spec table in the code. Path values expand `~` and environment variables.
+The config file is `RIGOPS_CONFIG`, or `${XDG_CONFIG_HOME:-~/.config}/rigops/config.json`. The job registry is `--registry`, then `doctor.registry`, then `${XDG_CONFIG_HOME:-~/.config}/rigops/registry.md`. That default ignores `RIGOPS_CONFIG`, so a registry next to a config file in another directory is not read. Every key, its type and its default are in [CONFIG.md](CONFIG.md#key-reference), which a test holds equal to the spec table in the code. Path values expand `~` and environment variables.
 
 - A known key with the wrong type exits `2` with `config key <path>: expected <type>, got <kind>`.
 - An unknown key is never an error at run time. `rigops config check` warns about it and exits `0`, and `rigops doctor` prints one info line and lists it in `unknown_config_keys`. A key that 0.11 removed is reported as `removed in 0.11: <key>`.
@@ -190,7 +190,7 @@ The config file is `RIGOPS_CONFIG`, or `${XDG_CONFIG_HOME:-~/.config}/rigops/con
 |---|---|
 | `RIGOPS_CONFIG` | Config file path. |
 | `RIGOPS_STATE_DIR` | State directory. |
-| `XDG_CONFIG_HOME` | Base for the config file and registry when `RIGOPS_CONFIG` is unset. |
+| `XDG_CONFIG_HOME` | Base for the config file when `RIGOPS_CONFIG` is unset, and for the registry when `doctor.registry` is unset. |
 | `XDG_STATE_HOME` | Base for the state directory when `RIGOPS_STATE_DIR` is unset, and always for the gate record, the nudge state and cron logs. |
 | `RIGOPS_PLUGIN_VERSION` | Set by the plugin's hook script. `session-start` warns when its major.minor differs from the CLI's. |
 | `RIGOPS_RUN_DEADLINE_S` | Seconds `reap` may run before it stops, default `3600`. A value that is not an integer means `3600`. |
