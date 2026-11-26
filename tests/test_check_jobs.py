@@ -42,6 +42,18 @@ class DoctorCheckTests(unittest.TestCase):
         self.assertEqual(found[0].key, f"unreadable:{plist.name}")
         self.assertIn(str(plist), found[0].evidence)
 
+    def test_a_plist_that_does_not_parse_is_an_error_finding(self):
+        with home_dir() as home:
+            plist = write_plist(home, "doctor", [str(home / "gone"), "doctor"])
+            plist.write_text("not a plist")
+
+            found = self.findings("darwin")
+
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].severity, "error")
+        self.assertEqual(found[0].key, f"unreadable:{plist.name}")
+        self.assertIn(str(plist), found[0].evidence)
+
     @unittest.skipUnless(sys.platform == "darwin", "the check reports on macOS only")
     def test_doctor_config_only_exits_2_with_an_unreadable_plist(self):
         with tempfile.TemporaryDirectory() as tmp:

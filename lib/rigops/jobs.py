@@ -138,7 +138,7 @@ def render_plist(name: str, rigops_path: str, heal: bool) -> bytes:
     return data
 
 
-def program_problem(path: Path) -> str | None:
+def program_problem(path: Path, *, unparseable_is_error: bool = False) -> str | None:
     try:
         raw = Path(path).read_bytes()
     except OSError as exc:
@@ -146,6 +146,8 @@ def program_problem(path: Path) -> str | None:
     try:
         data = plistlib.loads(raw)
     except (ValueError, ExpatError) as exc:
+        if unparseable_is_error:
+            raise RigopsError(f"cannot parse {path}: {exc}") from exc
         return f"{path} is unreadable: {exc}"
     args = data.get("ProgramArguments") if isinstance(data, dict) else None
     if not isinstance(args, list) or not args or not isinstance(args[0], str):
@@ -175,7 +177,7 @@ def installed_problems() -> list[tuple[Path, str, bool]]:
         path = plist_path(name)
         if path.is_file():
             try:
-                problem = program_problem(path)
+                problem = program_problem(path, unparseable_is_error=True)
             except RigopsError as exc:
                 found.append((path, str(exc), False))
                 continue

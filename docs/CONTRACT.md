@@ -46,7 +46,7 @@ When both `1` and `2` apply, `2` wins. A `2` never carries a verdict, so a calle
 
 | Command | `0` | `1` | `2` |
 |---|---|---|---|
-| `rigops doctor` | Nothing failing | A failing or hung job, a failing custom check, or a finding with `fail` severity. `--exit-zero` turns this into `0` | A finding with `error` severity (a check that crashed or failed to import, an input it could not read, a plist it could not read), unreadable or newer guard state, a missing explicit registry or a malformed one. Guard state gives `2` even with `--exit-zero` |
+| `rigops doctor` | Nothing failing | A failing or hung job, a failing custom check, or a finding with `fail` severity. `--exit-zero` turns this into `0` | A finding with `error` severity (a check that crashed or failed to import, an input it could not read, a plist it could not read or parse), unreadable or newer guard state, a missing explicit registry or a malformed one. Guard state gives `2` even with `--exit-zero` |
 | `rigops eval run` | The run is recorded, whatever the cases scored | | A missing or invalid setting, an unreadable system prompt, an empty or missing cases directory, an invalid case file, or a bearer token that would go over plain http to a host that is not loopback |
 | `rigops eval diff` | No regression | A regression and nothing unverified or dropped | A case unverified or dropped, no runs, no run matching `--base` or `--head`, base and head the same run, no shared cases, or a bad `--latency-tolerance` |
 | `rigops eval list` | Listed | | Unreadable file or row |

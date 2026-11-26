@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `doctor` reports a scheduled job's plist that it cannot read as an `error` finding (key `unreadable:<plist>`) and exits `2`, as `jobs status` does; it used to be a failing finding with exit `1`.
+- `doctor` reports a scheduled job's plist that it cannot read as an `error` finding (key `unreadable:<plist>`) and exits `2`, as `jobs status` does; it used to be a failing finding with exit `1`. A plist that does not parse is the same `error` in `doctor`, while `jobs status` still shows it as a program problem with exit `1`.
 - `jobs install` without `--apply` ends with `nothing to change` when every job is already installed, current and loaded, instead of asking for a re-run with `--apply`.
 - The release check fails a final tag that has no release candidate for its version; it used to pass with a note.
 - The release workflow publishes the sdist and wheel that its test stage built and installed, instead of building them a second time.
