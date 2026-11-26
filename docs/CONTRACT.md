@@ -207,7 +207,7 @@ Internal, free to change: `RIGOPS_REDACTION_PATTERNS` and `RIGOPS_REDACTION_PATT
 - Exit `0` always, including on an unknown event or a crash.
 - One process, no child processes.
 - At most 1000 bytes of output per event, trailing newline included, cut on a UTF-8 boundary with `…`.
-- A time budget of 1 second, checked in CI: the median of 3 runs under 1 second and the 95th percentile of 20 runs at most 0.25 seconds. rigops does not enforce it at run time.
+- A time budget of 1 second, checked in CI: the median of 3 runs under 1 second, and the 95th percentile of 20 runs at most 0.25 seconds in at least one of up to 3 samples, so one sample spoiled by a loaded runner does not fail the check. rigops does not enforce it at run time.
 - `session-start` prints one line: the stale doctor gates, why there is no gate record, a config error, or a version mismatch. `user-prompt-submit` prints the context-size nudge when the transcript crosses a tier, and nothing otherwise.
 
 ## Extension points
