@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Report it privately to `[security contact, set by the maintainer before 1.0]`. Don't open a public issue for it. Say which version (`rigops version`), which command, and what an attacker controls; leave out paths, transcripts and config values from your own machine.
+Report it privately with the [vulnerability report form](https://github.com/xantorres/rigops/security/advisories/new), the "Report a vulnerability" button under the repository's Security tab. Don't open a public issue for it. Say which version (`rigops version`), which command, and what an attacker controls; leave out paths, transcripts and config values from your own machine.
 
 ## Threat model
 
