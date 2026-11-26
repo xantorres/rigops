@@ -210,7 +210,7 @@ Internal, free to change: `RIGOPS_REDACTION_PATTERNS` and `RIGOPS_REDACTION_PATT
 - One process, no child processes.
 - At most 1000 bytes of output per event, trailing newline included, cut on a UTF-8 boundary with `…`.
 - A time budget of 1 second, checked in CI: the median of 3 runs under 1 second, and the 95th percentile of 20 runs at most 0.25 seconds in at least one of up to 3 samples, so one sample spoiled by a loaded runner does not fail the check. rigops does not enforce it at run time.
-- `session-start` prints at most two lines. The first names the stale doctor gates, or why there is no readable gate record, and is left out when the gates are fresh. The config is loaded only once a gate record has been read, so a config error replaces that first line only then. A second line follows when the plugin's major.minor differs from the CLI's. `user-prompt-submit` prints the context-size nudge when the transcript crosses a tier, and nothing otherwise.
+- `session-start` prints at most two lines. The first names the stale doctor gates, or why there is no readable gate record, and is left out when the gates are fresh. The config is loaded only once a gate record has been read, so a config error replaces that first line only then; any other failure replaces it with `rigops: session-start hook failed (<error type>)`. A second line follows when the plugin's major.minor differs from the CLI's. `user-prompt-submit` prints the context-size nudge when the transcript crosses a tier, and nothing otherwise.
 
 ## Extension points
 

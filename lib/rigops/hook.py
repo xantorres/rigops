@@ -30,7 +30,8 @@ Plugin plumbing: reads the hook JSON payload on stdin, prints at most
 1000 bytes, always exits 0.
 
 events:
-  session-start        one line of stale doctor gates, or why there is none
+  session-start        stale doctor gates, or why there is none, plus a
+                       second line when plugin and CLI versions differ
   user-prompt-submit   context-size nudge when the transcript crosses a tier
 """
 
