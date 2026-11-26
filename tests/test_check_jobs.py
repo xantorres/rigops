@@ -73,19 +73,25 @@ class DoctorCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp).resolve()
             plist = write_plist(home, "doctor", [str(home / "gone"), "doctor"])
-            plist.chmod(0)
             env = {**os.environ, "HOME": str(home), "PYTHONPATH": str(REPO / "lib")}
 
-            codes = [
-                subprocess.run(
+            def doctor(*extra):
+                return subprocess.run(
                     [sys.executable, "-m", "rigops", "doctor", "--config-only", "--check",
                      "jobs", *extra],
                     capture_output=True, text=True, check=False, env=env, timeout=60,
-                ).returncode
-                for extra in ([], ["--exit-zero"])
-            ]
+                )
 
-        self.assertEqual(codes, [2, 2])
+            readable = doctor()
+            plist.chmod(0)
+            unreadable = [doctor(*extra) for extra in ([], ["--exit-zero"])]
+
+        self.assertEqual(readable.returncode, 1, readable.stdout + readable.stderr)
+        self.assertIn("com.rigops.doctor cannot run its program", readable.stdout)
+        for proc in unreadable:
+            self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+            self.assertIn("com.rigops.doctor cannot be judged: cannot read", proc.stdout)
+            self.assertIn(f"Evidence: {plist}.", proc.stdout)
 
     def test_a_working_plist_and_no_plist_are_clean(self):
         with home_dir() as home:
