@@ -28,7 +28,10 @@ Every command now follows one rule: `0` ok, `1` a negative verdict, `2` an error
 | Plain `doctor` with a failing or hung job | `0` | `1` |
 | `doctor --heal` with a failing job | `0` | `1`; add `--exit-zero` for `0` |
 | `doctor` check that crashes or fails to import | `1` | `2`, even with `--exit-zero` |
-| `doctor` with a scheduled job's plist it cannot read | no such check; `1` in 0.13, which added it | `2` |
+| `doctor` with a scheduled job's plist it cannot read or parse | no such check; `1` in 0.13, which added it | `2` |
+| `doctor` with a directory, FIFO or other non-file at a plist path | no such check; `0` in 0.13, which skipped it | `2` |
+| `jobs status` with a plist that does not parse | no such command; `1` in 0.13, which added it | `2` |
+| `jobs status` or `jobs install` with a FIFO at a plist path | no such command; blocked in 0.13 | `2` |
 | `eval diff` with a regression and an unverified or dropped case | `1` | `2` |
 | `ledger write` when `transcripts_dir` does not exist | `0`, empty row | `2`, no row |
 | A `--since` or `--until` that `tax` or `eit` cannot read | `1`, traceback | `2` |
