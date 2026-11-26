@@ -21,7 +21,8 @@ Every command now follows one rule: `0` ok, `1` a negative verdict, `2` an error
 |---|---|---|
 | `config get` on a missing key | `3` | `1` |
 | Config unreadable, not JSON, not an object, or a key of the wrong type | `1`, or ignored | `2` |
-| Malformed or unreadable state in `ledger` or `tax --history` | `1` | `2` |
+| Malformed state in `ledger write`, or unreadable state in `ledger` or `tax --history` | `1` | `2` |
+| A malformed row in `tax --history` | `1` | `0`; the row is skipped and counted in `skipped` |
 | `janitor` rule or watermark error | `1` | `2` |
 | `doctor` with a missing explicit registry or a malformed one | `1` | `2` |
 | Plain `doctor` with a failing or hung job | `0` | `1` |

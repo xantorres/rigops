@@ -53,7 +53,7 @@ When both `1` and `2` apply, `2` wins. A `2` never carries a verdict, so a calle
 | `rigops ledger write` | Row written, or printed with `--dry-run` or `--show` | | `transcripts_dir` does not exist, or the ledger is unreadable or malformed |
 | `rigops ledger note` | Recorded | | Bad `--at` |
 | `rigops ledger diff` | Compared, or fewer than two rows to compare | | A bad `--since`, or an unreadable file |
-| `rigops tax` | Printed | `--starts --session <id>` matched no session | A bad `--dir`, `--since` or `--until`, or a malformed row under `--history` |
+| `rigops tax` | Printed | `--starts --session <id>` matched no session | A bad `--dir`, `--since` or `--until`, or an unreadable ledger under `--history`. A malformed row is skipped and counted, not an error |
 | `rigops reap` | Done or planned | | A removal failed under `--apply`, or a live-session file is unreadable |
 | `rigops janitor` | Done or planned | | A rule or watermark error |
 | `rigops jobs install`, `rigops jobs uninstall` | Done or planned; on Linux, crontab lines printed | | An unknown `--jobs` name, no persistent `rigops` on `PATH` to schedule, or a plist it cannot render or read |
