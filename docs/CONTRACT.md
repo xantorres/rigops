@@ -82,6 +82,8 @@ When a command exits `2` because it could not run, stdout is empty and the messa
 - `reap`, when a removal failed under `--apply`.
 - `eval diff`, when cases are unverified or dropped.
 
+`jobs status` has no `--json`, but it too can print to stdout and exit `2`: on Linux its one line, on macOS the rows for the jobs before the one whose plist or launchd query failed.
+
 Read the payload for what went wrong and the exit code for whether it passed.
 
 | Form | Top-level keys |
