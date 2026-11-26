@@ -122,6 +122,20 @@ class CiContractTests(unittest.TestCase):
             r"astral-sh/setup-uv@\w+ # v[\d.]+\n\s+with:\n\s+enable-cache: false",
         )
 
+    def test_the_release_publishes_the_wheel_the_test_stage_exercised(self):
+        ci = _jobs(CI.read_text(encoding="utf-8"))
+        release = _jobs(RELEASE.read_text(encoding="utf-8"))
+        uploaded = re.search(r"upload-artifact@\w+ # v[\d.]+\n\s+with:\n\s+name: (\S+)",
+                             ci["package"])
+        assert uploaded, "ci.yml package job uploads no named artifact"
+
+        self.assertIn("python -m build", ci["package"])
+        self.assertNotIn("python -m build", release["build"])
+        self.assertRegex(release["build"], rf"download-artifact@\w+ # v[\d.]+\n\s+with:\n"
+                                           rf"\s+name: {uploaded.group(1)}\n")
+        for consumer in ("runners", "jobs-roundtrip"):
+            self.assertIn(f"name: {uploaded.group(1)}", ci[consumer])
+
     def test_the_release_creates_a_prerelease_for_candidates(self):
         self.assertIn("--prerelease", _jobs(RELEASE.read_text(encoding="utf-8"))["github-release"])
 

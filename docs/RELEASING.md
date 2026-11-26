@@ -64,7 +64,7 @@ When the check passes, the tag is already in place; push it: `git push --atomic 
 |---|---|
 | `test` | Runs `ci.yml` as a called workflow: lint and `make check`, the unit, hook and smoke tests on macOS and Linux with Python 3.11 and the latest release, the wheel under `uvx`, `pipx run` and a venv, and the scheduled-jobs install, upgrade and uninstall roundtrip on macOS. |
 | `verify` | `tools/release-check.py`: the tag, `__version__`, `plugin.json` and the marketplace entry agree, and a final has a candidate for its version and differs from the highest one only in version strings and changelog headings. |
-| `build` | Builds the sdist and wheel with a pinned `build`, checks the wheel with `tools/check-wheel.py`, writes the release notes from the changelog with `tools/release-notes.py`, and uploads both as an artifact. Needs `test` and `verify`. |
+| `build` | Takes the sdist and wheel that the `package` job of `test` built and the runner jobs installed, so the files published are the files tested; checks the wheel again with `tools/check-wheel.py`, writes the release notes from the changelog with `tools/release-notes.py`, and uploads both as an artifact. Needs `test` and `verify`. |
 | `publish` | In the `pypi` environment, with the only `id-token: write` grant, uploads `dist/` to PyPI by trusted publishing with attestations. |
 | `github-release` | With the only `contents: write` grant, creates the GitHub release for the tag with the notes and the files, marked pre-release for `a`, `b` and `rc` versions. |
 
