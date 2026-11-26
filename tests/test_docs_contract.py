@@ -6,7 +6,7 @@ import shlex
 import unittest
 from pathlib import Path
 
-from rigops import config_spec
+from rigops import config_spec, hook, jobs
 from rigops.cli import EXPERIMENTAL
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -18,8 +18,19 @@ DOC_PAGES = (
     + sorted((REPO_ROOT / "docs").glob("*.md"))
     + sorted(PLUGIN_COMMANDS.glob("*.md"))
 )
+SPAN_PAGES = (
+    [README]
+    + sorted((REPO_ROOT / "docs").rglob("*.md"))
+    + sorted((REPO_ROOT / "plugin").rglob("*.md"))
+)
+CONTRACT = REPO_ROOT / "docs" / "CONTRACT.md"
+UPGRADE_NOTES = REPO_ROOT / "docs" / "UPGRADING.md"
 CLI_DIR = REPO_ROOT / "lib" / "rigops" / "cli"
 FLAG_SOURCES = sorted((REPO_ROOT / "lib" / "rigops").rglob("*.py"))
+ENV_READ = re.compile(
+    r"""(?:environ\.get|getenv)\(\s*["']([A-Z][A-Z0-9_]*)["']"""
+    r"""|environ\[\s*["']([A-Z][A-Z0-9_]*)["']\s*\]"""
+)
 
 # "<command> <flag>" pairs no doc page needs to name, each with the reason.
 UNDOCUMENTED_FLAGS: dict[str, str] = {}
@@ -35,12 +46,16 @@ HEADING = re.compile(r"^#{1,6} +(.+?)[ #]*$", re.M)
 # A blank line, a list item or a table row starts a new paragraph-sized unit.
 UNIT_START = re.compile(r"^(?:[ \t]*\n|[ \t]*(?:[-*+]|\d+\.)[ \t]|\|)", re.M)
 SKIP_DIRS = {".git", ".claude", "fixtures"}
-PLUGIN_ROOT = REPO_ROOT / "plugin"
 ADD_PARSER = re.compile(r"""add_parser\(\s*["']([a-z][a-z0-9-]*)["']""")
 FENCE_LINE = re.compile(r"^[ \t]*(?:```|~~~)")
 INLINE_OR_FENCED = re.compile(r"`([^`\n]*)`")
 PLACEHOLDER = re.compile(r"<[^>]*>?|\s|YYYY-MM-DD")
 ALWAYS_OK_FLAGS = {"--help", "-h"}
+TOP_LEVEL_FLAGS = ALWAYS_OK_FLAGS | {"--version"}
+SHELL_OPERATORS = {"&&", "||", "|", ";"}
+# Removed in 0.11; only the upgrade notes still name them.
+REMOVED_COMMANDS = {"card", "nudge", "render", "retrieval"}
+REMOVED_FLAGS = {("mine", "--registry")}
 
 
 def command_of(source: Path) -> str:
@@ -56,6 +71,14 @@ def defined_flags() -> dict[tuple[str, str], str]:
             for flag in FLAG.findall(names):
                 flags[(command_of(source), flag)] = str(source.relative_to(REPO_ROOT))
     return flags
+
+
+def env_reads() -> set[str]:
+    names = set(jobs.EXTRA_ENV)
+    for source in FLAG_SOURCES:
+        for read in ENV_READ.finditer(source.read_text(encoding="utf-8")):
+            names.add(read.group(1) or read.group(2))
+    return names
 
 
 def shipped_cli() -> set[str]:
@@ -89,14 +112,28 @@ def rigops_spans(text: str) -> list[tuple[int, str]]:
     return found
 
 
-def check_span(span: str) -> list[str]:
+def check_span(span: str, removed_ok: bool = False) -> list[str]:
     try:
         tokens = shlex.split(span)
     except ValueError as error:
         return [f"does not split ({error})"]
-    if len(tokens) < 2:
+    errors, segment = [], []
+    for token in tokens + [";"]:
+        if token not in SHELL_OPERATORS:
+            segment.append(token)
+            continue
+        if segment[:1] == ["rigops"]:
+            errors += check_invocation(segment[1:], removed_ok)
+        segment = []
+    return errors
+
+
+def check_invocation(args: list[str], removed_ok: bool) -> list[str]:
+    if not args or args[0] in TOP_LEVEL_FLAGS or PLACEHOLDER.search(args[0]):
         return []
-    command, rest = tokens[1], tokens[2:]
+    command, rest = args[0], args[1:]
+    if removed_ok and command in REMOVED_COMMANDS:
+        return []
     if command not in shipped_commands():
         return [f"`{command}` is not a shipped command"]
     errors = []
@@ -106,9 +143,11 @@ def check_span(span: str) -> list[str]:
             known = ", ".join(sorted(subs))
             errors.append(f"`{rest[0]}` is not a `{command}` subcommand ({known})")
     flags = defined_flags()
-    for token in tokens[2:]:
+    for token in rest:
         flag = token.split("=", 1)[0]
-        if token.startswith("--") and flag not in ALWAYS_OK_FLAGS and (command, flag) not in flags:
+        if not token.startswith("--") or flag in ALWAYS_OK_FLAGS or (command, flag) in flags:
+            continue
+        if not (removed_ok and (command, flag) in REMOVED_FLAGS):
             errors.append(f"`{flag}` is not a `{command}` flag")
     return errors
 
@@ -222,12 +261,13 @@ class DocsContractTests(unittest.TestCase):
 
         self.assertEqual(broken, [])
 
-    def test_plugin_rigops_spans_name_shipped_commands_and_flags(self):
+    def test_doc_rigops_spans_name_shipped_commands_and_flags(self):
         problems = []
-        for page in sorted(PLUGIN_ROOT.rglob("*.md")):
+        for page in SPAN_PAGES:
+            removed_ok = page == UPGRADE_NOTES
             for number, span in rigops_spans(page.read_text(encoding="utf-8")):
                 problems += [f"{page.relative_to(REPO_ROOT)}:{number}: `{span}`: {error}"
-                             for error in check_span(span)]
+                             for error in check_span(span, removed_ok=removed_ok)]
 
         self.assertEqual(problems, [])
 
@@ -238,6 +278,23 @@ class DocsContractTests(unittest.TestCase):
         self.assertEqual(check_span('rigops ledger note "<text>" --at YYYY-MM-DD'), [])
         text = "see `rigops tax --dead` and `rigops`\n```\n$ rigops doctor\n```"
         self.assertEqual(rigops_spans(text), [(1, "rigops tax --dead"), (3, "rigops doctor")])
+
+    def test_span_checker_accepts_top_level_flags_and_placeholder_commands(self):
+        self.assertEqual(check_span("rigops --version"), [])
+        self.assertEqual(check_span("rigops --help"), [])
+        self.assertEqual(check_span("rigops <command> --help"), [])
+        self.assertTrue(check_span("rigops --nosuch"))
+
+    def test_span_checker_checks_each_command_in_a_chain(self):
+        self.assertEqual(check_span("rigops ledger && rigops tax --history | head"), [])
+        self.assertTrue(check_span("rigops ledger && rigops tax --nosuch"))
+        self.assertTrue(check_span("rigops ledger --history && rigops tax"))
+
+    def test_span_checker_allows_removed_names_only_where_asked(self):
+        for span in ("rigops card", "rigops retrieval", "rigops mine --registry"):
+            self.assertTrue(check_span(span), span)
+            self.assertEqual(check_span(span, removed_ok=True), [], span)
+        self.assertTrue(check_span("rigops nosuch", removed_ok=True))
 
 
 class ConfigDocsMatchSpecTests(unittest.TestCase):
@@ -259,6 +316,28 @@ class ConfigDocsMatchSpecTests(unittest.TestCase):
     def test_every_documented_key_is_in_the_spec(self):
         spec = {key.path for key in config_spec.SPEC}
         self.assertEqual(sorted(self.documented().keys() - spec), [])
+
+
+class ContractMatchesCodeTests(unittest.TestCase):
+    @staticmethod
+    def section(title: str) -> str:
+        text = CONTRACT.read_text(encoding="utf-8")
+        found = re.search(rf"^## {re.escape(title)}\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+        assert found, f"docs/CONTRACT.md has no '## {title}' section"
+        return found.group(1)
+
+    def test_commands_table_lists_every_command_and_subcommand(self):
+        rows = re.findall(r"^\| `rigops ([a-z]+)` \|([^|]*)\|", self.section("Commands"), re.M)
+        listed = {command: set(re.findall(r"`([a-z-]+)`", subs)) for command, subs in rows}
+        shipped = {command: subcommands(command) for command in shipped_cli()}
+        shipped["hook"] = set(hook.EVENTS)
+
+        self.assertEqual(listed, shipped)
+
+    def test_environment_section_names_every_variable_the_code_reads(self):
+        documented = set(re.findall(r"`([A-Z][A-Z0-9_]+)`", self.section("Environment")))
+
+        self.assertEqual(sorted(env_reads() ^ documented), [])
 
 
 class ExperimentalTableTests(unittest.TestCase):
