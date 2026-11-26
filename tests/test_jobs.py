@@ -252,9 +252,11 @@ class ProgramProblemTests(unittest.TestCase):
             broken.write_text("not a plist")
             absent = home / "Library" / "LaunchAgents" / "com.rigops.janitor.plist"
 
-            for plist in (empty, missing, broken):
+            for plist in (empty, missing):
                 with self.subTest(plist=plist.name):
                     self.assertIsNotNone(jobs.program_problem(plist))
+            with self.assertRaisesRegex(RigopsError, "cannot parse"):
+                jobs.program_problem(broken)
             with self.assertRaisesRegex(RigopsError, "cannot read"):
                 jobs.program_problem(absent)
 
@@ -561,13 +563,14 @@ class StatusTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("error: cannot read", err)
 
-    def test_a_malformed_plist_exits_1(self):
+    def test_a_malformed_plist_exits_2(self):
         with home_dir() as home, mock.patch("rigops.launchd.is_loaded", return_value=True):
-            self.good(home, "doctor").write_text("not a plist")
-            code, out, _ = run_cli(["status"])
+            plist = self.good(home, "doctor")
+            plist.write_text("not a plist")
+            code, _, err = run_cli(["status"])
 
-        self.assertEqual(code, 1)
-        self.assertIn("is unreadable", out)
+        self.assertEqual(code, 2)
+        self.assertIn(f"error: cannot parse {plist}", err)
 
     def test_linux_does_not_inspect_cron(self):
         with home_dir(), mock.patch("rigops.launchd.subprocess.run") as launchctl:

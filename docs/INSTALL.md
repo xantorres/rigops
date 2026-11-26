@@ -43,7 +43,7 @@ rigops jobs install --apply
 rigops jobs status
 ```
 
-`jobs status` lists each `com.rigops.*` job as installed or not, loaded or not, and whether its program still runs; it exits 1 on a problem and 2 when it cannot ask launchd or read a plist.
+`jobs status` lists each `com.rigops.*` job as installed or not, loaded or not, and whether its program still runs; it exits 1 on a problem and 2 when it cannot ask launchd or read or parse a plist.
 
 ## Linux
 

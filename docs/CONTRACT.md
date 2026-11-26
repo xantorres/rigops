@@ -57,7 +57,7 @@ When both `1` and `2` apply, `2` wins. A `2` never carries a verdict, so a calle
 | `rigops reap` | Done or planned | | A removal failed under `--apply`, or a live-session file is unreadable |
 | `rigops janitor` | Done or planned | | A rule or watermark error |
 | `rigops jobs install`, `rigops jobs uninstall` | Done or planned; on Linux, crontab lines printed | | An unknown `--jobs` name, no persistent `rigops` on `PATH` to schedule, or a plist it cannot render or read |
-| `rigops jobs status` | Every installed job is loaded and its program passes, or nothing is installed | An installed job is not loaded or its program check fails | launchd cannot be asked or a plist cannot be read; any run on Linux |
+| `rigops jobs status` | Every installed job is loaded and its program passes, or nothing is installed | An installed job is not loaded or its program check fails | launchd cannot be asked or a plist cannot be read or parsed; any run on Linux |
 | `rigops config get` | Printed | The key is not set | Config unreadable |
 | `rigops config check` | Valid; unknown keys are warnings | | Unreadable, not JSON, not an object, or a key of the wrong type |
 | `rigops authprobe` | Probe passed, or disabled | Probe failed | Config error |

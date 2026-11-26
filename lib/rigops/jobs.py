@@ -138,7 +138,7 @@ def render_plist(name: str, rigops_path: str, heal: bool) -> bytes:
     return data
 
 
-def program_problem(path: Path, *, unparseable_is_error: bool = False) -> str | None:
+def program_problem(path: Path) -> str | None:
     path = Path(path)
     # Reading a FIFO would block until a writer appears.
     if path.exists() and not path.is_file():
@@ -150,9 +150,7 @@ def program_problem(path: Path, *, unparseable_is_error: bool = False) -> str | 
     try:
         data = plistlib.loads(raw)
     except (ValueError, ExpatError) as exc:
-        if unparseable_is_error:
-            raise RigopsError(f"cannot parse {path}: {exc}") from exc
-        return f"{path} is unreadable: {exc}"
+        raise RigopsError(f"cannot parse {path}: {exc}") from exc
     args = data.get("ProgramArguments") if isinstance(data, dict) else None
     if not isinstance(args, list) or not args or not isinstance(args[0], str):
         return f"{path} has no ProgramArguments"
@@ -180,7 +178,7 @@ def installed_problems() -> list[tuple[Path, str, bool]]:
         path = plist_path(name)
         if path.exists():
             try:
-                problem = program_problem(path, unparseable_is_error=True)
+                problem = program_problem(path)
             except RigopsError as exc:
                 found.append((path, str(exc), False))
                 continue
