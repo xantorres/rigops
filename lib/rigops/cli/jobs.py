@@ -13,7 +13,7 @@ def _action(name: str, rendered: bytes) -> str:
     path = jobs.plist_path(name)
     if not path.exists():
         return "installed"
-    if path.read_bytes() != rendered:
+    if jobs.read_plist(path) != rendered:
         return "updated"
     return "unchanged" if launchd.is_loaded(jobs.label(name)) else "loaded"
 

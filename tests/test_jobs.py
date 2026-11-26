@@ -4,6 +4,7 @@ import contextlib
 import io
 import os
 import plistlib
+import signal
 import subprocess
 import sys
 import tempfile
@@ -423,6 +424,25 @@ class InstallPlanTests(unittest.TestCase):
             doctor = plistlib.loads(written.read_bytes())
 
         self.assertEqual(doctor["ProgramArguments"][-1], "--heal")
+
+    def test_a_fifo_at_a_plist_path_is_refused_without_blocking(self):
+        def blocked(signum, frame):
+            raise AssertionError("jobs install blocked reading the FIFO")
+
+        with home_dir() as home, mock.patch("rigops.launchd.is_loaded", return_value=False):
+            plist = home / "Library" / "LaunchAgents" / "com.rigops.doctor.plist"
+            plist.parent.mkdir(parents=True)
+            os.mkfifo(plist)
+            previous = signal.signal(signal.SIGALRM, blocked)
+            signal.setitimer(signal.ITIMER_REAL, 2)
+            try:
+                code, _, err = run_cli(["install"])
+            finally:
+                signal.setitimer(signal.ITIMER_REAL, 0)
+                signal.signal(signal.SIGALRM, previous)
+
+        self.assertEqual(code, 2)
+        self.assertIn(f"cannot read {plist}: not a regular file", err)
 
     def test_a_refused_executable_writes_nothing_even_in_the_dry_run(self):
         with home_dir() as home, mock.patch.object(

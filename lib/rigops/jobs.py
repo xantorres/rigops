@@ -138,15 +138,19 @@ def render_plist(name: str, rigops_path: str, heal: bool) -> bytes:
     return data
 
 
-def program_problem(path: Path) -> str | None:
-    path = Path(path)
+def read_plist(path: Path) -> bytes:
     # Reading a FIFO would block until a writer appears.
     if path.exists() and not path.is_file():
         raise RigopsError(f"cannot read {path}: not a regular file")
     try:
-        raw = path.read_bytes()
+        return path.read_bytes()
     except OSError as exc:
         raise RigopsError(f"cannot read {path}: {exc}") from exc
+
+
+def program_problem(path: Path) -> str | None:
+    path = Path(path)
+    raw = read_plist(path)
     try:
         data = plistlib.loads(raw)
     except (ValueError, ExpatError) as exc:

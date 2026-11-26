@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The release check fails a final tag that has no release candidate for its version; it used to pass with a note.
 - The release workflow publishes the sdist and wheel that its test stage built and installed, instead of building them a second time.
 
+### Fixed
+
+- `jobs install` and `jobs status` exit `2` on a FIFO or other non-file at a plist path; they used to block reading a FIFO.
+
 ## [0.13.0] - 2026-11-25
 
 ### Added
