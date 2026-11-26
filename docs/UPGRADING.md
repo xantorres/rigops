@@ -28,7 +28,7 @@ Every command now follows one rule: `0` ok, `1` a negative verdict, `2` an error
 | Plain `doctor` with a failing or hung job | `0` | `1` |
 | `doctor --heal` with a failing job | `0` | `1`; add `--exit-zero` for `0` |
 | `doctor` check that crashes or fails to import | `1` | `2`, even with `--exit-zero` |
-| `doctor` with a scheduled job's plist it cannot read | `1` | `2` |
+| `doctor` with a scheduled job's plist it cannot read | no such check; `1` in 0.13, which added it | `2` |
 | `eval diff` with a regression and an unverified or dropped case | `1` | `2` |
 | `ledger write` when `transcripts_dir` does not exist | `0`, empty row | `2`, no row |
 | A `--since` or `--until` that `tax` or `eit` cannot read | `1`, traceback | `2` |
