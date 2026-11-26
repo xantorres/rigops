@@ -1,10 +1,14 @@
 """The docs name what the code ships: commands, flags and links."""
 from __future__ import annotations
 
+import argparse
+import functools
+import importlib
 import re
 import shlex
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from rigops import config_spec, hook, jobs
 from rigops.cli import EXPERIMENTAL
@@ -49,10 +53,16 @@ SKIP_DIRS = {".git", ".claude", "fixtures"}
 ADD_PARSER = re.compile(r"""add_parser\(\s*["']([a-z][a-z0-9-]*)["']""")
 FENCE_LINE = re.compile(r"^[ \t]*(?:```|~~~)")
 INLINE_OR_FENCED = re.compile(r"`([^`\n]*)`")
-PLACEHOLDER = re.compile(r"<[^>]*>?|\s|YYYY-MM-DD")
+PLACEHOLDER = re.compile(r"<[^>]*>?|\s|YYYY-MM-DD|\.\.\.|…")
 ALWAYS_OK_FLAGS = {"--help", "-h"}
 TOP_LEVEL_FLAGS = ALWAYS_OK_FLAGS | {"--version"}
 SHELL_OPERATORS = {"&&", "||", "|", ";"}
+RIGOPS_IN_SPAN = re.compile(r"(?:^|[\s/])rigops\s")
+SHORT_FLAG = re.compile(r"-[A-Za-z]")
+ENV_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+RUNNERS = {"-m", "uvx", "run"}
+# `rigops ledger --show` runs `ledger write --show`.
+DEFAULT_SUBCOMMAND = {"ledger": "write"}
 # Removed in 0.11; only the upgrade notes still name them.
 REMOVED_COMMANDS = {"card", "nudge", "render", "retrieval"}
 REMOVED_FLAGS = {("mine", "--registry")}
@@ -107,9 +117,50 @@ def rigops_spans(text: str) -> list[tuple[int, str]]:
             candidate = candidate.strip()
             if candidate.startswith("$ "):
                 candidate = candidate[2:].strip()
-            if candidate.startswith("rigops "):
+            if RIGOPS_IN_SPAN.search(candidate):
                 found.append((number, candidate))
     return found
+
+
+class _Parsed(Exception):
+    def __init__(self, parser: argparse.ArgumentParser):
+        super().__init__()
+        self.parser = parser
+
+
+def _options(parser: argparse.ArgumentParser) -> frozenset[str]:
+    return frozenset(name for action in parser._actions for name in action.option_strings)
+
+
+@functools.cache
+def command_options(command: str) -> tuple[frozenset[str], dict[str, frozenset[str]]]:
+    """The flags `rigops <command>` takes, and those each of its subcommands adds."""
+    if command == "help":
+        return frozenset(), {}
+    if command == "hook":
+        return frozenset(), dict.fromkeys(hook.EVENTS, frozenset())
+
+    def capture(parser, *args, **kwargs):
+        raise _Parsed(parser)
+
+    module = importlib.import_module(f"rigops.cli.{command}")
+    with mock.patch.object(argparse.ArgumentParser, "parse_args", capture):
+        try:
+            module.main([])
+        except _Parsed as parsed:
+            parser = parsed.parser
+        else:
+            raise AssertionError(f"rigops {command} parsed no arguments")
+    subs = {name: _options(sub) for action in parser._actions
+            if isinstance(action, argparse._SubParsersAction)
+            for name, sub in action.choices.items()}
+    return _options(parser), subs
+
+
+def flag_of(token: str) -> str | None:
+    if token.startswith("--"):
+        return token.split("=", 1)[0]
+    return token[:2] if SHORT_FLAG.match(token) else None
 
 
 def check_span(span: str, removed_ok: bool = False) -> list[str]:
@@ -122,10 +173,21 @@ def check_span(span: str, removed_ok: bool = False) -> list[str]:
         if token not in SHELL_OPERATORS:
             segment.append(token)
             continue
-        if segment[:1] == ["rigops"]:
-            errors += check_invocation(segment[1:], removed_ok)
+        start = invocation_start(segment)
+        if start is not None:
+            errors += check_invocation(segment[start + 1:], removed_ok)
         segment = []
     return errors
+
+
+def invocation_start(segment: list[str]) -> int | None:
+    command_word = next((i for i, word in enumerate(segment)
+                         if not ENV_ASSIGNMENT.match(word)), None)
+    for i, word in enumerate(segment):
+        runs = i == command_word or (i and segment[i - 1] in RUNNERS)
+        if runs and (word == "rigops" or word.endswith("/rigops")):
+            return i
+    return None
 
 
 def check_invocation(args: list[str], removed_ok: bool) -> list[str]:
@@ -137,18 +199,23 @@ def check_invocation(args: list[str], removed_ok: bool) -> list[str]:
     if command not in shipped_commands():
         return [f"`{command}` is not a shipped command"]
     errors = []
-    subs = subcommands(command)
+    allowed, subs = command_options(command)
+    where = command
+    default = DEFAULT_SUBCOMMAND.get(command)
+    if default and (not rest or (rest[0].startswith("-") and rest[0] not in ALWAYS_OK_FLAGS)):
+        rest = [default, *rest]
     if subs and rest and not rest[0].startswith(("-", "<")) and not PLACEHOLDER.search(rest[0]):
-        if rest[0] not in subs:
+        if rest[0] in subs:
+            allowed, where = allowed | subs[rest[0]], f"{command} {rest[0]}"
+        else:
             known = ", ".join(sorted(subs))
             errors.append(f"`{rest[0]}` is not a `{command}` subcommand ({known})")
-    flags = defined_flags()
     for token in rest:
-        flag = token.split("=", 1)[0]
-        if not token.startswith("--") or flag in ALWAYS_OK_FLAGS or (command, flag) in flags:
+        flag = flag_of(token)
+        if flag is None or flag in ALWAYS_OK_FLAGS or flag in allowed:
             continue
         if not (removed_ok and (command, flag) in REMOVED_FLAGS):
-            errors.append(f"`{flag}` is not a `{command}` flag")
+            errors.append(f"`{flag}` is not a `{where}` flag")
     return errors
 
 
@@ -278,6 +345,39 @@ class DocsContractTests(unittest.TestCase):
         self.assertEqual(check_span('rigops ledger note "<text>" --at YYYY-MM-DD'), [])
         text = "see `rigops tax --dead` and `rigops`\n```\n$ rigops doctor\n```"
         self.assertEqual(rigops_spans(text), [(1, "rigops tax --dead"), (3, "rigops doctor")])
+
+    def test_span_checker_finds_rigops_anywhere_in_a_span(self):
+        text = ("run `python -m rigops jobs nosuch` once\n"
+                "```\nPYTHONPATH=lib python3 -m rigops doctor\n```")
+        self.assertEqual(rigops_spans(text), [(1, "python -m rigops jobs nosuch"),
+                                               (3, "PYTHONPATH=lib python3 -m rigops doctor")])
+        self.assertTrue(check_span("python -m rigops jobs nosuch"))
+        self.assertTrue(check_span("/home/alice/.local/bin/rigops doctor --nosuch"))
+        self.assertTrue(check_span("uvx rigops nosuch"))
+        self.assertTrue(check_span("pipx run rigops nosuch"))
+        self.assertTrue(check_span("RIGOPS_CONFIG=/home/alice/c.json rigops nosuch"))
+        self.assertEqual(check_span("python -m rigops jobs install --apply"), [])
+        self.assertEqual(check_span("pipx install rigops"), [])
+        self.assertEqual(check_span("git -C rigops checkout v0.12.0"), [])
+        self.assertEqual(check_span("uvx rigops ..."), [])
+
+    def test_span_checker_reads_flags_before_a_subcommand_as_the_default_ones(self):
+        self.assertEqual(check_span("rigops ledger --show"), [])
+        self.assertEqual(check_span("rigops ledger"), [])
+        self.assertTrue(check_span("rigops ledger --nosuch"))
+        self.assertTrue(check_span("rigops ledger diff --show"))
+
+    def test_span_checker_keys_flags_by_subcommand(self):
+        self.assertTrue(check_span("rigops jobs status --apply"))
+        self.assertTrue(check_span("rigops eval list --label x"))
+        self.assertEqual(check_span("rigops jobs install --apply"), [])
+        self.assertEqual(check_span("rigops eval run --label x"), [])
+
+    def test_span_checker_checks_short_flags(self):
+        self.assertTrue(check_span("rigops doctor -x"))
+        self.assertTrue(check_span("rigops jobs install -a"))
+        self.assertEqual(check_span("rigops doctor -h"), [])
+        self.assertEqual(check_span("rigops tax --since -7d"), [])
 
     def test_span_checker_accepts_top_level_flags_and_placeholder_commands(self):
         self.assertEqual(check_span("rigops --version"), [])
