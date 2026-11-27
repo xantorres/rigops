@@ -140,6 +140,35 @@ class CliContractTests(unittest.TestCase):
             "version": 1, "open": 0, "done": 0, "malformed": [], "unknown_area": [], "ok": True,
         })
 
+    def test_backlog_lint_exits_2_on_a_file_it_cannot_read(self):
+        not_utf8 = self.home / "latin.md"
+        not_utf8.write_bytes(b"\xff\xfe not utf-8\n")
+        a_dir = self.home / "dir.md"
+        a_dir.mkdir()
+        for path in (not_utf8, a_dir):
+            for flags in ((), ("--json",)):
+                with self.subTest(path=path.name, flags=flags):
+                    proc = self.run_cmd("backlog", "lint", *flags, "--file", str(path))
+
+                    self.assertEqual(proc.returncode, 2, proc.stderr)
+                    self.assertEqual(proc.stdout, "")
+                    self.assertTrue(
+                        proc.stderr.startswith(f"error: cannot read {path}: "), proc.stderr,
+                    )
+                    self.assertNotIn("Traceback", proc.stderr)
+
+    def test_backlog_add_exits_2_on_a_file_it_cannot_read(self):
+        a_dir = self.home / "dir.md"
+        a_dir.mkdir()
+        proc = self.run_cmd("backlog", "add", "rig: one", "--file", str(a_dir),
+                            config={"backlog": {"areas": ["rig"]}})
+
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertEqual(proc.stdout, "")
+        self.assertTrue(proc.stderr.startswith("error: "), proc.stderr)
+        self.assertIn(str(a_dir), proc.stderr)
+        self.assertNotIn("Traceback", proc.stderr)
+
     def test_janitor_json_is_valid_when_nothing_is_configured(self):
         payload = self.json_out(self.run_cmd("janitor", "--json"))
 

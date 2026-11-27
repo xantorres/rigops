@@ -61,7 +61,7 @@ When both `1` and `2` apply, `2` wins. A `2` never carries a verdict, so a calle
 | `rigops config get` | Printed | The key is not set | Config unreadable |
 | `rigops config check` | Valid; unknown keys are warnings | | Unreadable, not JSON, not an object, or a key of the wrong type |
 | `rigops authprobe` | Probe passed, or disabled | Probe failed | Config error |
-| `rigops backlog lint` | Clean, or no backlog file | Malformed lines or unknown areas | |
+| `rigops backlog lint` | Clean, or no backlog file | Malformed lines or unknown areas | The backlog file cannot be read |
 | `rigops mine` | Printed with `--dry-run` | | Run without `--dry-run` |
 | `rigops hook` | Always | | |
 

@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `jobs install` and `jobs status` exit `2` on a FIFO or other non-file at a plist path; they used to block reading a FIFO.
+- `backlog lint` exits `2` with one `error:` line on a backlog file it cannot read, such as a directory or bytes that are not UTF-8; it used to print a traceback and exit `1`. `backlog add` does the same when it cannot read or write the file.
 
 ## [0.13.0] - 2026-11-25
 

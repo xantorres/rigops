@@ -27,7 +27,11 @@ def cmd_lint(args, cfg) -> int:
             print(f"no backlog file at {path}")
         return 0
     areas = rigops_config.get(cfg, "backlog.areas", [])
-    text = path.read_text(encoding="utf-8")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        print(f"error: cannot read {path}: {exc}", file=sys.stderr)
+        return 2
     result = rigops_backlog.lint(text, areas)
 
     if args.json:
@@ -63,7 +67,7 @@ def cmd_add(args, cfg) -> int:
 
     try:
         line = rigops_backlog.add_line(path, area, text, date, areas)
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 

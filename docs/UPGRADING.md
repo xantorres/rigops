@@ -36,6 +36,7 @@ Every command now follows one rule: `0` ok, `1` a negative verdict, `2` an error
 | `ledger write` when `transcripts_dir` does not exist | `0`, empty row | `2`, no row |
 | A `--since` or `--until` that `tax` or `eit` cannot read | `1`, traceback | `2` |
 | `reap --apply` when a removal fails | `0` | `2` |
+| `backlog lint` on a backlog file it cannot read | `1`, traceback | `2` |
 
 A gate that fails only on exit `1` misses the `2` cases. Treat any non-zero code as "not passed".
 
