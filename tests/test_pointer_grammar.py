@@ -3,7 +3,15 @@ from __future__ import annotations
 import unittest
 
 from rigops import core
-from rigops.doctor.pointer_grammar import AGENT_RE, MCP_RE, PATH_RE, SKILL_RE
+from rigops.doctor.pointer_grammar import (
+    AGENT_BULLET_RE,
+    AGENT_HEADING_RE,
+    AGENT_RE,
+    MCP_RE,
+    PATH_RE,
+    RELATIVE_LINK_RE,
+    SKILL_RE,
+)
 
 
 def captures(patterns, text):
@@ -90,6 +98,39 @@ class AgentReTests(unittest.TestCase):
         for text in ("`ab` agent", "`Foo` agent", "`1ab` agent", "`-ab` agent"):
             with self.subTest(text=text):
                 self.assertEqual(captures(AGENT_RE, text), [])
+
+
+class RelativeLinkReTests(unittest.TestCase):
+    def test_target_of_a_relative_markdown_link(self):
+        cases = [
+            ("see [x](../common/x.md) now", "../common/x.md"),
+            ("[x](./a.md#top)", "./a.md"),
+            ("[x](sub/dir/)", "sub/dir/"),
+        ]
+        for text, want in cases:
+            with self.subTest(text=text):
+                self.assertEqual(RELATIVE_LINK_RE.findall(text), [want])
+
+    def test_urls_anchors_and_absolute_targets_are_not_relative_links(self):
+        for text in ("[x](https://a.org/b.md)", "[x](#top)", "[x](/etc/hosts)",
+                     "[x](~/a.md)", "[x](mailto:a@b.org)", "a[0](1)", "[x]()"):
+            with self.subTest(text=text):
+                self.assertEqual(RELATIVE_LINK_RE.findall(text), [])
+
+
+class AgentBulletReTests(unittest.TestCase):
+    def test_heading_that_opens_an_agent_section(self):
+        for text in ("## Agent Support", "### Agents", "# The agent list"):
+            with self.subTest(text=text):
+                self.assertTrue(AGENT_HEADING_RE.match(text))
+        for text in ("## Mocking", "Agent Support", "## Agentic loops"):
+            with self.subTest(text=text):
+                self.assertFalse(AGENT_HEADING_RE.match(text))
+
+    def test_bullet_leading_with_a_bold_name(self):
+        self.assertEqual(AGENT_BULLET_RE.findall("- **e2e-runner** - Playwright"), ["e2e-runner"])
+        self.assertEqual(AGENT_BULLET_RE.findall("  * `plan-it`: x"), ["plan-it"])
+        self.assertEqual(AGENT_BULLET_RE.findall("- Use the **reviewer** agent"), [])
 
 
 class SkillReTests(unittest.TestCase):

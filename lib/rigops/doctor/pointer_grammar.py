@@ -100,6 +100,13 @@ AGENT_RE = [
     re.compile(r"[`*]{1,2}([a-z][a-z0-9:_-]{2,})[`*]{1,2}\s+(?:sub)?agent\b"),
     re.compile(r"subagent_type[\"']?\s*[:=]\s*[\"'`]([a-z][a-z0-9:_-]{2,})"),
 ]
+# A bullet under an "Agent" heading names an agent with no trailing word, so the
+# section, not the sentence, is what marks it as a dispatch.
+AGENT_HEADING_RE = re.compile(r"#{1,6}\s+(?:.*\s)?agents?\b", re.IGNORECASE)
+AGENT_BULLET_RE = re.compile(r"\s*[-*]\s+[`*]{1,2}([a-z][a-z0-9:_-]{2,})[`*]{1,2}(?![\w`*])")
+# A target with a scheme, an anchor-only target or a root-anchored one is not
+# relative; the colon exclusion drops every scheme, and PATH_RE owns `/` and `~`.
+RELATIVE_LINK_RE = re.compile(r"\]\(([^)\s#:/~][^)\s#:]*[./][^)\s#:]*)(?:#[^)\s]*)?\)")
 SKILL_RE = [
     re.compile(r"\bskills?\s+[`*]{1,2}([a-z][a-z0-9:_-]{2,})[`*]{1,2}"),
     re.compile(r"[`*]{1,2}([a-z][a-z0-9:_-]{2,})[`*]{1,2}\s+skill\b"),

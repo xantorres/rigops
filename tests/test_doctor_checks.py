@@ -185,6 +185,31 @@ class CheckPointersTests(unittest.TestCase):
         self.assertTrue(any("ghost-agent-does-not-exist-xyz" in k for k in agent_findings))
         self.assertFalse(any("tdd-guide" in k for k in agent_findings))
 
+    def test_relative_link_resolves_against_the_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "here.md").write_text("x")
+            source = self._write_source(
+                tmp, "[ok](here.md#a) and [dead](../common/gone.md) and [web](https://a.org/x.md)\n"
+            )
+            findings = check_pointers.run(self._cfg(source))
+        self.assertEqual(
+            [f.key.split(":")[:2] for f in findings if f.key.startswith("link:")],
+            [["link", "../common/gone.md"]],
+        )
+
+    def test_agent_bullet_under_an_agent_heading_must_name_an_agent(self):
+        text = (
+            "## Agent Support\n\n- **ghost-agent-xyz** - does things\n\n"
+            "## Mocking\n\n- **other-thing-xyz** - not an agent\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            source = self._write_source(tmp, text)
+            findings = check_pointers.run(self._cfg(source))
+        self.assertEqual(
+            [f.key.split(":")[1] for f in findings if f.key.startswith("agent:")],
+            ["ghost-agent-xyz"],
+        )
+
     def test_same_missing_path_twice_on_one_line_dedupes_to_one_finding(self):
         missing = f"~/{ABSENT_HOME_DIR}/dup-missing-file.txt"
         with tempfile.TemporaryDirectory() as tmp:

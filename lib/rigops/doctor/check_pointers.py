@@ -25,6 +25,8 @@ from pathlib import Path
 from rigops import core
 
 from .pointer_grammar import (
+    AGENT_BULLET_RE,
+    AGENT_HEADING_RE,
     AGENT_RE,
     BUILTIN_AGENTS,
     DEFAULT_AGENT_ROOTS,
@@ -42,6 +44,7 @@ from .pointer_grammar import (
     PATH_RE,
     PLUGIN_ID_RE,
     PLUGIN_WORD_RE,
+    RELATIVE_LINK_RE,
     SETTINGS_PATH_KEYS,
     SKILL_RE,
     TRANSCRIPT_RE,
@@ -258,6 +261,7 @@ def _unregistered(name, known, kind):
 def _scan_text(path, text, known, numbered=True, memory=False):
     out = []
     label = core.short(path)
+    in_agents = False
     for lineno, line in enumerate(text.splitlines(), 1):
         where = f"{label}:{lineno}" if numbered else label
         for match in PATH_RE.finditer(line):
@@ -269,6 +273,21 @@ def _scan_text(path, text, known, numbered=True, memory=False):
                                     "repoint at the live path or delete the claim"))
         if memory:
             continue
+        for target in RELATIVE_LINK_RE.findall(line):
+            if any(token in target for token in ("$", "{", "}", "...", "<", ">")):
+                continue
+            if any(seg in target for seg in known["placeholders"]):
+                continue
+            if not (Path(path).parent / target).exists():
+                out.append(_finding("link", target, where,
+                                    "repoint the link at a file that exists or drop it"))
+        if line.startswith("#"):
+            in_agents = bool(AGENT_HEADING_RE.match(line))
+        elif in_agents:
+            for name in AGENT_BULLET_RE.findall(line):
+                if _unregistered(name, known, "agents"):
+                    out.append(_finding("agent", name, where,
+                                        "name an agent that exists or drop the dispatch"))
         for regex in AGENT_RE:
             for name in regex.findall(line):
                 if _unregistered(name, known, "agents"):

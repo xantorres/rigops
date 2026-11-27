@@ -369,7 +369,7 @@ def main(argv: list[str] | None = None) -> int:
         "--config-only", action="store_true",
         help=(
             "run only the config checks (agents, budget, jobs, levers, mcp, memory, "
-            "pointers) and skip the fleet"
+            "plugin_cache_clean, pointers) and skip the fleet"
         ),
     )
     ap.add_argument(
