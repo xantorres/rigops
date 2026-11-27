@@ -273,6 +273,28 @@ class ExtraDenialFrictionTests(unittest.TestCase):
         self.assertEqual(extra["denials"], 1)
 
 
+class DrillDirFrictionTests(unittest.TestCase):
+    def test_drill_project_dir_adds_no_headless_denials(self):
+        row = {
+            "type": "user",
+            "timestamp": "2026-11-03T12:00:00Z",
+            "sessionId": "s1",
+            "message": {"role": "user", "content": [{
+                "type": "tool_result", "is_error": True,
+                "content": "Permission to use Bash has been denied.",
+            }]},
+        }
+        window = (transcripts.parse_ts("2026-11-03T00:00:00Z"),
+                  transcripts.parse_ts("2026-11-04T00:00:00Z"))
+        with tempfile.TemporaryDirectory() as tmp:
+            _write_line(Path(tmp) / "-Users-me--cache-rig-drill-scrub" / "s1.jsonl", row)
+            fr = transcripts.collect_friction(
+                *window, transcripts_dir=tmp, headless_projects=("-cache-rig-",)
+            )
+        self.assertEqual(fr["denials"], 1)
+        self.assertEqual(fr["denials_headless"], 0)
+
+
 class UndecodableFrictionTests(unittest.TestCase):
     def test_a_row_with_bytes_that_are_not_utf8_does_not_stop_the_count(self):
         def row(minute: int, text: bytes) -> bytes:

@@ -266,6 +266,8 @@ def _flatten_tool_result_text(content) -> str:
     return ""
 
 
+DRILL_PROJECT_MARK = "-cache-rig-drill-"
+
 SKIP_PREFIXES = ("<system-reminder", "<command-", "Caveat:", "[Request interrupted")
 
 
@@ -281,7 +283,9 @@ def friction_in_file(path, root, since, until, lines, acc, headless_projects=(),
     if "/subagents/" in path:
         return
     rel_path = os.path.relpath(path, str(root))
-    is_headless = any(sub and sub in rel_path for sub in headless_projects)
+    is_headless = DRILL_PROJECT_MARK not in rel_path and any(
+        sub and sub in rel_path for sub in headless_projects
+    )
     for line in lines:
         line = line.strip()
         if not line:
