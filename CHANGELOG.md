@@ -17,8 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `jobs install` and `jobs status` exit `2` on a FIFO or other non-file at a plist path; they used to block reading a FIFO.
-- `backlog lint` exits `2` with one `error:` line on a backlog file it cannot read, such as a directory or bytes that are not UTF-8; it used to print a traceback and exit `1`. `backlog add` does the same when it cannot read or write the file.
-- `doctor` no longer prints a `<lever>:value` warning for a built-in lever rule whose column is `null` on the newest ledger row. A row over a window with no turns set off eight of them on top of `no-turns`. A rule you configure still warns on `null`.
+- `backlog lint` exits `2` with one `error:` line on a backlog file it cannot read, such as a directory or bytes that are not UTF-8; it used to print a traceback and exit `1`. A file in a directory it cannot search is the same error; it used to count as no backlog file, exit `0`. `backlog add` does the same when it cannot read or write the file.
+- `doctor` no longer prints a `<lever>:value` warning for a built-in lever rule whose column is `null` on the newest ledger row. A row over a window with no turns set off up to eight of them on top of `no-turns`. A rule you configure still warns on `null`.
 
 ## [0.13.0] - 2026-11-25
 

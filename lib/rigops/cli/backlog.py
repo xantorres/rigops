@@ -19,19 +19,19 @@ def _backlog_path(cfg, arg_file) -> Path:
 
 def cmd_lint(args, cfg) -> int:
     path = _backlog_path(cfg, args.file)
-    if not path.exists():
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, NotADirectoryError):
         if args.json:
             print(json.dumps({"version": 1, "open": 0, "done": 0, "malformed": [], "unknown_area": [],
                               "ok": True}, indent=2))
         else:
             print(f"no backlog file at {path}")
         return 0
-    areas = rigops_config.get(cfg, "backlog.areas", [])
-    try:
-        text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         print(f"error: cannot read {path}: {exc}", file=sys.stderr)
         return 2
+    areas = rigops_config.get(cfg, "backlog.areas", [])
     result = rigops_backlog.lint(text, areas)
 
     if args.json:

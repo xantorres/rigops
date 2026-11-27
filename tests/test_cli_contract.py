@@ -157,6 +157,31 @@ class CliContractTests(unittest.TestCase):
                     )
                     self.assertNotIn("Traceback", proc.stderr)
 
+    @unittest.skipIf(os.geteuid() == 0, "root ignores directory permissions")
+    def test_backlog_lint_exits_2_under_a_directory_it_cannot_search(self):
+        locked = self.home / "locked"
+        locked.mkdir()
+        path = locked / "backlog.md"
+        path.write_text("# Backlog\n", encoding="utf-8")
+        locked.chmod(0)
+        self.addCleanup(locked.chmod, 0o700)
+
+        proc = self.run_cmd("backlog", "lint", "--file", str(path))
+
+        self.assertEqual(proc.returncode, 2, proc.stdout)
+        self.assertEqual(proc.stdout, "")
+        self.assertTrue(proc.stderr.startswith(f"error: cannot read {path}: "), proc.stderr)
+        self.assertNotIn("Traceback", proc.stderr)
+
+    def test_backlog_lint_treats_a_path_under_a_file_as_no_backlog_file(self):
+        a_file = self.home / "plain"
+        a_file.write_text("x\n", encoding="utf-8")
+
+        proc = self.run_cmd("backlog", "lint", "--file", str(a_file / "backlog.md"))
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("no backlog file", proc.stdout)
+
     def test_backlog_add_exits_2_on_a_file_it_cannot_read(self):
         a_dir = self.home / "dir.md"
         a_dir.mkdir()
