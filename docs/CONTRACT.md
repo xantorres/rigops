@@ -8,7 +8,7 @@ This page lists what rigops 1.x promises to scripts, CI jobs and the plugin: com
 |---|---|---|
 | Stable | `ledger` (`write`, `note`, `diff`), `tax`, `doctor` with its `jobs`, `budget` and `levers` checks, `reap` for worktrees, `janitor`, `eval` (`run`, `diff`, `list`), `config`, `jobs`, `version` | Everything on this page, through 1.x. |
 | Plugin interface | `rigops hook <event>` | Stable, but called only by the plugin, so it is left out of `rigops --help`. |
-| Experimental | `authprobe`, `backlog`, `eit`, `mine`; the `pointers`, `mcp`, `memory` and `agents` doctor checks; the reap orphan sweep; the reap dev-server sweep (`reap --procs-only`, the `reaper.dev_server_*` keys and the `reap-procs` job); the context-size nudge tiers; janitor watermarks | Can change or go in any minor release. [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md#experimental-commands) lists the experimental commands, and `rigops --help` names them on its last line. |
+| Experimental | `authprobe`, `backlog`, `eit`, `mine`; the `pointers`, `mcp`, `memory`, `agents` and `plugin_cache_clean` doctor checks; the reap orphan sweep; the reap dev-server sweep (`reap --procs-only`, the `reaper.dev_server_*` keys and the `reap-procs` job); the context-size nudge tiers; janitor watermarks | Can change or go in any minor release. [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md#experimental-commands) lists the experimental commands, and `rigops --help` names them on its last line. |
 | Internal | Python modules and imports, how doctor finds its `check_*.py` modules, text output, plist and crontab contents | No promise. |
 
 ## Commands
