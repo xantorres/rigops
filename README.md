@@ -4,7 +4,7 @@ rigops tells you whether the changes you make to your Claude Code rig work. The 
 
 Around that loop it measures the always-loaded config every turn pays for, checks that your scheduled jobs ran, cleans up merged worktrees and old files, and gates prompt or model changes on an eval suite.
 
-> **Status:** 0.13, on the way to 1.0. [docs/CONTRACT.md](docs/CONTRACT.md) is what 1.x will keep stable.
+> [docs/CONTRACT.md](docs/CONTRACT.md) is what every 1.x release keeps stable.
 
 ## Quickstart
 

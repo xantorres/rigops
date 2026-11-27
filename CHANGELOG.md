@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0rc1] - 2026-11-27
+
+### Added
+
+- `docs/CONTRACT.md` writes down what every 1.x release keeps stable: the command tiers, commands and flags, exit codes, `--json` output, state files, config, environment variables, hooks, extension points and eval cases, with the compatibility and deprecation policy and a CI recipe for gating on `eval diff`.
+- `docs/UPGRADING.md` covers the move from 0.10 to 1.0: the steps, every changed exit code, and what changed in commands, config, state, `--json` and scheduled jobs.
+- `SECURITY.md` has the threat model and how to report a vulnerability in private.
+- The README opens with what rigops is and a five-minute quickstart; CI runs those commands on macOS and Ubuntu.
+- Issue templates for a bug and for an install report.
+
 ### Changed
 
 - `doctor` reports a scheduled job's plist that it cannot read as an `error` finding (key `unreadable:<plist>`) and exits `2`, as `jobs status` does; it used to be a failing finding with exit `1`. A plist that does not parse is the same `error`, and `jobs status` now exits `2` on it instead of showing a program problem with exit `1`. A directory or other non-file at a plist path is the same `error`; `doctor` used to skip it and exit `0`.
@@ -19,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `jobs install` and `jobs status` exit `2` on a FIFO or other non-file at a plist path; they used to block reading a FIFO.
 - `backlog lint` exits `2` with one `error:` line on a backlog file it cannot read, such as a directory or bytes that are not UTF-8; it used to print a traceback and exit `1`. A file in a directory it cannot search is the same error; it used to count as no backlog file, exit `0`. `backlog add` does the same when it cannot read or write the file.
 - `doctor` no longer prints a `<lever>:value` warning for a built-in lever rule whose column is `null` on the newest ledger row. A row over a window with no turns set off up to eight of them on top of `no-turns`. A rule you configure still warns on `null`.
+
+### Upgrading from 0.13.x
+
+- A script that treats only exit `1` from `doctor` or `jobs status` as a failure misses the plist cases above, which now exit `2`. Treat any non-zero code as not passed.
+- No config default changed since 0.13.0.
+- Coming from 0.10, 0.11 or 0.12: `docs/UPGRADING.md` has the whole path.
 
 ## [0.13.0] - 2026-11-25
 
