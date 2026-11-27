@@ -173,6 +173,10 @@ def processes_rooted_in(tree: str, snap: dict[int, dict],
     return _descendants(roots, snap)
 
 
+def has_terminal(info: dict) -> bool:
+    return info["tty"].strip("?") != ""
+
+
 def _filter_killable(pids: set[int], snap: dict[int, dict]) -> set[int]:
     """Own-uid, terminal-less processes only, minus the never-signal set.
 
@@ -183,7 +187,7 @@ def _filter_killable(pids: set[int], snap: dict[int, dict]) -> set[int]:
     """
     uid = os.getuid()
     keep = {p for p in pids
-            if p in snap and snap[p]["uid"] == uid and snap[p]["tty"].strip("?") == ""}
+            if p in snap and snap[p]["uid"] == uid and not has_terminal(snap[p])}
     return keep - protected_pids(snap)
 
 

@@ -16,6 +16,18 @@ from rigops import reap_selftest
 from rigops import state
 
 
+def _empty_report() -> dict:
+    return {"generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "repos": [], "orphan_daemons": [],
+            "process_observation_ok": True, "version": 1}
+
+
+def _relative_config_root(args: argparse.Namespace) -> str | None:
+    if args.root:
+        return None
+    return next((str(r) for r in args.roots if not os.path.isabs(str(r))), None)
+
+
 def _procs_only(args: argparse.Namespace, cfg: dict) -> int:
     if args.dry_run and not args.apply:
         print("--dry-run requires --apply", file=sys.stderr)
@@ -41,13 +53,19 @@ def _procs_only(args: argparse.Namespace, cfg: dict) -> int:
               file=sys.stderr)
         return 2
     args.dev_server_min_age_s = min_age
+    relative = _relative_config_root(args)
+    if relative is not None:
+        print(f"error: reaper.roots: '{relative}' must be an absolute path", file=sys.stderr)
+        return 2
     if not args.roots:
         print(f"rigops reap: no roots configured; set reaper.roots in "
               f"{rigops_config.config_path()} or pass --root <dir>", file=sys.stderr)
+        if args.json:
+            print(json.dumps(reap_devservers.empty_report(), indent=2))
         return 0
     if args.apply:
         rigops_config.require_private(rigops_config.config_path())
-        with state.locked(state.state_dir() / "reap-procs"):
+        with state.locked(state.state_dir() / "reap"):
             return reap_devservers.run_procs(args)
     return reap_devservers.run_procs(args)
 
@@ -134,9 +152,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"rigops reap: no roots configured; set reaper.roots in "
               f"{rigops_config.config_path()} or pass --root <dir>", file=sys.stderr)
         if args.json:
-            print(json.dumps({"generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                              "repos": [], "orphan_daemons": [],
-                              "process_observation_ok": True, "version": 1}, indent=2))
+            print(json.dumps(_empty_report(), indent=2))
         return 0
 
     args.ignored_untracked_dirs = set(rigops_config.get(cfg, "reaper.ignored_untracked_dirs", []))

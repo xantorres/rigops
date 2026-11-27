@@ -221,11 +221,13 @@ SPEC: tuple[Key, ...] = (
         "Minimum runtime before a build daemon counts as orphaned."),
     _k("reaper.orphan_sweep", BOOL, False, "Run the orphan-daemon sweep."),
     _k("reaper.dev_server_sweep", BOOL, False,
-        "Kill detached dev servers under reaper.roots on reap --procs-only."),
+        "Kill stale dev servers under reaper.roots on reap --procs-only, "
+        "unless held by a terminal or an active session."),
     _k("reaper.dev_server_min_age_s", INT, 10800,
-        "Runtime before a detached dev server counts as left behind."),
+        "Runtime before a dev server counts as stale."),
     _k("reaper.dev_server_patterns", STRINGS, UNSET,
-        "Regexes a dev-server command line matches; unset uses a built-in list."),
+        "Regexes a dev-server command line matches; unset uses the built-in "
+        "dev and watch list, set replaces it."),
     _k("reaper.kill_grace_s", NUMBER, 5,
         "Seconds between SIGTERM and SIGKILL when clearing a worktree."),
     _k("reaper.max_worktrees", INT, 5,

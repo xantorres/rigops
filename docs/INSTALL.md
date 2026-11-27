@@ -4,7 +4,7 @@ How to get rigops running: the `rigops` package (a command plus optional schedul
 
 rigops ships in two independent pieces that read the same JSON config ([CONFIG.md](CONFIG.md)):
 
-- **Package** - the `rigops` command (`ledger`, `doctor`, `reap`, and the rest) and `rigops jobs`, which schedules `doctor` and `ledger` (and on request `janitor` and `reap`) on a timer.
+- **Package** - the `rigops` command (`ledger`, `doctor`, `reap`, and the rest) and `rigops jobs`, which schedules `doctor` and `ledger` (and on request `janitor`, `reap` and `reap-procs`) on a timer.
 - **Plugin** - slash commands, skills and hooks inside Claude Code. It degrades gracefully when the command is missing, and the command works without the plugin.
 
 ## Requirements
@@ -33,7 +33,7 @@ rigops jobs install
 rigops jobs install --apply
 ```
 
-- `doctor` (every 30 minutes) and `ledger write` (Monday 09:05) are the default. `--jobs doctor,ledger,janitor,reap` picks others; `janitor` and `reap` run with `--apply` on schedule (Sunday 10:00, daily 08:30).
+- `doctor` (every 30 minutes) and `ledger write` (Monday 09:05) are the default. `--jobs doctor,ledger,janitor,reap,reap-procs` picks others; `janitor`, `reap` and `reap-procs` run with `--apply` on schedule (Sunday 10:00, daily 08:30, every 15 minutes). `reap-procs` is experimental and signals nothing unless `reaper.dev_server_sweep` or `reaper.orphan_sweep` is `true`.
 - `--heal` lets the scheduled `doctor` kill hung jobs and kickstart stale ones. Without it the job only reports.
 - The plist holds the absolute path of the `rigops` on `PATH`, because launchd has no shell `PATH` to search. `jobs install` refuses (exit 2) when that `rigops` is not the one running, so `python -m rigops jobs install` is always refused: run the installed command.
 - `uvx rigops ...` and `pipx run rigops ...` are for trying the tool, not for scheduling it. `jobs install` refuses under them because it recognises their default cache locations; with a custom cache directory it cannot, and `rigops jobs status` and `doctor` flag the job once that cache is cleaned.
@@ -63,7 +63,7 @@ rigops jobs uninstall --apply
 pipx uninstall rigops
 ```
 
-`jobs uninstall --apply` boots out and removes the four `com.rigops.*` plists and nothing else. Remove the package with the tool that installed it (`uv tool uninstall rigops`, or `python3 -m pip uninstall rigops`). Config (`~/.config/rigops/`), state (`~/.local/state/rigops/`) and logs (`~/Library/Logs/rigops/`) are left in place; delete them by hand if you want them gone.
+`jobs uninstall --apply` boots out and removes the five `com.rigops.*` plists and nothing else. Remove the package with the tool that installed it (`uv tool uninstall rigops`, or `python3 -m pip uninstall rigops`). Config (`~/.config/rigops/`), state (`~/.local/state/rigops/`) and logs (`~/Library/Logs/rigops/`) are left in place; delete them by hand if you want them gone.
 
 ## Moving from an install.sh install
 

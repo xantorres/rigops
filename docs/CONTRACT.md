@@ -8,7 +8,7 @@ This page lists what rigops 1.x promises to scripts, CI jobs and the plugin: com
 |---|---|---|
 | Stable | `ledger` (`write`, `note`, `diff`), `tax`, `doctor` with its `jobs`, `budget` and `levers` checks, `reap` for worktrees, `janitor`, `eval` (`run`, `diff`, `list`), `config`, `jobs`, `version` | Everything on this page, through 1.x. |
 | Plugin interface | `rigops hook <event>` | Stable, but called only by the plugin, so it is left out of `rigops --help`. |
-| Experimental | `authprobe`, `backlog`, `eit`, `mine`; the `pointers`, `mcp`, `memory` and `agents` doctor checks; the reap orphan sweep; the context-size nudge tiers; janitor watermarks | Can change or go in any minor release. [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md#experimental-commands) lists the experimental commands, and `rigops --help` names them on its last line. |
+| Experimental | `authprobe`, `backlog`, `eit`, `mine`; the `pointers`, `mcp`, `memory` and `agents` doctor checks; the reap orphan sweep; the reap dev-server sweep (`reap --procs-only`, the `reaper.dev_server_*` keys and the `reap-procs` job); the context-size nudge tiers; janitor watermarks | Can change or go in any minor release. [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md#experimental-commands) lists the experimental commands, and `rigops --help` names them on its last line. |
 | Internal | Python modules and imports, how doctor finds its `check_*.py` modules, text output, plist and crontab contents | No promise. |
 
 ## Commands
@@ -102,7 +102,7 @@ Read the payload for what went wrong and the exit code for whether it passed.
 | `rigops tax --starts --json` | `version`, `starts`, `surfaces`, `groups` |
 | `rigops tax --starts --session <id> --json` | `version`, `rows` |
 | `rigops tax --dead --json` | `version`, `starts`, `max_per_100`, `tools`, `groups` |
-| `rigops reap --json` | `version`, `generated`, `repos`, `orphan_daemons`, `process_observation_ok` |
+| `rigops reap --json` | `version`, `generated`, `repos`, `orphan_daemons`, `process_observation_ok`; `--procs-only` adds `dev_servers`, `skipped_owned`, `kills`, `deadline_hit` (experimental, always present there, empty when observation fails) and leaves `repos` empty |
 | `rigops janitor --json` | `version`, `rules`, `total_deleted`, `watermarks`, `apply` |
 | `rigops authprobe --json` | `version`, `ok`, `detail`, `enabled` |
 | `rigops backlog lint --json` | `version`, `open`, `done`, `malformed`, `unknown_area`, `ok` |
@@ -195,7 +195,7 @@ The config file is `RIGOPS_CONFIG`, or `${XDG_CONFIG_HOME:-~/.config}/rigops/con
 | `XDG_CONFIG_HOME` | Base for the config file when `RIGOPS_CONFIG` is unset, and for the registry when `doctor.registry` is unset. |
 | `XDG_STATE_HOME` | Base for the state directory when `RIGOPS_STATE_DIR` is unset, and always for the gate record, the nudge state and cron logs. |
 | `RIGOPS_PLUGIN_VERSION` | Set by the plugin's hook script. `session-start` warns when its major.minor differs from the CLI's. |
-| `RIGOPS_RUN_DEADLINE_S` | Seconds `reap` may run before it stops, default `3600`. A value that is not an integer means `3600`. |
+| `RIGOPS_RUN_DEADLINE_S` | Seconds `reap`, including `reap --procs-only`, may run before it stops, default `3600`. A value that is not an integer means `3600`. |
 | The name given to `--api-key-env` or `eval.api_key_env` | Bearer token for `eval run`. |
 
 `rigops jobs install` copies `RIGOPS_CONFIG`, `RIGOPS_STATE_DIR`, `XDG_CONFIG_HOME` and `XDG_STATE_HOME` into each plist when they are set, so a scheduled run sees the same files you do.
