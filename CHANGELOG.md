@@ -7,13 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0rc2] - 2026-11-28
+
 ### Added
 
+- Experimental: the `pointers` doctor check resolves relative markdown links in the files it scans (key `link:<target>`) and checks agent names listed as bullets under a heading that names agents (key `agent:<name>`). Both are failing findings.
+- Experimental: a `plugin_cache_clean` doctor check fails (key `stale:<directory>`) when a `temp_git_*` directory left in the plugin cache by a failed plugin clone is over eight days old.
 - Experimental: `reap --procs-only` kills stale dev servers (`vite dev`, `turbo run dev`, `pnpm dev`, `nodemon` and other dev and watch commands, not `start` or `preview`) running longer than `reaper.dev_server_min_age_s` under `reaper.roots`, plus the orphan-daemon sweep, with no git work. A server is kept when it, an ancestor or a descendant has a controlling terminal, or when any agent session above it is active (not known to be idle longer than the threshold); any other parent does not protect it. Default patterns match only when the tool is the program being run, not when a command merely mentions it. Protected trees and live session processes are also exempt from the orphan sweep. `--min-age-s` overrides the age for one run. `--json` adds `dev_servers`, `skipped_owned`, `kills` and `deadline_hit`; text output prints `SKIP-DEADLINE` when the run deadline stops the sweep.
 - Experimental: the opt-in `reap-procs` job runs `reap --procs-only --apply` every 15 minutes, under the same lock as `reap`. It is not in the default job set and signals nothing unless `reaper.dev_server_sweep` or `reaper.orphan_sweep` is `true`.
 
+### Fixed
+
+- `ledger write` counts a session whose project path contains `-cache-rig-drill-` as interactive even when a `friction.headless_projects` entry matches it; its corrections and denials used to be dropped with the headless ones.
+
 ### Upgrading from 1.0.0rc1
 
+- `doctor` can exit `1` where 1.0.0rc1 exited `0`: on a relative markdown link that does not resolve, on an unknown agent name in a bullet under an agents heading, or on a stale `temp_git_*` directory in the plugin cache.
 - New keys: `reaper.dev_server_sweep` (default `false`), `reaper.dev_server_min_age_s` (default `10800`) and `reaper.dev_server_patterns` (unset uses a built-in list of dev and watch commands; setting it replaces that list). With the defaults `reap --procs-only` signals no dev server.
 
 ## [1.0.0rc1] - 2026-11-27
