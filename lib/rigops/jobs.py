@@ -35,6 +35,7 @@ JOBS: dict[str, Job] = {
         Job("ledger", "5 9 * * 1", ("ledger", "write")),
         Job("janitor", "0 10 * * 0", ("janitor", "--apply")),
         Job("reap", "30 8 * * *", ("reap", "--apply")),
+        Job("reap-procs", "*/15 * * * *", ("reap", "--procs-only", "--apply")),
     )
 }
 DEFAULT_JOBS = ("doctor", "ledger")

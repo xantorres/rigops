@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  rigops reap, procs-only mode: kills detached dev servers and orphan daemons
+  left running under reaper.roots. Runs in apply mode; reaper.dev_server_sweep
+  and reaper.orphan_sweep gate what it signals.
+  Cadence: every 15 minutes.
+  rendered by rigops jobs install
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>@LABEL@</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>@RIGOPS@</string>
+		<string>reap</string>
+		<string>--procs-only</string>
+		<string>--apply</string>
+	</array>
+	<key>StartInterval</key>
+	<integer>900</integer>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>Nice</key>
+	<integer>10</integer>
+	<key>LowPriorityIO</key>
+	<true/>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HOME</key>
+		<string>@HOME@</string>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+@EXTRA_ENV@
+	</dict>
+	<key>StandardOutPath</key>
+	<string>@LOG_DIR@/@LABEL@.log</string>
+	<key>StandardErrorPath</key>
+	<string>@LOG_DIR@/@LABEL@.err</string>
+</dict>
+</plist>

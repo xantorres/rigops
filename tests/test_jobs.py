@@ -20,7 +20,7 @@ from rigops.errors import RigopsError
 from tests.support import wrapper
 
 REPO = Path(__file__).resolve().parent.parent
-LABELS = [f"com.rigops.{name}" for name in ("doctor", "ledger", "janitor", "reap")]
+LABELS = [f"com.rigops.{name}" for name in ("doctor", "ledger", "janitor", "reap", "reap-procs")]
 
 
 def script(path: Path, body: str = "exit 0") -> Path:
@@ -275,6 +275,8 @@ class CronTests(unittest.TestCase):
             "0 10 * * 0 /home/alice/.local/bin/rigops janitor --apply"
             f" >> {log}/janitor.cron.log 2>&1",
             f"30 8 * * * /home/alice/.local/bin/rigops reap --apply >> {log}/reap.cron.log 2>&1",
+            "*/15 * * * * /home/alice/.local/bin/rigops reap --procs-only --apply"
+            f" >> {log}/reap-procs.cron.log 2>&1",
         ])
 
     def test_logs_follow_xdg_state_home(self):
@@ -537,7 +539,7 @@ class StatusTests(unittest.TestCase):
             code, out, _ = run_cli(["status"])
 
         self.assertEqual(code, 0)
-        self.assertEqual(len(out.splitlines()), 4)
+        self.assertEqual(len(out.splitlines()), len(jobs.JOBS))
         self.assertIn("com.rigops.doctor  installed=yes  loaded=yes  program=ok", out)
         self.assertIn("com.rigops.ledger  installed=no", out)
 

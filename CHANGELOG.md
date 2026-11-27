@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `reap --procs-only` kills detached dev servers (rsbuild, vite, `turbo run dev`, `pnpm dev` and the like) running longer than `reaper.dev_server_min_age_s` under `reaper.roots`, plus the orphan-daemon sweep, with no git work. Whoever the parent is: a server a live app still owns is matched too. A server with a controlling terminal is kept. `--min-age-s` overrides the age for one run.
+- The `reap-procs` job runs `reap --procs-only --apply` every 15 minutes.
+
+### Upgrading from 1.0.0rc1
+
+- New keys: `reaper.dev_server_sweep` (default `false`), `reaper.dev_server_min_age_s` (default `10800`) and `reaper.dev_server_patterns` (unset uses a built-in list). With the defaults `reap --procs-only` signals no dev server.
+
 ## [1.0.0rc1] - 2026-11-27
 
 ### Added

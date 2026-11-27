@@ -10,9 +10,46 @@ from pathlib import Path
 from rigops import cli
 from rigops import config as rigops_config
 from rigops import reap
+from rigops import reap_devservers
 from rigops import reap_guards
 from rigops import reap_selftest
 from rigops import state
+
+
+def _procs_only(args: argparse.Namespace, cfg: dict) -> int:
+    if args.dry_run and not args.apply:
+        print("--dry-run requires --apply", file=sys.stderr)
+        return 2
+    args.dev_server_sweep = rigops_config.get(cfg, "reaper.dev_server_sweep", False)
+    problem = reap_guards.bool_setting_error("reaper.dev_server_sweep", args.dev_server_sweep)
+    if problem:
+        print(f"error: {problem}", file=sys.stderr)
+        return 2
+    patterns = rigops_config.get(cfg, "reaper.dev_server_patterns",
+                                 reap_devservers.DEFAULT_PATTERNS)
+    problem = reap_guards.list_setting_error("reaper.dev_server_patterns", patterns)
+    compiled = patterns if problem else reap_devservers.compile_patterns(patterns)
+    if problem or isinstance(compiled, str):
+        print(f"error: {problem or compiled}", file=sys.stderr)
+        return 2
+    args.dev_server_patterns = compiled
+    min_age = args.min_age_s
+    if min_age is None:
+        min_age = rigops_config.get(cfg, "reaper.dev_server_min_age_s", 10800)
+    if type(min_age) is not int or min_age < 0:
+        print("error: reaper.dev_server_min_age_s must be a non-negative integer",
+              file=sys.stderr)
+        return 2
+    args.dev_server_min_age_s = min_age
+    if not args.roots:
+        print(f"rigops reap: no roots configured; set reaper.roots in "
+              f"{rigops_config.config_path()} or pass --root <dir>", file=sys.stderr)
+        return 0
+    if args.apply:
+        rigops_config.require_private(rigops_config.config_path())
+        with state.locked(state.state_dir() / "reap-procs"):
+            return reap_devservers.run_procs(args)
+    return reap_devservers.run_procs(args)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -47,6 +84,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="an unmerged branch becomes eligible once its last commit is older "
                              "than this and it has no unpushed commits "
                              "(default: config reaper.grace_days, else 14)")
+    parser.add_argument("--procs-only", action="store_true",
+                        help="only sweep stale dev servers and orphan daemons; no git work")
+    parser.add_argument("--min-age-s", type=int, default=None,
+                        help="with --procs-only, dev-server runtime before it is stale "
+                             "(default: config reaper.dev_server_min_age_s, else 10800)")
     args = parser.parse_args(argv)
 
     cfg = rigops_config.load()
@@ -86,6 +128,8 @@ def main(argv: list[str] | None = None) -> int:
     if problem:
         print(f"error: {problem}", file=sys.stderr)
         return 2
+    if args.procs_only:
+        return _procs_only(args, cfg)
     if not roots and not args.repo and (args.apply or not args.dry_run):
         print(f"rigops reap: no roots configured; set reaper.roots in "
               f"{rigops_config.config_path()} or pass --root <dir>", file=sys.stderr)

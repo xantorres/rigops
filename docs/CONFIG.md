@@ -170,7 +170,7 @@ Config for `rigops doctor` (see [REGISTRY.md](REGISTRY.md) for the judgment mode
 
 ## `reaper`
 
-Config for `rigops reap` (see [SAFETY.md](SAFETY.md) for the kill/removal guards). For one run, `--root <dir>` scans that tree in place of `roots`, `--repo <path>` (repeatable) limits the worktree scan to the named repositories, while the orphan-daemon sweep still walks `--root` or `roots`. `--no-fetch` skips `git fetch`, so the merged check reads local refs only, and `--json` prints the report as JSON.
+Config for `rigops reap` (see [SAFETY.md](SAFETY.md) for the kill/removal guards). For one run, `--root <dir>` scans that tree in place of `roots`, `--repo <path>` (repeatable) limits the worktree scan to the named repositories, while the orphan-daemon sweep still walks `--root` or `roots`. `--no-fetch` skips `git fetch`, so the merged check reads local refs only, and `--json` prints the report as JSON. `rigops reap --procs-only` runs only the dev-server and orphan-daemon sweeps, with no git work; `rigops reap --min-age-s <n>` overrides `dev_server_min_age_s` for that run.
 
 - `roots` (`array<string>`, default `[]`) - trees scanned for repositories. A repository is any directory with a `.git` directory two levels under a root (a `group/repo` layout). With no roots configured and no `--root`, `rigops reap` prints one line to stderr naming the config path and exits 0 without scanning; `--repo` still works.
 - `sessions_dir` (`string`, default `~/.claude/sessions`) - directory of live-session JSON files (`{"pid": N, "cwd": "..."}`). A worktree whose cwd is claimed by a live session (pid still alive) is never touched. A missing directory just disables this extra guard; it isn't an error.
@@ -178,6 +178,9 @@ Config for `rigops reap` (see [SAFETY.md](SAFETY.md) for the kill/removal guards
 - `max_kills_per_tree` (`int`, default `20`) - more matched processes under one worktree than this means the match isn't trusted: no signals sent, no removal attempted, for that tree.
 - `orphan_min_age_s` (`int`, default `172800`, 48h) - minimum runtime before a launchd-reparented, `node_modules`-rooted build daemon counts as orphaned rather than still doing real work.
 - `orphan_sweep` (`bool`, default `false`) - the orphan-daemon sweep (see `orphan_min_age_s`) runs only when this is `true`; otherwise reap never looks for or signals orphans. Anything but a JSON boolean exits 2 with an error naming the key.
+- `dev_server_sweep` (`bool`, default `false`) - `reap --procs-only` kills a detached dev server under `roots` once it has run longer than `dev_server_min_age_s`, with its whole process tree, whoever its parent is. A process with a controlling terminal or of another user is never signalled. `false` makes the sweep match nothing.
+- `dev_server_min_age_s` (`int`, default `10800`, 3h) - runtime before a dev server counts as left behind.
+- `dev_server_patterns` (`array<string>`, unset uses a built-in list) - regexes searched in a process command line; the built-in list covers rsbuild, rslib, vite, next, storybook, wrangler and webpack dev or serve, `turbo run dev`, `npm`/`pnpm`/`yarn`/`bun` `dev`/`start`/`serve`, nodemon and `tsx watch`. A pattern that does not compile exits 2.
 - `kill_grace_s` (`number`, default `5`) - SIGTERM-to-SIGKILL grace when clearing processes out of a reapable worktree.
 - `max_worktrees` (`int`, default `5`) - a repository left with more linked worktrees than this, once the run's removals and prunes land, is flagged: a `!` line in the report, `over_cap` and `worktrees_left` in its `--json` entry, and an `over_cap=` count in the log line. Nothing extra is removed. `0` turns the check off. Anything but a non-negative integer exits 2 with an error naming the key.
 - `ignored_untracked_dirs` (`array<string>`, default `["node_modules", "dist", ".turbo"]`) / `ignored_untracked_prefixes` (`array<string>`, default `["coverage"]`) - an untracked path is treated as regenerated build output, never work in progress, when **any one** of its path segments is listed in `ignored_untracked_dirs` or starts with a listed prefix (`lib/rigops/reap.py` `is_ignored_untracked`).
@@ -405,6 +408,9 @@ Every key the code reads. "none" means no built-in default: the key is absent un
 | `reaper.max_kills_per_tree` | integer | `20` | More matched processes than this under one worktree stops the reap. |
 | `reaper.orphan_min_age_s` | integer | `172800` | Minimum runtime before a build daemon counts as orphaned. |
 | `reaper.orphan_sweep` | boolean | `false` | Run the orphan-daemon sweep. |
+| `reaper.dev_server_sweep` | boolean | `false` | Kill detached dev servers under reaper.roots on reap --procs-only. |
+| `reaper.dev_server_min_age_s` | integer | `10800` | Runtime before a detached dev server counts as left behind. |
+| `reaper.dev_server_patterns` | array of string | none | Regexes a dev-server command line matches; unset uses a built-in list. |
 | `reaper.kill_grace_s` | number | `5` | Seconds between SIGTERM and SIGKILL when clearing a worktree. |
 | `reaper.max_worktrees` | integer | `5` | Linked worktrees per repo before it is flagged; 0 disables. |
 | `reaper.ignored_untracked_dirs` | array of string | `["node_modules","dist",".turbo"]` | Directory names treated as regenerated output. |
