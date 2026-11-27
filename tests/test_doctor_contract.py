@@ -220,6 +220,10 @@ class LeverValueTests(unittest.TestCase):
         found = self._judge(self._rows("n/a"), {"tokens": {"max": 5}}, builtin={"tokens"})
         self.assertEqual([f.key for f in found], ["tokens:value"])
 
+    def test_a_builtin_rule_over_a_null_latest_value_stays_quiet(self):
+        found = self._judge(self._rows(None), {"tokens": {"max": 5}}, builtin={"tokens"})
+        self.assertEqual(found, [])
+
     def test_a_builtin_rule_whose_column_is_absent_stays_quiet(self):
         rows = [{"date": "2026-09-14", "other": 1}]
         self.assertEqual(self._judge(rows, {"tokens": {"max": 5}}, builtin={"tokens"}), [])

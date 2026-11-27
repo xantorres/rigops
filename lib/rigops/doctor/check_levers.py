@@ -271,9 +271,9 @@ def judge(rows, notes, rules, today, ledger, max_age_days=DEFAULT_MAX_AGE_DAYS,
                 json.dumps(rule), f"give it one or more of {', '.join(RULE_KEYS)} as numbers",
                 ledger,
             ))
+        elif lever in builtin and latest.get(lever) is None:
+            continue
         elif lever not in latest:
-            if lever in builtin:
-                continue
             found.append(_warning(
                 f"{lever}:column", f"the ledger has no `{lever}` column, so that rule never fires",
                 f"{core.short(ledger)} row {latest['date']}",

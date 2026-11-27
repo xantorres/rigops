@@ -767,6 +767,13 @@ class CheckLeversTests(unittest.TestCase):
                                      today=date(2026, 12, 1)), [])
         self.assertEqual(self._judge([], rules=rules, builtin=builtin), [])
 
+    def test_built_in_rules_add_nothing_to_the_no_turns_warning_on_an_empty_row(self):
+        rules, builtin = check_levers.effective_rules({})
+        row = {"date": "2026-09-14", "turns": 0, "window_empty": True, "corrections": 0,
+               **{lever: None for lever in rules if lever != "corrections"}}
+        found = self._judge([row], rules=rules, builtin=builtin)
+        self.assertEqual([f.key for f in found], ["no-turns"])
+
     def test_run_without_user_rules_judges_built_ins_and_skips_a_missing_ledger(self):
         rows = "".join(
             json.dumps({"date": d, "turn1_p50": v}) + "\n"
