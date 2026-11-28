@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0rc3] - 2026-11-28
+
+No code change since 1.0.0rc2.
+
+### Fixed
+
+- The README and the install guide say what to do when the shell cannot find `rigops` right after the install, and how to install a release candidate, which the plain install commands skip.
+- The README and the install guide say that `jobs status` exits `2` on Linux.
+- The config guide says that a config file created under a `0002` umask is group-writable, which makes `doctor` exit `2` while `config check` passes.
+
 ## [1.0.0rc2] - 2026-11-28
 
 ### Added
