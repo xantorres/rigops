@@ -24,6 +24,19 @@ rigops version
 rigops config check
 ```
 
+If the shell cannot find `rigops`, the installer's bin directory is not on `PATH`: run `pipx ensurepath` (or `uv tool update-shell`) and open a new terminal.
+
+## Release candidates
+
+The commands above install the newest final release and skip release candidates. To install the newest candidate, with pipx or with uv:
+
+```
+pipx install --pip-args=--pre rigops
+uv tool install --prerelease allow rigops
+```
+
+To try one without installing it: `uvx --prerelease allow rigops version` or `pipx run --pip-args=--pre rigops version`.
+
 ## Scheduled jobs
 
 `rigops jobs install` prints what it would do and changes nothing. Add `--apply` to write the launchd plists and load them:
@@ -47,7 +60,7 @@ rigops jobs status
 
 ## Linux
 
-launchd is macOS-only. On Linux `rigops jobs install` prints crontab lines with the absolute path of your `rigops`; create the log directory it names and add the lines with `crontab -e`. The lines never heal: there is no launchd to inspect for hung processes, so `doctor` runs with `--supervisor none`. They are **unverified**; read them before use, and see [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md) for what CI does and does not exercise on Linux. A template with the same lines ships at `lib/rigops/templates/cron/crontab.example`.
+launchd is macOS-only. On Linux `rigops jobs install` prints crontab lines with the absolute path of your `rigops`; create the log directory it names and add the lines with `crontab -e`. The lines never heal: there is no launchd to inspect for hung processes, so `doctor` runs with `--supervisor none`. `rigops jobs status` exits `2` on Linux, because cron entries are not inspected. They are **unverified**; read them before use, and see [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md) for what CI does and does not exercise on Linux. A template with the same lines ships at `lib/rigops/templates/cron/crontab.example`.
 
 ## Upgrade
 

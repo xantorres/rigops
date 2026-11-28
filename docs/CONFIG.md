@@ -12,6 +12,8 @@ There is no generic "environment variable overrides any config key" layer. A sma
 
 A missing config file is not an error: every command runs on built-in defaults alone.
 
+When you create the file, check that group and others cannot write it (`chmod go-w <path>`). A default umask of `0002`, as on Ubuntu, creates it group-writable; `rigops doctor` then exits `2` although `rigops config check` passes. See [File permissions](#file-permissions).
+
 Commands:
 
 - `rigops config get <dotted.key>` - prints the value at that dotted path in the merged config as compact JSON with sorted keys: strings are quoted, so `rigops config get transcripts_dir` prints `"~/.claude/projects"`. Exits `1` with nothing on stdout if the key isn't present anywhere in the merged config (including defaults).

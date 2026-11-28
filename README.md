@@ -22,6 +22,8 @@ rigops version
 rigops config check
 ```
 
+If the shell cannot find `rigops`, run `pipx ensurepath` and open a new terminal. To try a release candidate instead of the newest final release, see [docs/INSTALL.md](docs/INSTALL.md#release-candidates).
+
 In Claude Code, install the plugin for the `/rigops:*` commands and the two session hooks:
 
 ```text
@@ -44,7 +46,7 @@ rigops jobs install
 rigops jobs install --apply
 ```
 
-Without a job registry, `doctor` skips the job checks and still lints your config. `jobs install` prints its plan and changes nothing. With `--apply` it writes and loads two launchd jobs on macOS, which `rigops jobs status` then shows as loaded, and on Linux it prints the crontab lines to add. `rigops jobs uninstall --apply` removes them.
+Without a job registry, `doctor` skips the job checks and still lints your config. `jobs install` prints its plan and changes nothing. With `--apply` it writes and loads two launchd jobs on macOS, which `rigops jobs status` then shows as loaded, and on Linux it prints the crontab lines to add. On Linux `rigops jobs status` exits `2`, because cron entries are not inspected. `rigops jobs uninstall --apply` removes them.
 
 A week later the scheduled job writes the next row, and `rigops ledger diff` shows what moved, with your notes listed between the two rows. `/rigops:week` in Claude Code runs the whole weekly review.
 
